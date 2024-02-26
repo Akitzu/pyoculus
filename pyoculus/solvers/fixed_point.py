@@ -163,6 +163,19 @@ class FixedPoint(BaseSolver):
                             self.niter,
                             tol,
                         )
+                    else:
+                        result = self._newton_method_RZ(
+                            pp,
+                            qq,
+                            s_guess,
+                            sbegin,
+                            send,
+                            Z_guess,
+                            self._params["zeta"],
+                            self.dzeta,
+                            self.niter,
+                            tol,
+                        )
                 else:
                     if self.is_theta_fixed:
                         result = self._newton_method_1(
@@ -525,6 +538,8 @@ class FixedPoint(BaseSolver):
                 t = t + dt
 
             dtheta = output[4] - theta - dzeta * pp
+            print(f"[R,Z] : {[output[0], output[1]]} - dtheta : {dtheta}")
+
             dR = output[5]
             dZ = output[6]
             
@@ -539,11 +554,83 @@ class FixedPoint(BaseSolver):
                 break
             R_new = R - dtheta / jacobian
             R = R_new
+            print(f"R : {R}")
             theta = np.arctan2(Z-Z0, R-R0)
 
             if R > Rend or R < Rbegin:  # search failed, return None
                 return None
 
+            ic = np.array([R, Z, R0, Z0, theta, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
+            self.history.append(ic[0:1].copy())
+
+        if succeeded:
+            return np.array([R, Z, zeta], dtype=np.float64)
+        else:
+            return None
+    
+    def _newton_method_RZ(
+        self, pp, qq, R_guess, Rbegin, Rend, Z_guess, zeta, dzeta, niter, tol
+    ):
+        R = R_guess
+        Z = Z_guess
+
+        R0 = self._problem._R0
+        Z0 = self._problem._Z0
+        theta = np.arctan2(Z-Z0, R-R0)
+
+        # set up the initial condition
+        ic = np.array([R, Z, R0, Z0, theta, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
+        self.history.append(ic[0:1].copy())
+
+        t0 = zeta
+        dt = dzeta
+
+        succeeded = False
+
+        rz = np.array([R, Z], dtype=np.float64)
+
+        for ii in range(niter):
+
+            t = t0
+            self._integrator.set_initial_value(t0, ic)
+
+            for jj in range(qq):
+                output = self._integrator.integrate(t + dt)
+                t = t + dt
+
+            dtheta = output[4] - theta - dzeta * pp
+            print(f"[R,Z] : {[output[0], output[1]]} - dtheta : {dtheta}")
+            
+            # Stop if the resolution is good enough
+            if abs(dtheta) < tol:
+                succeeded = True
+                break
+                
+            # Else calculate the Jacobian of the map F : (R, Z) -> dtheta
+            # by decomposing F into G and H : F = H(G(R, Z)) and using the chain rule
+            # where G is the map (R, Z) -> (R', Z') and H is the map (R', Z') -> dtheta
+            dG = np.array([
+                [output[5], output[7]],
+                [output[6], output[8]]
+            ], dtype=np.float64)
+            
+            deltaR = output[0] - R0
+            deltaZ = output[1] - Z0
+            drz = np.array([deltaR, deltaZ], dtype=np.float64)
+            dH = np.array([-drz[1], drz[0]], dtype=np.float64) / (drz[0]**2 + drz[1]**2)
+
+            jacobian = np.matmul(dH.T, dG)
+            
+            # Newton's step
+            rz = rz - dtheta / jacobian
+            R = rz[0]
+            Z = rz[1]
+            theta = np.arctan2(Z-Z0, R-R0)
+
+            if R > Rend or R < Rbegin:  # search failed, return None
+                print(R)
+                return None
+            
             ic = np.array([R, Z, R0, Z0, theta, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
             self.history.append(ic[0:1].copy())
 
