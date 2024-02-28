@@ -80,7 +80,7 @@ class FixedPoint(BaseSolver):
         self.niter = params["niter"]
         self.nrestart = params["nrestart"]
 
-    def compute(self, guess, pp, qq, sbegin=-1.0, send=1.0, tol=None, thetaf = False):
+    def compute(self, guess, pp, qq, sbegin=-1.0, send=1.0, tol=None, checkonly = False):
         """! Looks for the fixed point with rotation number pp/qq
         @param guess the initial guess, `[s, theta]`, if `params['theta'] == None`, `[s]`, if `params['theta'] ==` somevalue
         @param pp integer, the numerator of the rotation number
@@ -88,6 +88,7 @@ class FixedPoint(BaseSolver):
         @param sbegin=-1.0 the allowed minimum s or R
         @param send=1.0    the allowed maximum s or R
         @param tol=self._integrator_params['rtol']*qq -- the tolerance of the fixed point
+        @param checkonly=False, if set to True finds the fixed point in (R,Z) plane and then checks if the poloidal number is correct
 
         @returns rdata a class that contains the results that contains
         `rdata.x,rdata.y,rdata,z` -- the fixed points in xyz coordinates
@@ -163,19 +164,6 @@ class FixedPoint(BaseSolver):
                             self.niter,
                             tol,
                         )
-                    elif thetaf:
-                        result = self._newton_method_RZ_thetacheck(
-                            pp,
-                            qq,
-                            s_guess,
-                            sbegin,
-                            send,
-                            Z_guess,
-                            self._params["zeta"],
-                            self.dzeta,
-                            self.niter,
-                            tol,
-                        )
                     else:
                         result = self._newton_method_RZ(
                             pp,
@@ -188,6 +176,7 @@ class FixedPoint(BaseSolver):
                             self.dzeta,
                             self.niter,
                             tol,
+                            checkonly
                         )
                 else:
                     if self.is_theta_fixed:
@@ -216,8 +205,16 @@ class FixedPoint(BaseSolver):
                             self.niter,
                             tol,
                         )
+            except AssertionError as ae:
+                if ae.args[0] == "Found fixed-point as not the right poloidal number (pp)":
+                    rdata = FixedPoint.OutputData()
+                    rdata.failed = ae
+                    return rdata
+                else:
+                    result = None
             except:
-                result = None
+                    result = None
+
 
             if result is not None:  # if it is successful:
                 break
@@ -232,7 +229,7 @@ class FixedPoint(BaseSolver):
                     if self._params["theta"] is None:
                         theta_guess = random_guess[1] * 2 * np.pi
 
-        # now we go and get all the fixed points by iterating the map
+        # now we go and get all the fixed points by iterating the map                
         if result is not None:
             t = self.zeta[0]
             dt = 2 * np.pi / self.Nfp
@@ -288,6 +285,7 @@ class FixedPoint(BaseSolver):
                     self.z[jj] = xyz[2]
 
             rdata = FixedPoint.OutputData()
+            rdata.failed = None
             rdata.x = self.x.copy()
             rdata.y = self.y.copy()
             rdata.z = self.z.copy()
@@ -582,7 +580,7 @@ class FixedPoint(BaseSolver):
             return None
     
     def _newton_method_RZ(
-        self, pp, qq, R_guess, Rbegin, Rend, Z_guess, zeta, dzeta, niter, tol
+        self, pp, qq, R_guess, Rbegin, Rend, Z_guess, zeta, dzeta, niter, tol, checkonly
     ):
         # Set up the initial guess
         RZ = np.array([R_guess, Z_guess], dtype=np.float64)
@@ -592,7 +590,7 @@ class FixedPoint(BaseSolver):
         rhotheta = np.array([np.linalg.norm(RZ-RZ_Axis), np.arctan2(RZ[1]-RZ_Axis[1], RZ[0]-RZ_Axis[0])], dtype=np.float64)
         
         ic = np.array([RZ[0], RZ[1], RZ_Axis[0], RZ_Axis[1], rhotheta[1], 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-        self.history.append(ic[0:1].copy())
+        self.history.append(ic[0:2].copy())
         
         t0 = zeta
         dt = dzeta
@@ -613,7 +611,9 @@ class FixedPoint(BaseSolver):
                                          output[4] - dzeta * pp], dtype=np.float64)
             
             # Stop if the resolution is good enough
-            if abs(rhotheta_evolved[1]-rhotheta[1]) < tol:
+            condA = not checkonly and np.linalg.norm(RZ_evolved-RZ) < tol
+            condB = checkonly and abs(rhotheta_evolved[1]-rhotheta[1]) < tol
+            if condA or condB:
                 succeeded = True
                 break
             
@@ -625,114 +625,52 @@ class FixedPoint(BaseSolver):
                 [output[6], output[8]]
             ], dtype=np.float64)
 
-            # dH = dH(G(R,Z))
-            deltaRZ = RZ_evolved - RZ_Axis
-            dH = np.array([
-                np.array([deltaRZ[0], deltaRZ[1]], dtype=np.float64) / np.sqrt(deltaRZ[0]**2 + deltaRZ[1]**2),
-                np.array([-deltaRZ[1], deltaRZ[0]], dtype=np.float64) / (deltaRZ[0]**2 + deltaRZ[1]**2)
-            ], dtype=np.float64)
+            if not checkonly:
+                # dH = dH(G(R,Z))
+                deltaRZ = RZ_evolved - RZ_Axis
+                dH = np.array([
+                    np.array([deltaRZ[0], deltaRZ[1]], dtype=np.float64) / np.sqrt(deltaRZ[0]**2 + deltaRZ[1]**2),
+                    np.array([-deltaRZ[1], deltaRZ[0]], dtype=np.float64) / (deltaRZ[0]**2 + deltaRZ[1]**2)
+                ], dtype=np.float64)
 
-            # dP = dH(R,Z)
-            deltaRZ = RZ - RZ_Axis
-            dP = np.array([
-                np.array([deltaRZ[0], deltaRZ[1]], dtype=np.float64) / np.sqrt(deltaRZ[0]**2 + deltaRZ[1]**2),
-                np.array([-deltaRZ[1], deltaRZ[0]], dtype=np.float64) / (deltaRZ[0]**2 + deltaRZ[1]**2)
-            ], dtype=np.float64)
-            
-            # Jacobian of the map F = H(G(R,Z)) - H(R,Z) 
-            jacobian = dH @ dG - dP
+                # dP = dH(R,Z)
+                deltaRZ = RZ - RZ_Axis
+                dP = np.array([
+                    np.array([deltaRZ[0], deltaRZ[1]], dtype=np.float64) / np.sqrt(deltaRZ[0]**2 + deltaRZ[1]**2),
+                    np.array([-deltaRZ[1], deltaRZ[0]], dtype=np.float64) / (deltaRZ[0]**2 + deltaRZ[1]**2)
+                ], dtype=np.float64)
+                
+                # Jacobian of the map F = H(G(R,Z)) - H(R,Z) 
+                jacobian = dH @ dG - dP
+                
+                # Map F = H(G(R,Z)) - H(R,Z)
+                F_evolved = rhotheta_evolved-rhotheta
+
+            else:
+                # Jacobian of the map F = G(R,Z) - (R,Z)
+                jacobian = dG - np.eye(2)
+
+                # Map F = G(R,Z) - (R,Z)
+                F_evolved = RZ_evolved-RZ
 
             # Newton's step
-            RZ_new = RZ - np.linalg.inv(jacobian) @ (rhotheta_evolved-rhotheta)
+            RZ_new = RZ - np.linalg.inv(jacobian) @ F_evolved
             
             # Update the variables
-            print(f"{ii+1} - [R,Z] : {RZ} - dRZ : {RZ_new - RZ}")
             RZ = RZ_new
             rhotheta = np.array([np.linalg.norm(RZ-RZ_Axis), 
                                  np.arctan2(RZ[1]-RZ_Axis[1], RZ[0]-RZ_Axis[0])], dtype=np.float64)
 
-            if RZ[0] > Rend or RZ[0] < Rbegin:  # search failed, return None
+            # Check if the search is out of the provided R domain
+            if RZ[0] > Rend or RZ[0] < Rbegin:
                 return None
             
             ic = np.array([RZ[0], RZ[1], RZ_Axis[0], RZ_Axis[1], rhotheta[1], 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
 
-            self.history.append(ic[0:1].copy())
+            self.history.append(ic[0:2].copy())
 
         if succeeded:
-            return np.array([RZ[0], RZ[1], zeta], dtype=np.float64)
-        else:
-            return None
-
-    def _newton_method_RZ_thetacheck(
-        self, pp, qq, R_guess, Rbegin, Rend, Z_guess, zeta, dzeta, niter, tol
-    ):
-        # Set up the initial guess
-        RZ = np.array([R_guess, Z_guess], dtype=np.float64)
-
-        # Set up the initial condition    
-        RZ_Axis = np.array([self._problem._R0, self._problem._Z0], dtype=np.float64)
-        rhotheta = np.array([np.linalg.norm(RZ-RZ_Axis), np.arctan2(RZ[1]-RZ_Axis[1], RZ[0]-RZ_Axis[0])], dtype=np.float64)
-        
-        ic = np.array([RZ[0], RZ[1], RZ_Axis[0], RZ_Axis[1], rhotheta[1], 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-        self.history.append(ic[0:1].copy())
-        
-        t0 = zeta
-        dt = dzeta
-
-        succeeded = False
-
-        for ii in range(niter):
-
-            t = t0
-            self._integrator.set_initial_value(t0, ic)
-
-            for jj in range(qq):
-                output = self._integrator.integrate(t + dt)
-                t = t + dt
-
-            RZ_evolved = np.array([output[0],output[1]])
-            rhotheta_evolved = np.array([np.linalg.norm(RZ_evolved-RZ_Axis), 
-                                         output[4] - dzeta * pp], dtype=np.float64)
-            
-            # Stop if the resolution is good enough
-            if np.linalg.norm(RZ_evolved-RZ) < tol:
-                print(f"||dr||  = {np.linalg.norm(RZ_evolved-RZ)}")
-                break
-            
-            # dG switch to the convention of 
-            # df = [[dG^R/dR, dG^r/dZ]
-            #       [dG^Z/dR, df^Z/dZ]]
-            dG = np.array([
-                [output[5], output[7]],
-                [output[6], output[8]]
-            ], dtype=np.float64)
-            
-            # Jacobian of the map F = H(G(R,Z)) - H(R,Z) 
-            jacobian = dG - np.eye(2)
-
-            # Newton's step
-            RZ_new = RZ - np.linalg.inv(jacobian) @ (RZ_evolved-RZ)
-            
-            # Update the variables
-            print(f"{ii+1} - [R,Z] : {RZ} - dRZ : {RZ_new - RZ}")
-            RZ = RZ_new
-            rhotheta = np.array([np.linalg.norm(RZ-RZ_Axis), 
-                                 np.arctan2(RZ[1]-RZ_Axis[1], RZ[0]-RZ_Axis[0])], dtype=np.float64)
-
-            if RZ[0] > Rend or RZ[0] < Rbegin:  # search failed, return None
-                return None
-            
-            ic = np.array([RZ[0], RZ[1], RZ_Axis[0], RZ_Axis[1], rhotheta[1], 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-
-            self.history.append(ic[0:1].copy())
-
-        print(rhotheta_evolved[1]-rhotheta[1])
-        if abs(rhotheta_evolved[1]-rhotheta[1]) < 1e-3:
-            succeeded = True
-        else:
-            print(f"The point [R, Z] : {RZ} is probably a fixed point for the toroidal number (qq) but not for the right poloidal number (pp)")
-        
-        if succeeded:
+            #assert abs(rhotheta_evolved[1]-rhotheta[1]) < 1e-3, "Found fixed-point as not the right poloidal number (pp)"
             return np.array([RZ[0], RZ[1], zeta], dtype=np.float64)
         else:
             return None
