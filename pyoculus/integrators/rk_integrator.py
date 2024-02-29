@@ -69,12 +69,12 @@ class RKIntegrator(BaseIntegrator):
         @param x the start of coordinates
         """
 
-        self.integrator.set_initial_value(x, t).set_f_params(*self._params["args"])
-        #try:
-        testoutput = self.rhs(t, x, *self.args)
-        #except:
-            #print("ODE function not callable")
-            #raise
+        self.integrator.set_initial_value(x, t)
+        self.integrator.set_f_params(*self._params["args"])
+        try:
+            self.rhs(t, x, *self.args)
+        except:
+            raise "ODE function not callable"
 
         super().set_initial_value(t, x)
 
