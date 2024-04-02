@@ -80,7 +80,7 @@ class FixedPoint(BaseSolver):
         self.niter = params["niter"]
         self.nrestart = params["nrestart"]
 
-    def compute(self, guess, pp, qq, sbegin=-1.0, send=1.0, tol=None, checkonly = False):
+    def compute(self, guess, pp, qq, sbegin=-1.0, send=1.0, tol=None, checkonly=True):
         """! Looks for the fixed point with rotation number pp/qq
         @param guess the initial guess, `[s, theta]`, if `params['theta'] == None`, `[s]`, if `params['theta'] ==` somevalue
         @param pp integer, the numerator of the rotation number
@@ -585,7 +585,7 @@ class FixedPoint(BaseSolver):
         # Set up the initial guess
         RZ = np.array([R_guess, Z_guess], dtype=np.float64)
 
-        # Set up the initial condition    
+        # Set up the initial condition  
         RZ_Axis = np.array([self._problem._R0, self._problem._Z0], dtype=np.float64)
         rhotheta = np.array([np.linalg.norm(RZ-RZ_Axis), np.arctan2(RZ[1]-RZ_Axis[1], RZ[0]-RZ_Axis[0])], dtype=np.float64)
         
@@ -676,3 +676,16 @@ class FixedPoint(BaseSolver):
             return np.array([RZ[0], RZ[1], zeta], dtype=np.float64)
         else:
             return None
+    
+    @staticmethod
+    def find_axis(problem, guess, params=dict(), integrator = None, integrator_params=dict(), **kwargs):
+        """! Find the axis of the system
+        @returns the axis of the system
+        """
+        fpsolver = FixedPoint(problem, params, integrator=integrator, integrator_params=integrator_params)
+        fpsolver.compute(guess, 0, 1, **kwargs)
+
+        if fpsolver.successful:
+            return fpsolver.x[0], fpsolver.y[0], fpsolver.z[0]
+        else:
+            raise Exception("Failed to find the axis")
