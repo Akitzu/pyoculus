@@ -90,9 +90,11 @@ class CylindricalProblem(BaseProblem):
         deltaR = R - R0
         deltaZ = Z - Z0
 
-        dtheta = (deltaR * (dZ - dZ0) - deltaZ * (dR - dR0)) / (
-            deltaR ** 2 + deltaZ ** 2
-        )
+        deltaRZ2 = deltaR ** 2 + deltaZ ** 2
+        if deltaRZ2 == 0:
+            dtheta = 0
+        else:
+            dtheta = (deltaR * (dZ - dZ0) - deltaZ * (dR - dR0)) / deltaRZ2
 
         return np.array([dR, dZ, dR0, dZ0, dtheta, dRZ[2], dRZ[3], dRZ[4], dRZ[5]])
 
