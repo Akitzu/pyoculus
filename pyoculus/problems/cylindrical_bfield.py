@@ -23,23 +23,30 @@ class CylindricalBfield(CylindricalProblem, BfieldProblem):
 
         super().__init__(R0, Z0, Nfp)
 
-    @classmethod
-    def find_axis(cls, guess, Nfp = 1, **kwargs):
+    def find_axis(self, guess, Nfp = 1, params=dict(), integrator=None, integrator_params=dict(), **kwargs):
         """! Find the magnetic axis
         @param guess the initial guess of the axis
         @param Nfp the number of field periods
         @param **kwargs extra parameters for the FixedPoint.find_axis method
         @returns the axis R0 and Z0
         """
-        
-        tmpProblem = copy.deepcopy(cls)
+        options = {
+            "Rbegin": 0.5, "Rend": 1.5, "niter": 100, "tol": 1e-9
+        }
+        options.update(kwargs)
+
+        tmpProblem = copy.deepcopy(self)
         tmpProblem._R0 = guess[0]
         tmpProblem._Z0 = guess[1]
         tmpProblem.Nfp = Nfp
 
-        R0, _, Z0 = FixedPoint.find_axis(tmpProblem, guess, **kwargs)
+        fpaxis = FixedPoint(tmpProblem, params=params, integrator=integrator, integrator_params=integrator_params, evolve_axis=False)
+        RZ_axis = fpaxis.find_axis(R_guess = guess[0], Z_guess = guess[1], **options)
+
+        if RZ_axis is None:
+            raise ValueError("Failed to find the axis")
         
-        return R0, Z0        
+        return RZ_axis[0], RZ_axis[1]
 
     def f_RZ(self, phi, RZ, *args):
         """! Returns ODE RHS

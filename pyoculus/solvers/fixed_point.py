@@ -11,7 +11,7 @@ import numpy as np
 ## Class that used to setup the fixed point finder.
 class FixedPoint(BaseSolver):
     def __init__(
-        self, problem, params=dict(), integrator=None, integrator_params=dict()
+        self, problem, params=dict(), integrator=None, integrator_params=dict(), evolve_axis=True
     ):
         """! Set up the class of the fixed point finder
         @param problem must inherit pyoculus.problems.BaseProblem, the problem to solve
@@ -67,7 +67,11 @@ class FixedPoint(BaseSolver):
             raise TypeError(
                 "problem should inherit either ToroidalProblem or CylindricalProblem"
             )
-        integrator_params["ode"] = problem.f_tangent
+        
+        if evolve_axis:
+            integrator_params["ode"] = problem.f_tangent
+        else:
+            integrator_params["ode"] = problem.f_RZ_tangent
 
         super().__init__(
             problem=problem,
@@ -677,15 +681,72 @@ class FixedPoint(BaseSolver):
         else:
             return None
     
-    @staticmethod
-    def find_axis(problem, guess, params=dict(), integrator = None, integrator_params=dict(), **kwargs):
-        """! Find the axis of the system
-        @returns the axis of the system
-        """
-        fpsolver = FixedPoint(problem, params, integrator=integrator, integrator_params=integrator_params)
-        fpsolver.compute(guess, 0, 1, **kwargs)
+    def find_axis(
+        self, R_guess, Rbegin, Rend, Z_guess, niter, tol
+    ):
+        if not isinstance(self._problem, CylindricalProblem):
+            raise TypeError("problem should inherit CylindricalProblem to find an unknown axis")
 
-        if fpsolver.successful:
-            return fpsolver.x[0], fpsolver.y[0], fpsolver.z[0]
+        # Set up the initial guess
+        RZ = np.array([R_guess, Z_guess], dtype=np.float64)
+        
+        ic = np.array([RZ[0], RZ[1], 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
+
+        self.history = []
+        self.history.append(ic[0:2].copy())
+        
+        t0 = self._params["zeta"]
+        dt = 2 * np.pi / self.Nfp
+
+        succeeded = False
+
+        for ii in range(niter):
+
+            t = t0
+            self._integrator.set_initial_value(t0, ic)
+            
+            # Integrate to the next periodic plane
+            output = self._integrator.integrate(t + dt)
+            t = t + dt
+
+            RZ_evolved = np.array([output[0],output[1]])
+            
+            # Stop if the resolution is good enough
+            print(f"{ii} - dr : {np.linalg.norm(RZ_evolved-RZ)}")
+            if np.linalg.norm(RZ_evolved-RZ) < tol:
+                succeeded = True
+                break
+            
+            # dG switch to the convention of 
+            # df = [[dG^R/dR, dG^r/dZ]
+            #       [dG^Z/dR, df^Z/dZ]]
+            dG = np.array([
+                [output[2], output[4]],
+                [output[3], output[5]]
+            ], dtype=np.float64)
+
+            # Jacobian of the map F = G(R,Z) - (R,Z)
+            jacobian = dG - np.eye(2)
+
+            # Map F = G(R,Z) - (R,Z)
+            F_evolved = RZ_evolved-RZ
+
+            # Newton's step
+            RZ_new = RZ - np.linalg.inv(jacobian) @ F_evolved
+            
+            # Update the variables
+            RZ = RZ_new
+           
+            print(f"{ii+1} - RZ : {RZ}")
+            # Check if the search is out of the provided R domain
+            if RZ[0] > Rend or RZ[0] < Rbegin:
+                return None
+            
+            ic = np.array([RZ[0], RZ[1], 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
+
+            self.history.append(ic[0:2].copy())
+
+        if succeeded:
+            return np.array([RZ[0], RZ[1], t0], dtype=np.float64)
         else:
-            raise Exception("Failed to find the axis")
+            return None
