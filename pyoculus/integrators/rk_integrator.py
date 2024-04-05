@@ -71,10 +71,10 @@ class RKIntegrator(BaseIntegrator):
 
         self.integrator.set_initial_value(x, t)
         self.integrator.set_f_params(*self._params["args"])
-        try:
-            self.rhs(t, x, *self.args)
-        except:
-            raise "ODE function not callable"
+        # try:
+        self.rhs(t, x, *self.args)
+        # except:
+        #   raise "ODE function not callable"
 
         super().set_initial_value(t, x)
 
