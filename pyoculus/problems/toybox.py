@@ -472,7 +472,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
     def set_amplitude(self, index, value):
         """Set the amplitude of the perturbation at index to value"""
 
-        self.amplitudes[index] = value
+        self.perturbations_args[index]["amplitude"] = value
         self._initialize_perturbations(index)
 
     def set_perturbation(self, index, perturbation_args):
@@ -489,6 +489,15 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         self._perturbations.append(None)
         self.perturbations_args[-1].update({"R": self._R0, "Z": self._Z0})
         self._initialize_perturbations(len(self.perturbations_args) - 1)
+
+    def remove_perturbation(self, index = None):
+        """Remove the perturbation at index or the last one if no index is given."""
+        if index is None:
+            index = len(self.perturbations_args) - 1
+        
+        self.perturbations_args.pop(index)
+        self._perturbations.pop(index)
+        self._initialize_perturbations()
 
     def _initialize_perturbations(self, index=None):
         """Initialize the perturbations functions and the gradient. Also updates the total field and its gradient."""
@@ -535,7 +544,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         $ myBfield.perturbations[0](rphiz)
         >> value
         """
-        if hasattr(self, "_jited_perturbations"):
+        if hasattr(self, "_jited_perturbations") and len(self._jited_perturbations) == len(self.perturbations_args):
             return self._jited_perturbations
         else:
             self._jited_perturbations = [
