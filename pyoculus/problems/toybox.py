@@ -9,24 +9,25 @@ from jax import jit, jacfwd
 import jax.numpy as jnp
 import numpy as np
 
-## Decorator for jacfwd in cylindrical coordinates
+# ## Decorator for jacfwd in cylindrical coordinates
+# ## Not needed as pyoculus takes the dBdX as an input and add the christoffel symbols by itself
 
+# def cyljacfwd(f):
+#     """Decorator to use the jax.jacfwd differentiation in cylindrical coordinates."""
 
-def cyljacfwd(f):
-    """Decorator to use the jax.jacfwd differentiation in cylindrical coordinates."""
+#     @wraps(f)
+#     def dfun(rr, *args, **kwargs):
+#         B = f(rr, *args, **kwargs)
+#         jac = jnp.array(jacfwd(f)(rr, *args, **kwargs))
+#         jac = jac.at[:, 1].multiply(1 / rr[0]**2)
+#         return jac
+#         # Correction with the Christoffel symbols
+#         # correction = jnp.array([[0, -B[1], 0],[B[1], B[0]/rr[0], 0],[0, 0, 0]])/rr[0]
+#         # return jac + correction
+#         # correction = jnp.array([-B[1], B[0], 0]) / rr[0]
+#         # return jac.at[:, 1].add(correction)
 
-    @wraps(f)
-    def dfun(rr, *args, **kwargs):
-        B = f(rr, *args, **kwargs)
-        jac = jnp.array(jacfwd(f)(rr, *args, **kwargs))
-        jac = jac.at[:, 1].multiply(1 / rr[0])
-        # Correction with the Christoffel symbols
-        # correction = jnp.array([[0, -B[1], 0],[B[1], B[0]/rr[0], 0],[0, 0, 0]])/rr[0]
-        # return jac + correction
-        correction = jnp.array([-B[1], B[0], 0]) / rr[0]
-        return jac.at[:, 1].add(correction)
-
-    return dfun
+#     return dfun
 
 
 ## Equilibrium fields
@@ -415,7 +416,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         else:
             self.B_equilibrium = partial(equ_squared, R=R, Z=Z, sf=sf, shear=shear)
 
-        self.dBdX_equilibrium = cyljacfwd(self.B_equilibrium)
+        self.dBdX_equilibrium = lambda rr: jnp.array(jacfwd(self.B_equilibrium)(rr))
 
         # Define the perturbations and the gradient of the resulting field sum
         self._perturbations = [None] * len(perturbations_args)
@@ -451,7 +452,6 @@ class AnalyticCylindricalBfield(CylindricalBfield):
             guess = [R, Z]
 
         instance = cls(R, Z, sf, shear, perturbations_args, A, B)
-        # return super(AnalyticCylindricalBfield, cls).without_axis(instance.B, instance.dBdX, guess, **kwargs)
         R0, Z0 = super(cls, instance).find_axis(guess, Nfp=1, **kwargs)
         instance._R0 = R0
         instance._Z0 = Z0
@@ -490,11 +490,11 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         self.perturbations_args[-1].update({"R": self._R0, "Z": self._Z0})
         self._initialize_perturbations(len(self.perturbations_args) - 1)
 
-    def remove_perturbation(self, index = None):
+    def remove_perturbation(self, index=None):
         """Remove the perturbation at index or the last one if no index is given."""
         if index is None:
             index = len(self.perturbations_args) - 1
-        
+
         self.perturbations_args.pop(index)
         self._perturbations.pop(index)
         self._initialize_perturbations()
@@ -530,7 +530,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
             self.B_perturbation = lambda rr: jnp.array([0, 0, 0])
 
         # gradient of the resulting perturbation
-        self.dBdX_perturbation = cyljacfwd(self.B_perturbation)
+        self.dBdX_perturbation = lambda rr: jnp.array(jacfwd(self.B_perturbation)(rr))
 
         # Define the total field and its gradient
         self._B = jit(lambda rr: self.B_equilibrium(rr) + self.B_perturbation(rr))
@@ -544,7 +544,9 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         $ myBfield.perturbations[0](rphiz)
         >> value
         """
-        if hasattr(self, "_jited_perturbations") and len(self._jited_perturbations) == len(self.perturbations_args):
+        if hasattr(self, "_jited_perturbations") and len(
+            self._jited_perturbations
+        ) == len(self.perturbations_args):
             return self._jited_perturbations
         else:
             self._jited_perturbations = [
@@ -561,13 +563,20 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
     def dBdX(self, rr):
         """Gradient of the total field function at the point rr. Where (dBdX)^i_j = dB^i/dX^j with i the row index and j the column index of the matrix."""
-        return np.array(self._dBdX(rr))
+        return [self.B(rr)], np.array(self._dBdX(rr))
 
     def B_many(self, r, phi, z, input1D=True):
         return np.array([self._B([r[i], phi[i], z[i]]) for i in range(len(r))])
 
     def dBdX_many(self, r, phi, z, input1D=True):
-        return np.array([self._dBdX([r[i], phi[i], z[i]]) for i in range(len(r))])
+        return self.B_many(r, phi, z).flatten(), np.array(
+            [self._dBdX([r[i], phi[i], z[i]]) for i in range(len(r))]
+        )
+
+    def divB(self, rr):
+        """Divergence of the total field function at the point rr."""
+        b, dbdx = self.dBdX(rr)
+        return dbdx[0, 0] + b[0][0] / rr[0] + dbdx[1, 1] / rr[0] ** 2 + dbdx[2, 2]
 
 
 ## Additional plotting functions
