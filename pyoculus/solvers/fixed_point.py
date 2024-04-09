@@ -617,7 +617,7 @@ class FixedPoint(BaseSolver):
             # Stop if the resolution is good enough
             condA = checkonly and np.linalg.norm(RZ_evolved-RZ) < tol
             condB = (not checkonly) and abs(rhotheta_evolved[1]-rhotheta[1]) < tol
-            # print(f"{ii} - dr : {np.linalg.norm(RZ_evolved-RZ)} - dtheta : {abs(rhotheta_evolved[1]-rhotheta[1])}")
+            print(f"{ii} - [DeltaR, DeltaZ] : {RZ_evolved-RZ} - dtheta : {abs(rhotheta_evolved[1]-rhotheta[1])}")
             if condA or condB:
                 succeeded = True
                 break
@@ -662,11 +662,12 @@ class FixedPoint(BaseSolver):
             RZ_new = RZ - np.linalg.inv(jacobian) @ F_evolved
             
             # Update the variables
+            print(f"{ii} - [StepR, StepZ]: {RZ_new-RZ}")
             RZ = RZ_new
             rhotheta = np.array([np.linalg.norm(RZ-RZ_Axis), 
                                  np.arctan2(RZ[1]-RZ_Axis[1], RZ[0]-RZ_Axis[0])], dtype=np.float64)
 
-            # print(f"{ii+1} - RZ : {RZ} - rhotheta : {rhotheta}")
+            print(f"{ii+1} - RZ : {RZ} - rhotheta : {rhotheta}")
             # Check if the search is out of the provided R domain
             if RZ[0] > Rend or RZ[0] < Rbegin:
                 return None
