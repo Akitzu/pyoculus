@@ -1,9 +1,8 @@
 from .base_solver import BaseSolver
 from .fixed_point import FixedPoint
-from ..problems.bfield_problem import BfieldProblem
-from ..problems.cartesian_bfield import CartesianBfield
+from pyoculus.problems import BfieldProblem, CartesianBfield
 from scipy.integrate import solve_ivp
-from scipy.optimize import newton_krylov
+from scipy.optimize import fsolve, newton_krylov
 import numpy as np
 
 class Manifold(BaseSolver):
@@ -16,7 +15,7 @@ class Manifold(BaseSolver):
         self.fixedpoint = fixedpoint
 
         # Compute the eigenvalues and eigenvectors of the fixed point
-        eigRes = fixedpoint.compute_eig()
+        eigRes = np.linalg.eig(fixedpoint.jacobian)
         eigenvalues = eigRes[0]
         # Eigenvectors are stored as columns of the matrix eigRes[1], transposing it to access them as np.array[i]
         eigenvectors = eigRes[1].T
@@ -70,57 +69,66 @@ class Manifold(BaseSolver):
         options = {
             "eps_guess": 2e-6,
             "nintersect": 10,
-            "atol": 1e-9,
-            "rtol": 1e-5,
-            "neps": 10,
+            "atol": 1e-20,
+            "rtol": 1e-10,
+            "neps": 2,
             "directions": "u+u-s+s-"
         }
         options.update({key: value for key, value in kwargs.items() if key in options})
         
         rz_fixedpoint = np.array([self.fixedpoint.x[0], self.fixedpoint.z[0]])
 
-        epsilon = self.find_epsilon(options['eps_guess'], self.vector_u)
+        # epsilon = self.find_epsilon(options['eps_guess'], self.vector_u)
+        epsilon = options['eps_guess']
+        
         RZs = self.start_config(epsilon, self.vector_u, options['neps'])[0]
 
         if 'u+' in options['directions']:
+            print("Computing unstable manifold with postive epsilon...")
             self.unstable['+'] = self.integrate_ivp(RZs, [0], nintersect=options['nintersect'], atol = options['atol'], rtol = options['rtol'])
 
-        RZs  = 2*rz_fixedpoint - RZs
         if 'u-' in options['directions']:
+            print("Computing unstable manifold with negative epsilon...")
+            RZs  = 2*rz_fixedpoint - RZs
             self.unstable['-'] = self.integrate_ivp(RZs, [0], nintersect=options['nintersect'], atol = options['atol'], rtol = options['rtol'])
         
-        RZs = self.start_config(epsilon, self.vector_s, options['neps'])[0]
+        RZs = self.start_config(epsilon, self.vector_s, options['neps'], -1)[0]
         if 's+' in options['directions']:
+            print("Computing stable manifold with positive epsilon...")
             self.stable['+'] = self.integrate_ivp(RZs, [0], nintersect=options['nintersect'], atol = options['atol'], rtol = options['rtol'], direction=-1)
         
-        RZs = 2*rz_fixedpoint - RZs
         if 's-' in options['directions']:
+            print("Computing stable manifold with negative epsilon...")
+            RZs = 2*rz_fixedpoint - RZs
             self.stable['-'] = self.integrate_ivp(RZs, [0], nintersect=options['nintersect'], atol = options['atol'], rtol = options['rtol'], direction=-1)
 
 
-    def start_config(self, epsilon, eigenvector, neps=10):
+    def start_config(self, epsilon, eigenvector, neps=10, direction=1):
         options = self._start_config_params
+        options['integrate_ivp_kwargs']['direction'] = direction
+
         rEps = np.array([self.fixedpoint.x[0], self.fixedpoint.z[0]]) + epsilon * eigenvector
         out = self.integrate_ivp(np.atleast_2d(rEps), [options['phi']], **options['integrate_ivp_kwargs'])
         
         eps_dir = out.y[:,1]-out.y[:,0]
         eps_dir = eps_dir / np.linalg.norm(eps_dir)
         
-        print(epsilon, eps_dir, eigenvector, np.dot(eps_dir, eigenvector) - 1)
+        # print(epsilon, eps_dir, eigenvector, np.dot(eps_dir, eigenvector) - 1)
 
         Rs = np.linspace(out.y[0,0], out.y[0,1], neps, endpoint=False)
         Zs = np.linspace(out.y[1,0], out.y[1,1], neps, endpoint=False)
         RZs = np.array([[r, z] for r, z in zip(Rs, Zs)])
 
-        return RZs, np.dot(eps_dir, eigenvector) - 1
+        return RZs, np.abs(np.dot(eps_dir, eigenvector)) - 1
     
 
     def find_epsilon(self, eps_guess, eigenvector, iter = 4):
         find_eps = lambda x: self.start_config(x, eigenvector, 1)[1]
 
         # eps_root = fsolve(find_eps, eps_guess, xtol=options['xtol'])
-        try :
+        try:
             eps_root = newton_krylov(find_eps, eps_guess, inner_maxiter=iter)[0]
+            print(f"Newton-Krylov succeeded, epsilon = {eps_root}")
         except:
             print("Newton-Krylov failed, using the guess for epsilon.")
             return eps_guess
@@ -144,16 +152,27 @@ class Manifold(BaseSolver):
 
         def Bfield_2D(t, rzs):
             rzs = rzs.reshape((-1, 2))
-            phis = (t % (2 * np.pi)) * np.ones(rzs.shape[0])
+            phis = options['direction']*(t % (2 * np.pi)) * np.ones(rzs.shape[0])
             bs_Bs = self.bfield.B_many(rzs[:, 0]*np.cos(phis), rzs[:, 0]*np.sin(phis), rzs[:, 1])
+
+            # Transform the B field to cylindrical coordinates
             rphizs = np.array([rzs[:, 0], phis, rzs[:, 1]]).T
+            Bs = np.empty_like(bs_Bs)
+            for i, (position, B) in enumerate(zip(rphizs, bs_Bs)):
+                Bs[i, :] = (CartesianBfield._inv_Jacobian(*position) @ B.reshape(3, -1)).reshape(-1)
 
-            Bs = list()
-            for position, B in zip(rphizs, bs_Bs):
-                B = CartesianBfield._inv_Jacobian(*position) @ B.reshape(3, -1)
-                Bs.append(np.array([B[0, 0] / B[1, 0], B[2, 0] / B[1, 0]]))
+            # Check if the field goes back in phi and set it to NaN
+            is_perturbed = (Bs[:,1] > 1e-24) + (rzs[:, 0] < 1e-22)
+            
+            if t == 0 or True:
+                print(rzs)
+                print(Bs)
+                print(np.sign(Bs[:, 1]))
+                print(t, is_perturbed.sum())
+            Bs[is_perturbed, :] = np.array([0, 1, 0])
 
-            return options['direction']*np.array(Bs).flatten()
+            Bs = np.vstack((Bs[:, 0]/Bs[:, 1], Bs[:, 0]/Bs[:, 1]))
+            return options['direction']*Bs.flatten()
         
         # setup the phis of the poincare sections
         phis = np.unique(np.mod(phis, 2 * np.pi / self.bfield.Nfp))
