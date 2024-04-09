@@ -88,7 +88,8 @@ class CylindricalBfield(CylindricalProblem, BfieldProblem):
         Br = B[0, 0]
         Bphi = B[1, 0]
 
-        dBdRphiZ = np.array(dBdRphiZ).at[:,1].multiply(1/R**2)
+        dBdRphiZ = np.array(dBdRphiZ)
+        dBdRphiZ[:,1] /= R**2
         # dinvJ = np.array([
         #     [0, Bphi*R, 0 ],
         #     [-Bphi/R, -Br/R, 0],
