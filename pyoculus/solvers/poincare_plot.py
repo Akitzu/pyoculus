@@ -99,7 +99,7 @@ class PoincarePlot(BaseSolver):
         self.theta = np.zeros_like(self.x)
         self.zeta = np.zeros_like(self.x)
 
-    def compute(self):
+    def compute(self, RZs = None):
         """! Computes the Poincare plot
         @returns pdata -- a class that contains the results
 
@@ -118,9 +118,13 @@ class PoincarePlot(BaseSolver):
         for ii in range(self._params["nPtrj"] + 1):
             # find which s to start with
             if self._is_cylindrical_problem:
-                self.x[ii, 0] = self._begin + ds * float(ii)
-                self.z[ii, 0] = self._params["Z"]
-
+                if RZs is None:
+                    self.x[ii, 0] = self._begin + ds * float(ii)
+                    self.z[ii, 0] = self._params["Z"]
+                else:
+                    self.x[ii, 0] = RZs[ii, 0]
+                    self.z[ii, 0] = RZs[ii, 1]
+                
                 self.theta[ii, 0] = np.arctan2(
                     (self.z[ii, 0] - self._problem._Z0),
                     (self.x[ii, 0] - self._problem._R0),
@@ -153,7 +157,7 @@ class PoincarePlot(BaseSolver):
                 dt = self.dt
 
                 for jj in range(1, self._params["nPpts"] + 1):
-
+                    
                     # run the integrator
                     try:
                         st = self._integrator.integrate(t + dt)
@@ -318,6 +322,12 @@ class PoincarePlot(BaseSolver):
         if plt.get_fignums():
             fig = plt.gcf()
             ax = plt.gca()
+        elif "fig" in kwargs.keys():
+            fig = kwargs["fig"]
+            ax = fig.gca()
+        elif "ax" in kwargs.keys():
+            ax = kwargs["ax"]
+            fig = ax.figure
         else:
             fig, ax = plt.subplots()
 
@@ -335,21 +345,21 @@ class PoincarePlot(BaseSolver):
 
         # adjust figure properties
         if plottype == "RZ":
-            plt.axis("equal")
+            ax.set_aspect("equal")
         if plottype == "yx":
             pass
 
-        plt.xlabel(xlabel, fontsize=20)
-        plt.ylabel(ylabel, fontsize=20)
-        plt.xticks(fontsize=16)
-        plt.yticks(fontsize=16)
+        ax.set_xlabel(xlabel, fontsize=20)
+        ax.set_ylabel(ylabel, fontsize=20)
+        ax.tick_params(axis='both', which='major', labelsize=16)
 
         if xlim is not None:
-            plt.xlim(xlim)
+            ax.set_xlim(xlim)
         if ylim is not None:
-            plt.ylim(ylim)
+            ax.set_ylim(ylim)
 
         # plt.tight_layout()
+        return fig, ax
 
     def plot_iota(self, xlim=None, ylim=None, **kwargs):
         """! Generates the iota plot
