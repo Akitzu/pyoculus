@@ -321,7 +321,8 @@ def ellpk(m):
 
 def field_circularcurrentloop(rr, R, Z):
     """Field generated at rr = rphiz by a circular current loop located at radius R and height Z."""
-    alpha2 = R**2 + rr[0] ** 2 + (rr[2] - Z) ** 2 - 2 * R * rr[0]
+    # alpha2 = R**2 + rr[0] ** 2 + (rr[2] - Z) ** 2 - 2 * R * rr[0]
+    alpha2 = (R - rr[0]) ** 2 + (rr[2] - Z) ** 2
     beta2 = alpha2 + 4 * R * rr[0]
     m = 1 - alpha2 / beta2
     E = ellpe(m)
