@@ -306,7 +306,8 @@ class FixedPoint(BaseSolver):
                 rdata.jacobian = np.array(
                     [[st[2], st[4]], [st[3], st[5]]], dtype=np.float64
                 )
-
+            self.jacobian = rdata.jacobian
+            
             # Greene's Residue
             rdata.GreenesResidue = 0.25 * (2.0 - np.trace(rdata.jacobian))
             rdata.MeanResidue = np.power(
