@@ -595,6 +595,8 @@ class FixedPoint(BaseSolver):
         rhotheta = np.array([np.linalg.norm(RZ-RZ_Axis), np.arctan2(RZ[1]-RZ_Axis[1], RZ[0]-RZ_Axis[0])], dtype=np.float64)
         
         ic = np.array([RZ[0], RZ[1], RZ_Axis[0], RZ_Axis[1], rhotheta[1], 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
+        
+        self.history_Revolved = []
         self.history.append(ic[0:2].copy())
         
         t0 = zeta
@@ -660,7 +662,8 @@ class FixedPoint(BaseSolver):
                 F_evolved = RZ_evolved-RZ
 
             # Newton's step
-            RZ_new = RZ - np.linalg.inv(jacobian) @ F_evolved
+            step = np.linalg.solve(jacobian, -1*F_evolved)
+            RZ_new = RZ + step
             
             # Update the variables
             print(f"{ii} - [StepR, StepZ]: {RZ_new-RZ}")
@@ -676,6 +679,7 @@ class FixedPoint(BaseSolver):
             ic = np.array([RZ[0], RZ[1], RZ_Axis[0], RZ_Axis[1], rhotheta[1], 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
 
             self.history.append(ic[0:2].copy())
+            self.history_Revolved.append(RZ_evolved)
 
         if succeeded:
             #assert abs(rhotheta_evolved[1]-rhotheta[1]) < 1e-3, "Found fixed-point as not the right poloidal number (pp)"
