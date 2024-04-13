@@ -9,7 +9,7 @@ from .cylindrical_problem import *
 from .cylindrical_bfield import *
 from .toroidal_problem import *
 from .toroidal_bfield import *
-from .simsgeo_biot_savart import *
+from .simsopt_bfield import *
 from .m3dc1_bfield import *
 from .qfm_bfield import *
 from .interpolate_coordinates import *
