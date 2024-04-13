@@ -458,6 +458,15 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         instance._Z0 = Z0
         return instance
 
+    # def find_axis(self, **kwargs):
+    #     """Find the magnetic axis by creating a temporary instance and calling the CylindricalBfield.find_axis method."""
+    #     try:
+    #         R0, Z0 = super().find_axis([self._R0, self._Z0], Nfp=1, **kwargs)
+    #     except ValueError:
+
+    #     self._R0 = R0
+    #     self._Z0 = Z0
+
     @property
     def amplitudes(self):
         """List of amplitudes of the perturbations."""
@@ -564,6 +573,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
     def dBdX(self, rr):
         """Gradient of the total field function at the point rr. Where (dBdX)^i_j = dB^i/dX^j with i the row index and j the column index of the matrix."""
+        rr = np.array(rr)
         return [self.B(rr)], np.array(self._dBdX(rr))
 
     def B_many(self, r, phi, z, input1D=True):
