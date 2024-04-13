@@ -738,7 +738,8 @@ class FixedPoint(BaseSolver):
             F_evolved = RZ_evolved-RZ
 
             # Newton's step
-            RZ_new = RZ - np.linalg.inv(jacobian) @ F_evolved
+            step = np.linalg.solve(jacobian, -1*F_evolved)
+            RZ_new = RZ + step
             
             # Update the variables
             RZ = RZ_new
