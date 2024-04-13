@@ -12,10 +12,32 @@ if __name__ == "__main__":
     # gaussian10 = {"m": 1, "n": 0, "d": 1, "type": "gaussian", "amplitude": 0.01}
 
     # Creating the pyoculus problem object, adding the perturbation here use the R, Z provided as center point
-    pyoproblem = AnalyticCylindricalBfield.without_axis(3, 0, 0.91, 0.7, perturbations_args = [separatrix], Rbegin = 1, Rend = 5, niter = 800, guess=[3.,-0.1],  tol = 1e-9)
+    pyoproblem = AnalyticCylindricalBfield.without_axis(3, 0, 0.91, 0.7, perturbations_args = [separatrix, maxwellboltzmann], Rbegin = 1, Rend = 5, niter = 800, guess=[3.,-0.1],  tol = 1e-9)
     
-    # Adding perturbation after the object is created uses the found axis as center point
-    pyoproblem.add_perturbation(maxwellboltzmann)
+    # # Adding perturbation after the object is created uses the found axis as center point
+    # pyoproblem.add_perturbation(maxwellboltzmann)
+
+    ### Finding the X-point
+    print("\nFinding the X-point\n")
+
+    # set up the integrator for the FixedPoint
+    iparams = dict()
+    iparams["rtol"] = 1e-12
+
+    pparams = dict()
+    pparams["nrestart"] = 0
+    pparams['niter'] = 300
+
+    # set up the FixedPoint object
+    fp = FixedPoint(pyoproblem, pparams, integrator_params=iparams)
+    
+    # find the X-point
+    guess = [3.10, -1.656]
+    print(f"Initial guess: {guess}")
+
+    fp.compute(guess=guess, pp=0, qq=1, sbegin=0.1, send=6, tol = 1e-10)
+
+    results = [list(p) for p in zip(fp.x, fp.y, fp.z)]
 
     ### Compute the Poincare plot
     print("\nComputing the Poincare plot\n")
@@ -40,6 +62,19 @@ if __name__ == "__main__":
     Zs = np.linspace(-0.43, -2.5, nfieldlines)
     RZs = np.array([[r, z] for r, z in zip(Rs, Zs)])
 
+    # Set RZs
+    nfieldlines = pparams["nPtrj"]+1
+    n1, n2 = int(np.ceil(nfieldlines/2)), int(np.floor(nfieldlines/2))
+    # Sophisticated way more around the xpoint
+    xpoint = np.array([results[0][0], results[0][2]])
+    opoint = np.array([pyoproblem._R0, pyoproblem._Z0])
+    coilpoint = np.array([pyoproblem.perturbations_args[0]['R'], pyoproblem.perturbations_args[0]['Z']])
+
+    deps = 0.05
+    RZ1 = (xpoint + deps*(1-np.linspace(0, 1, n1)).reshape((n1,1)) @ (opoint-xpoint).reshape((1,2)))
+    RZ2 = (xpoint + deps*np.linspace(0, 1, n2).reshape((n2,1)) @ (coilpoint-xpoint).reshape((1,2)))
+    RZs = np.concatenate((RZ1, RZ2))
+
     # Set up the Poincare plot object
     pplot = PoincarePlot(pyoproblem, pparams, integrator_params=iparams)
     
@@ -48,28 +83,6 @@ if __name__ == "__main__":
 
     # R-Z computation
     pplot.compute(RZs)
-
-    ### Finding the X-point
-    print("\nFinding the X-point\n")
-
-    # set up the integrator for the FixedPoint
-    iparams = dict()
-    iparams["rtol"] = 1e-12
-
-    pparams = dict()
-    pparams["nrestart"] = 0
-    pparams['niter'] = 300
-
-    # set up the FixedPoint object
-    fp = FixedPoint(pyoproblem, pparams, integrator_params=iparams)
-    
-    # find the X-point
-    guess = [3.10, -1.656]
-    print(f"Initial guess: {guess}")
-    
-    fp.compute(guess=guess, pp=0, qq=1, sbegin=0.1, send=6, tol = 1e-10)
-
-    results = [list(p) for p in zip(fp.x, fp.y, fp.z)]
 
     ### Plotting the results
 
