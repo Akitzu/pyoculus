@@ -1,10 +1,9 @@
 from pyoculus.integrators import RKIntegrator
 import numpy as np
-import argparse
 
-def linearized_error(fun, **kwargs):
+def linearized_error(fun, rtol = 1e-10, **kwargs):
     iparams = dict()
-    iparams["rtol"] = 1e-10
+    iparams["rtol"] = rtol
     iparams["ode"] = fun
 
     integrator = RKIntegrator(iparams)
@@ -24,7 +23,7 @@ def linearized_error(fun, **kwargs):
     integrator.set_initial_value(0, ic)
     endpoint2 = integrator.integrate(2*np.pi)[0:2]
 
-    np.linalg.norm(((M @ v) - (endpoint2 - endpoint1))/np.linalg.norm(endpoint2 - endpoint1))
+    return np.linalg.norm(((M @ v) - (endpoint2 - endpoint1))/np.linalg.norm(endpoint2 - endpoint1))
 
 # if __name__ == "__main__":
 #     pass
