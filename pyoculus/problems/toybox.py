@@ -1,6 +1,6 @@
 from .cylindrical_bfield import CylindricalBfield
 import matplotlib.pyplot as plt
-from functools import partial, wraps
+from functools import partial
 from jax import config
 
 config.update("jax_enable_x64", True)
@@ -10,7 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 
 # ## Decorator for jacfwd in cylindrical coordinates
-# ## Not needed as pyoculus takes the dBdX as an input and add the christoffel symbols by itself
+# ## Not needed as pyoculus takes the dBdRphiZ as an input
 
 # def cyljacfwd(f):
 #     """Decorator to use the jax.jacfwd differentiation in cylindrical coordinates."""
@@ -428,7 +428,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
                 pertdic.update({"Z": Z})
 
         self.perturbations_args = perturbations_args
-        self._initialize_perturbations()
+        self._initialize_perturbations(find_axis=False)
 
         # Call the CylindricalBfield constructor with (R,Z) of the axis
         super().__init__(R, Z, Nfp=1)
@@ -453,19 +453,18 @@ class AnalyticCylindricalBfield(CylindricalBfield):
             guess = [R, Z]
 
         instance = cls(R, Z, sf, shear, perturbations_args, A, B)
-        R0, Z0 = super(cls, instance).find_axis(guess, Nfp=1, **kwargs)
-        instance._R0 = R0
-        instance._Z0 = Z0
+        instance.find_axis(guess, **kwargs)
         return instance
 
-    # def find_axis(self, **kwargs):
-    #     """Find the magnetic axis by creating a temporary instance and calling the CylindricalBfield.find_axis method."""
-    #     try:
-    #         R0, Z0 = super().find_axis([self._R0, self._Z0], Nfp=1, **kwargs)
-    #     except ValueError:
+    def find_axis(self, guess, **kwargs):
+        """Tries to re-find the axis. This is useful when the perturbations have been changed. 
+        If the axis is not found, the previous axis is kept."""
+        if guess is None:
+            guess = [self._R0, self._Z0]
+        R0, Z0 = super(AnalyticCylindricalBfield, self).find_axis(guess, Nfp=1, **kwargs)
+        self._R0 = R0
+        self._Z0 = Z0
 
-    #     self._R0 = R0
-    #     self._Z0 = Z0
 
     @property
     def amplitudes(self):
@@ -509,7 +508,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         self._perturbations.pop(index)
         self._initialize_perturbations()
 
-    def _initialize_perturbations(self, index=None):
+    def _initialize_perturbations(self, index=None, find_axis=True):
         """Initialize the perturbations functions and the gradient. Also updates the total field and its gradient."""
 
         if index is not None:
@@ -547,6 +546,10 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         self._dBdX = jit(
             lambda rr: self.dBdX_equilibrium(rr) + self.dBdX_perturbation(rr)
         )
+
+        # Refind the axis
+        if find_axis:
+            self.find_axis()
 
     @property
     def perturbations(self):
