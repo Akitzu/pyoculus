@@ -456,12 +456,16 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         instance.find_axis(guess, **kwargs)
         return instance
 
-    def find_axis(self, guess, **kwargs):
+    def find_axis(self, guess = None, **kwargs):
         """Tries to re-find the axis. This is useful when the perturbations have been changed. 
         If the axis is not found, the previous axis is kept."""
         if guess is None:
             guess = [self._R0, self._Z0]
-        R0, Z0 = super(AnalyticCylindricalBfield, self).find_axis(guess, Nfp=1, **kwargs)
+        
+        defaults = {"Rbegin": guess[0]-2, "Rend": guess[0]+2}
+        defaults.update(kwargs)
+
+        R0, Z0 = super(AnalyticCylindricalBfield, self).find_axis(guess, Nfp=1, **defaults)
         self._R0 = R0
         self._Z0 = Z0
 
@@ -478,35 +482,35 @@ class AnalyticCylindricalBfield(CylindricalBfield):
             pertdic["amplitude"] = value[i]
         self._initialize_perturbations()
 
-    def set_amplitude(self, index, value):
+    def set_amplitude(self, index, value, find_axis=True):
         """Set the amplitude of the perturbation at index to value"""
 
         self.perturbations_args[index]["amplitude"] = value
-        self._initialize_perturbations(index)
+        self._initialize_perturbations(index, find_axis=find_axis)
 
-    def set_perturbation(self, index, perturbation_args):
+    def set_perturbation(self, index, perturbation_args, find_axis=True):
         """Set the perturbation at index to be defined by perturbation_args"""
 
         self.perturbations_args[index] = perturbation_args
         self.perturbations_args[index].update({"R": self._R0, "Z": self._Z0})
-        self._initialize_perturbations(index)
+        self._initialize_perturbations(index, find_axis=find_axis)
 
-    def add_perturbation(self, perturbation_args):
+    def add_perturbation(self, perturbation_args, find_axis=True):
         """Add a new perturbation defined by perturbation_args"""
 
         self.perturbations_args.append(perturbation_args)
         self._perturbations.append(None)
         self.perturbations_args[-1].update({"R": self._R0, "Z": self._Z0})
-        self._initialize_perturbations(len(self.perturbations_args) - 1)
+        self._initialize_perturbations(len(self.perturbations_args) - 1, find_axis=find_axis)
 
-    def remove_perturbation(self, index=None):
+    def remove_perturbation(self, index=None, find_axis=True):
         """Remove the perturbation at index or the last one if no index is given."""
         if index is None:
             index = len(self.perturbations_args) - 1
 
         self.perturbations_args.pop(index)
         self._perturbations.pop(index)
-        self._initialize_perturbations()
+        self._initialize_perturbations(find_axis=find_axis)
 
     def _initialize_perturbations(self, index=None, find_axis=True):
         """Initialize the perturbations functions and the gradient. Also updates the total field and its gradient."""

@@ -66,17 +66,17 @@ class Manifold(BaseSolver):
         if epsilon is None:
             epsilon = self.find_epsilon(options['eps_guess'], self.vector_u)
         
-        RZs = self.start_config(epsilon, self.vector_u, options['neps'])[0]
+        RZs = self.start_config(epsilon, self.vector_u, self.lambda_u, options['neps'])[0]
         if 'u+' in options['directions']:
             print("Computing unstable manifold with postive epsilon...")
             self.unstable['+'] = self.integrate(RZs, nintersect=options['nintersect'])
 
         if 'u-' in options['directions']:
-            print("Computing unstable manifold with negative epsilon...")
             RZs  = 2*rz_fixedpoint - RZs
+            print("Computing unstable manifold with negative epsilon...")
             self.unstable['-'] = self.integrate(RZs, nintersect=options['nintersect'])
         
-        RZs = self.start_config(epsilon, self.vector_s, options['neps'], -1)[0]
+        RZs = self.start_config(epsilon, self.vector_s, self.lambda_s, options['neps'], -1)[0]
         if 's+' in options['directions']:
             print("Computing stable manifold with positive epsilon...")
             self.stable['+'] = self.integrate(RZs, nintersect=options['nintersect'], direction=-1)
@@ -87,18 +87,19 @@ class Manifold(BaseSolver):
             self.stable['-'] = self.integrate(RZs, nintersect=options['nintersect'], direction=-1)
 
 
-    def start_config(self, epsilon, eigenvector, neps=10, direction=1, intervtype = "logspace"):
-        rEps = np.array([self.fixedpoint.x[0], self.fixedpoint.z[0]]) + epsilon * eigenvector
-
+    def start_config(self, epsilon, eigenvector, eigenvalue, neps=10, direction=1, intervtype = "logspace"):
+        rfp = np.array([self.fixedpoint.x[0], self.fixedpoint.z[0]])
+        rEps = rfp + epsilon * eigenvector
         rz_path = self.integrate(np.atleast_2d(rEps), 1, direction)
         
         eps_dir = rz_path[:,1]-rz_path[:,0]
-        eps_dir_norm = eps_dir / np.linalg.norm(eps_dir)
+        norm_eps_dir = np.linalg.norm(eps_dir)
+        eps_dir_norm = eps_dir / norm_eps_dir
         
         if intervtype == "logspace":
-            eps = np.logspace(-6, 0, neps)
-            Rs = eps * eps_dir[0] + rEps[0]
-            Zs = eps * eps_dir[1] + rEps[1]
+            eps = np.logspace(np.log(epsilon), np.log(epsilon+norm_eps_dir), neps, base = np.exp(1))
+            Rs = rfp[0] + eps * eps_dir_norm[0]
+            Zs = rfp[1] + eps * eps_dir_norm[1]
         elif intervtype == "linspace":
             Rs = np.linspace(rz_path[0,0], rz_path[0,1], neps)
             Zs = np.linspace(rz_path[1,0], rz_path[1,1], neps)
@@ -149,14 +150,15 @@ class Manifold(BaseSolver):
 
         return rz_path
 
-    def plot(self, ax = None, directions = "u+u-s+s-"):
-        color = ['red', 'blue', 'green', 'purple']
-        
+    def plot(self, ax = None, directions = "u+u-s+s-", color = None, end = None, **kwargs):
+        default = {"markersize": 2, "fmt": "-o", "colors": ['red', 'blue', 'green', 'purple']}
+        default.update({key: value for key, value in kwargs.items() if key in default})
+
         if ax is None:
             fig, ax = plt.subplots()
         else:
             fig = ax.get_figure()
-        
+
         dirdict = {'u+': self.unstable['+'], 'u-': self.unstable['-'], 's+': self.stable['+'], 's-': self.stable['-']}
         for i, dir in enumerate(["u+", "u-", "s+", "s-"]):
             if dir in directions:
@@ -164,8 +166,20 @@ class Manifold(BaseSolver):
                 if out is None:
                     print(f"Manifold {dir} not computed.")
                 else:
-                    for yr, yz in zip(out[::2], out[1::2]):
-                            # ax.scatter(yr, yz, alpha=1, s=5)
-                            ax.scatter(yr, yz, color=color[i], alpha=1, s=5)
+                    # plotting each starting point trajectory as order 
+                    # for yr, yz in zip(out[::2], out[1::2]):
+                    #     # ax.scatter(yr, yz, alpha=1, s=5)
+                    #     ax.scatter(yr, yz, color=color[i], alpha=1, s=5)
+                    if color is None:
+                        tmpcolor = default["colors"][i]
+                    if end is not None:
+                        if end > out.shape[1]:
+                            raise ValueError("End index out of bounds")
+                        out = out[:, :end]
+
+                    out = out.T.flatten()
+                    ax.plot(out[::2], out[1::2], default['fmt'], label=f'{dir} - manifold', color=tmpcolor, markersize=default["markersize"])
+                    #     # ax.scatter(yr, yz, alpha=1, s=5)
+                    #     ax.scatter(yr, yz, color=color[i], alpha=1, s=5)
 
         return fig, ax

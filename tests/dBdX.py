@@ -1,15 +1,17 @@
 from pyoculus.integrators import RKIntegrator
 import numpy as np
 
-def linearized_error(fun, rtol = 1e-10, **kwargs):
+def linearized_error(fun, rtol = 1e-10, initpoint = None, v = None, eps = 1e-5):
     iparams = dict()
     iparams["rtol"] = rtol
     iparams["ode"] = fun
 
     integrator = RKIntegrator(iparams)
 
-    initpoint = np.array([2.2, -1.6])
-    v = 2e-5*np.random.random(2)
+    if initpoint is None:
+        raise ValueError("initpoint is not set")
+    if v is None:
+        v = eps*np.random.random(2)
 
     ic = np.array([initpoint[0], initpoint[1], 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
     integrator.set_initial_value(0, ic)
