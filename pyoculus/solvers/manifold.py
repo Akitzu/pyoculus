@@ -95,69 +95,40 @@ class Manifold(BaseSolver):
             return n_s, n_u
     
     def find_homoclinic(self, guess_eps_s = 1e-3, guess_eps_u = 1e-3, **kwargs):
-        defaults = {"maxiter": 100, "N": None, "N_return": None}
+        defaults = {"maxiter": 100, "n_s": None, "n_u": None, "N_return": None}
         defaults.update({key: value for key, value in kwargs.items() if key in defaults})
 
-        if defaults['N'] is None:
+        if defaults['n_s'] is None or defaults['n_u'] is None:
             n_s, n_u = self.find_N(guess_eps_s, guess_eps_u)
             print(f"Found [n_s, n_u] : [{n_s}, {n_u}]")
         else:
-            n_s, n_u = defaults['N'], defaults['N']
+            n_s, n_u = defaults['n_s'], defaults['n_u']
 
         if defaults['N_return'] is None:
             defaults['N_return'] = max(n_s, n_u)
 
-        def evolution(eps):
+        def evolution(eps, n_s, n_u):
             eps_s, eps_u = eps
             r_s = self.rfp_s + eps_s * self.vector_s
             r_u = self.rfp_u + eps_u * self.vector_u
 
             r_s_evolved, jac_s = self.integrate_single(r_s, n_s, -1)
             r_u_evolved, jac_u = self.integrate_single(r_u, n_u, 1)
-            
-            return r_s_evolved - r_u_evolved, jac_s - jac_u
-        
-        def residual(eps, _):
-            return evolution(eps)[0]
 
-        def jacobian(eps, _):
-            return evolution(eps)[1]
+            return r_s_evolved - r_u_evolved, np.array([jac_s @ self.vector_s, -jac_u @ self.vector_u]).T
         
-        eps_s_1, eps_u_1 = fsolve(residual, [guess_eps_s, guess_eps_u], jacobian)
+        def residual(eps, n_s, n_u):
+            return evolution(eps, n_s, n_u)[0]
+
+        def jacobian(eps, n_s, n_u):
+            return evolution(eps, n_s, n_u)[1]
+        
+        eps_s_1, eps_u_1 = fsolve(residual, [guess_eps_s, guess_eps_u], args=(n_s, n_u), fprime=jacobian)
+        print(f"Eps 1: {eps_s_1}, {eps_u_1}")
         if eps_s_1 < 0 or eps_u_1 < 0:
             raise ValueError("First homoclinic point epsilon cannot be negative.")
-        print(f"Eps 1: {eps_s_1}, {eps_u_1}")
 
-        # Taking the a new guess for the second homoclinic point
-        guess_2 = [eps_s_1*np.sqrt(self.lambda_s), eps_u_1*np.sqrt(self.lambda_u)]
-        n_s, n_u = self.find_N(*guess_2)
-        print(f"Found [n_s, n_u] : [{n_s}, {n_u}]")
-        # # Taking the a new guess for the second homoclinic point
-        # guess_2 = []
-        # rz_tmp = self.integrate(self.rfp_s + eps_s_1 * self.vector_s, 1, -1)
-        # guess_2.append((eps_s_1+np.linalg.norm(rz_tmp[:,1]-rz_tmp[:,0])/2))
-        
-        # rz_tmp = self.integrate(self.rfp_u + eps_u_1 * self.vector_u, 1, 1)
-        # guess_2.append((eps_u_1+np.linalg.norm(rz_tmp[:,1]-rz_tmp[:,0])/2))
-        
-        print(f"Guess 2: {guess_2}")
-
-        eps_s_2, eps_u_2 = fsolve(residual, guess_2, jacobian)
-        if eps_s_2 < 0 or eps_u_2 < 0:
-            raise ValueError("Second homoclinic point epsilon cannot be negative.")
-        print(f"Eps 2: {eps_s_2}, {eps_u_2}")
-
-        # # guess 3 ?
-        # guess_3 = [eps_s_2*np.sqrt(self.lambda_s), eps_u_2*np.sqrt(self.lambda_u)]
-        # print(f"Guess 3: {guess_3}")
-        # eps_s_3, eps_u_3 = fsolve(residual, guess_3, jacobian)
-        # if eps_s_3 < 0 or eps_u_3 < 0:
-        #     raise ValueError("Third homoclinic point epsilon cannot be negative.")
-        # print(f"Eps 3: {eps_s_3}, {eps_u_3}")
-        
-        ret = ( self.integrate(self.rfp_s + eps_s_1 * self.vector_s, defaults['N_return'], -1), self.integrate(self.rfp_u + eps_u_1 * self.vector_u, defaults['N_return'], 1),
-                self.integrate(self.rfp_s + eps_s_2 * self.vector_s, defaults['N_return'], -1), self.integrate(self.rfp_u + eps_u_2 * self.vector_u, defaults['N_return'], 1) )
-        return ret
+        return eps_s_1, eps_u_1
 
     def compute(self, epsilon = None, fp_num = None, **kwargs):
         """Compute the manifolds of the fixed point. If no fixed point number is given, the two manifold coicinding with the tangle plot is computed otherwise 
