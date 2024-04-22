@@ -93,9 +93,9 @@ class Manifold(BaseSolver):
             raise ValueError("Could not find N")    
         else:
             return n_s, n_u
-    
+
     def find_homoclinic(self, guess_eps_s = 1e-3, guess_eps_u = 1e-3, **kwargs):
-        defaults = {"maxiter": 100, "n_s": None, "n_u": None, "N_return": None}
+        defaults = {"maxiter": 100, "n_s": None, "n_u": None}
         defaults.update({key: value for key, value in kwargs.items() if key in defaults})
 
         if defaults['n_s'] is None or defaults['n_u'] is None:
@@ -103,9 +103,6 @@ class Manifold(BaseSolver):
             print(f"Found [n_s, n_u] : [{n_s}, {n_u}]")
         else:
             n_s, n_u = defaults['n_s'], defaults['n_u']
-
-        if defaults['N_return'] is None:
-            defaults['N_return'] = max(n_s, n_u)
 
         def evolution(eps, n_s, n_u):
             eps_s, eps_u = eps
@@ -115,7 +112,7 @@ class Manifold(BaseSolver):
             r_s_evolved, jac_s = self.integrate_single(r_s, n_s, -1)
             r_u_evolved, jac_u = self.integrate_single(r_u, n_u, 1)
 
-            return r_s_evolved - r_u_evolved, np.array([jac_s @ self.vector_s, -jac_u @ self.vector_u]).T
+            return r_s_evolved - r_u_evolved, np.array([jac_s @ self.vector_s, -jac_u @ self.vector_u])
         
         def residual(eps, n_s, n_u):
             return evolution(eps, n_s, n_u)[0]
@@ -126,8 +123,10 @@ class Manifold(BaseSolver):
         eps_s_1, eps_u_1 = fsolve(residual, [guess_eps_s, guess_eps_u], args=(n_s, n_u), fprime=jacobian)
         print(f"Eps 1: {eps_s_1}, {eps_u_1}")
         if eps_s_1 < 0 or eps_u_1 < 0:
-            raise ValueError("First homoclinic point epsilon cannot be negative.")
-
+            raise ValueError("Homoclinic point epsilon cannot be negative.")
+        # if self.error_linear_regime(self.rfp_s, self.lambda_s, self.vector_s) > 1e-4 or self.error_linear_regime(self.rfp_u, self.lambda_u, self.vector_u) > 1e-4:
+        #     raise ValueError("Homoclinic point epsilon was be found in linear regime.")    
+        
         return eps_s_1, eps_u_1
 
     def compute(self, epsilon = None, fp_num = None, **kwargs):
