@@ -13,7 +13,9 @@ import numpy as np
 
 
 def psitob(f):
-    """Decorator to convert a Psi function to a B field function."""
+    """Decorator to calculate the contribution of a Psi function to a B field 
+    using the relation B = grad x A, with A_\phi = \psi / r.
+    """
 
     @wraps(f)
     def dfun(rr, *args, **kwargs):
@@ -59,7 +61,6 @@ def equ_squared(rr, R, Z, sf, shear):
         \psi = (z-Z)^{2} + \left(R - r\right)^{2}
         F = \left(2 sf + 2 shear \left(z^{2} + \left(R - r\right)^{2}\right)\right) \sqrt{R^{2} - z^{2} - \left(R - r\right)^{2}}
     $$
-    using the relation B = grad x A, with A_\phi = \psi / r and B_\phi = F / r for an axisymmetric field in cylindrical coordinates.
     """
     sgn = (1 + jnp.sign(R**2 - (R - rr[0]) ** 2 - (Z - rr[2]) ** 2)) / 2
     return sgn * (
@@ -75,7 +76,6 @@ def equ_squared_ellipse(rr, R, Z, sf, shear, A, B):
         \psi = (z-Z)^{2}/B^2 + \left(R - r\right)^{2}/A^2
         F = \left(2 sf + 2 shear \left(\frac{\left(Z - z\right)^{2}}{B^{2}} + \frac{\left(R - r\right)^{2}}{A^{2}}\right)\right) \sqrt{R^{2} - \frac{\left(Z - z\right)^{2}}{B^{2}} - \frac{\left(R - r\right)^{2}}{A^{2}}}
     $$
-    using the relation B = grad x A, with A_\phi = \psi / r and B_\phi = F / r for an axisymmetric field in cylindrical coordinates.
     """
     sgn = (
         1 + jnp.sign(R**2 - (Z - rr[2]) ** 2 / B**2 - (R - rr[0]) ** 2 / A**2)
