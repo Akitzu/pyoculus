@@ -662,6 +662,9 @@ def plot_intensities(pyoproblem, ax = None, rw=[2, 5], zw=[-2, 2], nl=[100, 100]
     mappable = axs[0, 0].contourf(R, Z, psi, levels=N_levels)
     fig.colorbar(mappable)
 
+    if RZ_manifold is not None:
+        U, V = [np.array([pyoproblem.B_equilibrium([R, 0.0, Z])[0], pyoproblem.B_equilibrium([R, 0.0, Z])[2]]) for R, Z in RZ_manifold]
+        plt.quiver(R, Z, U, V)
 
     # Set the aspect equal
     for ax in axs.flatten():
