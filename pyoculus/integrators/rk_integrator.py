@@ -100,6 +100,16 @@ class RKIntegrator(BaseIntegrator):
         # set up a new integrator
         return RKIntegrator(self._params)
 
+    def change_rhs(self, rhs):
+        """! Change the RHS function to solve
+        @param ode the new RHS function
+        """
+        self.rhs = rhs
+        self.integrator = ode(self.rhs).set_integrator(
+            self._params["type"], rtol=self.rtol, nsteps=self.nsteps
+        )
+
+
     @staticmethod
     def _test_fun(t, y, *args):
         return [0.1 * np.cos(y[1]), -y[0]]
