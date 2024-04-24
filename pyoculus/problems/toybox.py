@@ -1,6 +1,6 @@
 from .cylindrical_bfield import CylindricalBfield
 import matplotlib.pyplot as plt
-from functools import partial
+from functools import partial, wraps
 from jax import config
 
 config.update("jax_enable_x64", True)
@@ -9,28 +9,47 @@ from jax import jit, jacfwd
 import jax.numpy as jnp
 import numpy as np
 
-# ## Decorator for jacfwd in cylindrical coordinates
-# ## Not needed as pyoculus takes the dBdRphiZ as an input
+## Decorators
 
-# def cyljacfwd(f):
-#     """Decorator to use the jax.jacfwd differentiation in cylindrical coordinates."""
 
-#     @wraps(f)
-#     def dfun(rr, *args, **kwargs):
-#         B = f(rr, *args, **kwargs)
-#         jac = jnp.array(jacfwd(f)(rr, *args, **kwargs))
-#         jac = jac.at[:, 1].multiply(1 / rr[0]**2)
-#         return jac
-#         # Correction with the Christoffel symbols
-#         # correction = jnp.array([[0, -B[1], 0],[B[1], B[0]/rr[0], 0],[0, 0, 0]])/rr[0]
-#         # return jac + correction
-#         # correction = jnp.array([-B[1], B[0], 0]) / rr[0]
-#         # return jac.at[:, 1].add(correction)
+def psitob(f):
+    """Decorator to convert a Psi function to a B field function."""
 
-#     return dfun
+    @wraps(f)
+    def dfun(rr, *args, **kwargs):
+        deriv = jacfwd(f)(rr, *args, **kwargs)
+        return jnp.array([-deriv[2], 0.0, deriv[0]]) / rr[0]
+
+    return dfun
 
 
 ## Equilibrium fields
+
+
+def psi_squared(rr, R, Z):
+    """Psi flux function for the squared circle equilibrium field."""
+    return (Z - rr[2]) ** 2 + (R - rr[0]) ** 2
+
+
+def psi_ellipse(rr, R, Z, A, B):
+    """Psi flux function for the squared ellipse equilibrium field."""
+    return (Z - rr[2]) ** 2 / B**2 + (R - rr[0]) ** 2 / A**2
+
+
+def F_squared(rr, R, Z, sf, shear):
+    """F flux function for the squared circle equilibrium field."""
+    temp = jnp.maximum(R**2 - (R - rr[0]) ** 2 - (Z - rr[2]) ** 2, 0.0)
+    return (2 * sf + 2 * shear * ((R - rr[0]) ** 2 + (Z - rr[2]) ** 2)) * jnp.sqrt(temp)
+
+
+def F_ellipse(rr, R, Z, sf, shear, A, B):
+    """F flux function for the squared ellipse equilibrium field."""
+    temp = jnp.maximum(
+        R**2 - (Z - rr[2]) ** 2 / B**2 - (R - rr[0]) ** 2 / A**2, 0.0
+    )
+    return (
+        2 * sf + 2 * shear * ((Z - rr[2]) ** 2 / B**2 + (R - rr[0]) ** 2 / A**2)
+    ) * jnp.sqrt(temp)
 
 
 def equ_squared(rr, R, Z, sf, shear):
@@ -42,16 +61,10 @@ def equ_squared(rr, R, Z, sf, shear):
     $$
     using the relation B = grad x A, with A_\phi = \psi / r and B_\phi = F / r for an axisymmetric field in cylindrical coordinates.
     """
-    temp = jnp.maximum(R**2 - (R - rr[0]) ** 2 - (Z - rr[2]) ** 2, 0.0)
     sgn = (1 + jnp.sign(R**2 - (R - rr[0]) ** 2 - (Z - rr[2]) ** 2)) / 2
-    return sgn * jnp.array(
-        [
-            -(-2 * Z + 2 * rr[2]) / rr[0],
-            (2 * sf + 2 * shear * ((R - rr[0]) ** 2 + (Z - rr[2]) ** 2))
-            * jnp.sqrt(temp)
-            / rr[0] ** 2,
-            (-2 * R + 2 * rr[0]) / rr[0],
-        ]
+    return sgn * (
+        psitob(psi_squared)(rr, R, Z)
+        + jnp.array([0.0, F_squared(rr, R, Z, sf, shear), 0.0]) / rr[0] ** 2
     )
 
 
@@ -64,32 +77,22 @@ def equ_squared_ellipse(rr, R, Z, sf, shear, A, B):
     $$
     using the relation B = grad x A, with A_\phi = \psi / r and B_\phi = F / r for an axisymmetric field in cylindrical coordinates.
     """
-    temp = jnp.maximum(
-        R**2 - (Z - rr[2]) ** 2 / B**2 - (R - rr[0]) ** 2 / A**2, 0.0
-    )
     sgn = (
         1 + jnp.sign(R**2 - (Z - rr[2]) ** 2 / B**2 - (R - rr[0]) ** 2 / A**2)
     ) / 2
-
-    return sgn * jnp.array(
-        [
-            -(-2 * Z + 2 * rr[2]) / (B**2 * rr[0]),
-            (
-                2 * sf
-                + 2 * shear * ((Z - rr[2]) ** 2 / B**2 + (R - rr[0]) ** 2 / A**2)
-            )
-            * jnp.sqrt(temp)
-            / rr[0] ** 2,
-            (-2 * R + 2 * rr[0]) / (A**2 * rr[0]),
-        ]
+    return sgn * (
+        psitob(psi_ellipse)(rr, R, Z, A, B)
+        + jnp.array([0.0, F_ellipse(rr, R, Z, sf, shear, A, B), 0.0]) / rr[0] ** 2
     )
 
 
 ## Perturbation fields
 
+## Maxwell-Boltzmann distributed perturbation
 
-def pert_maxwellboltzmann(rr, R, Z, d, m, n):
-    """Maxwell-Boltzmann distributed perturbation field.
+
+def psi_maxwellboltzmann(rr, R, Z, d, m, n):
+    """Maxwell-Boltzmann distributed Psi flux function.
 
     Args:
         rr (array): Position vector in cylindrical coordinates
@@ -99,83 +102,25 @@ def pert_maxwellboltzmann(rr, R, Z, d, m, n):
         m (int): Poloidal mode number
         n (int): Toroidal mode number
     """
-    return jnp.array(
-        [
-            jnp.sqrt(2)
-            * (
-                d**2
-                * (
-                    m
-                    * ((R - rr[0]) ** 2 + (Z - rr[2]) ** 2)
-                    * jnp.imag(
-                        (-R + rr[0] - 1j * (Z - rr[2])) ** (m - 1)
-                        * jnp.exp(1j * n * rr[1])
-                    )
-                    + 2
-                    * (Z - rr[2])
-                    * jnp.real(
-                        (-R + rr[0] - 1j * (Z - rr[2])) ** m * jnp.exp(1j * n * rr[1])
-                    )
-                )
-                - (Z - rr[2])
-                * ((R - rr[0]) ** 2 + (Z - rr[2]) ** 2)
-                * jnp.real(
-                    (-R + rr[0] - 1j * (Z - rr[2])) ** m * jnp.exp(1j * n * rr[1])
-                )
-            )
-            * jnp.exp(
-                (
-                    -(R**2)
-                    + 2 * R * rr[0]
-                    - Z**2
-                    + 2 * Z * rr[2]
-                    - rr[0] ** 2
-                    - rr[2] ** 2
-                )
-                / (2 * d**2)
-            )
-            / (jnp.sqrt(jnp.pi) * d**5 * rr[0]),
-            0,
-            jnp.sqrt(2)
-            * (
-                d**2
-                * (
-                    m
-                    * ((R - rr[0]) ** 2 + (Z - rr[2]) ** 2)
-                    * jnp.real(
-                        (-R + rr[0] - 1j * (Z - rr[2])) ** (m - 1)
-                        * jnp.exp(1j * n * rr[1])
-                    )
-                    - 2
-                    * (R - rr[0])
-                    * jnp.real(
-                        (-R + rr[0] - 1j * (Z - rr[2])) ** m * jnp.exp(1j * n * rr[1])
-                    )
-                )
-                + (R - rr[0])
-                * ((R - rr[0]) ** 2 + (Z - rr[2]) ** 2)
-                * jnp.real(
-                    (-R + rr[0] - 1j * (Z - rr[2])) ** m * jnp.exp(1j * n * rr[1])
-                )
-            )
-            * jnp.exp(
-                (
-                    -(R**2)
-                    + 2 * R * rr[0]
-                    - Z**2
-                    + 2 * Z * rr[2]
-                    - rr[0] ** 2
-                    - rr[2] ** 2
-                )
-                / (2 * d**2)
-            )
-            / (jnp.sqrt(jnp.pi) * d**5 * rr[0]),
-        ]
+
+    rho2 = (Z - rr[2]) ** 2 + (R - rr[0]) ** 2
+
+    return jnp.real(
+        jnp.sqrt(2)
+        * rho2
+        * (-R + rr[0] + 1j * (rr[2] - Z)) ** m
+        * jnp.exp(-rho2 / (2 * d**2))
+        * jnp.exp(1j * n * rr[1])
+        / (jnp.sqrt(jnp.pi) * d**3)
+        # / jnp.power(rho2, m / 2)
     )
 
 
-def pert_gaussian(rr, R, Z, d, m, n):
-    """Gaussian distributed perturbation field.
+## Gaussian distributed perturbation
+
+
+def psi_gaussian(rr, R, Z, d, m, n):
+    """Gaussian distributed Psi flux function.
 
     Args:
         rr (array): Position vector in cylindrical coordinates
@@ -185,59 +130,20 @@ def pert_gaussian(rr, R, Z, d, m, n):
         m (int): Poloidal mode number
         n (int): Toroidal mode number
     """
-    return jnp.array(
-        [
-            jnp.sqrt(2)
-            * (
-                d**2
-                * m
-                * jnp.imag(
-                    (-R + rr[0] - 1j * (Z - rr[2])) ** (m - 1) * jnp.exp(1j * n * rr[1])
-                )
-                - (Z - rr[2])
-                * jnp.real(
-                    (-R + rr[0] - 1j * (Z - rr[2])) ** m * jnp.exp(1j * n * rr[1])
-                )
-            )
-            * jnp.exp(
-                (
-                    -(R**2)
-                    + 2 * R * rr[0]
-                    - Z**2
-                    + 2 * Z * rr[2]
-                    - rr[0] ** 2
-                    - rr[2] ** 2
-                )
-                / (2 * d**2)
-            )
-            / (2 * jnp.sqrt(jnp.pi) * d**3 * rr[0]),
-            0,
-            jnp.sqrt(2)
-            * (
-                d**2
-                * m
-                * jnp.real(
-                    (-R + rr[0] - 1j * (Z - rr[2])) ** (m - 1) * jnp.exp(1j * n * rr[1])
-                )
-                + (R - rr[0])
-                * jnp.real(
-                    (-R + rr[0] - 1j * (Z - rr[2])) ** m * jnp.exp(1j * n * rr[1])
-                )
-            )
-            * jnp.exp(
-                (
-                    -(R**2)
-                    + 2 * R * rr[0]
-                    - Z**2
-                    + 2 * Z * rr[2]
-                    - rr[0] ** 2
-                    - rr[2] ** 2
-                )
-                / (2 * d**2)
-            )
-            / (2 * jnp.sqrt(jnp.pi) * d**3 * rr[0]),
-        ]
+
+    rho2 = (Z - rr[2]) ** 2 + (R - rr[0]) ** 2
+
+    return (
+        np.sqrt(2)
+        * (-R + rr[0] + 1j * (rr[2] - Z)) ** m
+        * np.exp(-rho2 / (2 * d**2))
+        * np.exp(1j * n * rr[1])
+        / (2 * np.sqrt(np.pi) * d)
+        / jnp.power(rho2, m / 2)
     )
+
+
+## Circular current loop perturbation
 
 
 def ellpe(m):
@@ -379,8 +285,8 @@ class AnalyticCylindricalBfield(CylindricalBfield):
     """
 
     _pert_types_dict = {
-        "maxwell-boltzmann": pert_maxwellboltzmann,
-        "gaussian": pert_gaussian,
+        "maxwell-boltzmann": psitob(psi_maxwellboltzmann),
+        "gaussian": psitob(psi_gaussian),
         "squared-circle": equ_squared,
         "squared-ellipse": equ_squared_ellipse,
         "circular-current-loop": field_circularcurrentloop,
@@ -599,77 +505,71 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         b, dbdx = self.dBdX(rr)
         return dbdx[0, 0] + b[0][0] / rr[0] + dbdx[1, 1] / rr[0] ** 2 + dbdx[2, 2]
 
+    ## Additional plotting functions
 
-## Additional plotting functions
-
-
-# Flux (Psi) functions for the perturbations
-
-def psi_gaussian(rr, R, Z, d, m, n):
-    return (
-        np.sqrt(2)
-        * (-R + rr[0] + 1j * (rr[2] - Z)) ** m
-        * np.exp(-((Z - rr[2]) ** 2 + (R - rr[0]) ** 2) / (2 * d**2))
-        * np.exp(1j * n * rr[1])
-        / (2 * np.sqrt(np.pi) * d)
-    )
-
-
-def psi_maxwellboltzmann(rr, R, Z, d, m, n):
-    return (
-        np.sqrt(2)
-        * ((Z - rr[2]) ** 2 + (R - rr[0]) ** 2)
-        * (-R + rr[0] + 1j * (rr[2] - Z)) ** m
-        * np.exp(-((Z - rr[2]) ** 2 + (R - rr[0]) ** 2) / (2 * d**2))
-        * np.exp(1j * n * rr[1])
-        / (np.sqrt(np.pi) * d**3)
-    )
-
-
-def plot_intensities(pyoproblem, ax = None, rw=[2, 5], zw=[-2, 2], nl=[100, 100], RZ_manifold = None, N_levels=50, alpha = 0.5):
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(20, 5))
-    else:
-        fig = ax.get_figure()
-
-    r = np.linspace(rw[0], rw[1], nl[0])
-    z = np.linspace(zw[0], zw[1], nl[1])
-
-    R, Z = np.meshgrid(r, z)
-    psi = 0
-    for pertdic in pyoproblem.perturbations_args:
-        tmp_dict = pertdic.copy()
-        tmp_dict.pop("amplitude")
-        tmp_dict.pop("type")
-        if pertdic["type"] == "maxwell-boltzmann":
-            tmp_psi = np.array(
-                [
-                    psi_maxwellboltzmann([r, 0.0, z], **tmp_dict)/r
-                    for r, z in zip(R.flatten(), Z.flatten())
-                ]
-            ).reshape(R.shape)
-        elif pertdic["type"] == "gaussian":
-            tmp_psi = np.array(
-                [
-                    psi_gaussian([r, 0.0, z], **tmp_dict)/r
-                    for r, z in zip(R.flatten(), Z.flatten())
-                ]
-            ).reshape(R.shape)
+    def plot_intensities(
+        self,
+        ax=None,
+        rw=[2, 5],
+        zw=[-2, 2],
+        nl=[100, 100],
+        RZ_manifold=None,
+        N_levels=50,
+        alpha=0.5,
+    ):
+        """Plot the perturbation psi flux function and the perturbation B field in the RZ plane at the provided points.
+        The perturbation psi is the sum of the perturbations defined in the perturbations_args attribute. """
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(20, 5))
         else:
-            tmp_psi = np.zeros(R.shape)
+            fig = ax.get_figure()
 
-        psi += pertdic["amplitude"] * np.real(tmp_psi)
+        r = np.linspace(rw[0], rw[1], nl[0])
+        z = np.linspace(zw[0], zw[1], nl[1])
 
-    if len(pyoproblem.perturbations_args) == 0:
-        psi = np.zeros(R.shape)
-    mappable = ax.contourf(R, Z, psi, levels=N_levels, alpha=alpha)
-    fig.colorbar(mappable)
+        R, Z = np.meshgrid(r, z)
+        psi = 0
+        for pertdic in self.perturbations_args:
+            tmp_dict = pertdic.copy()
+            tmp_dict.pop("amplitude")
+            tmp_dict.pop("type")
+            if pertdic["type"] == "maxwell-boltzmann":
+                tmp_psi = np.array(
+                    [
+                        psi_maxwellboltzmann([r, 0.0, z], **tmp_dict) / r
+                        for r, z in zip(R.flatten(), Z.flatten())
+                    ]
+                ).reshape(R.shape)
+            elif pertdic["type"] == "gaussian":
+                tmp_psi = np.array(
+                    [
+                        psi_gaussian([r, 0.0, z], **tmp_dict) / r
+                        for r, z in zip(R.flatten(), Z.flatten())
+                    ]
+                ).reshape(R.shape)
+            else:
+                tmp_psi = np.zeros(R.shape)
 
-    if RZ_manifold is not None:
-        Bs = np.array([pyoproblem.B_perturbation([R, 0.0, Z]) for R, Z in RZ_manifold])
-        # max_norm = np.max(np.linalg.norm(Bs, axis=1))
-        # Bs = Bs / max_norm
-        
-        ax.quiver(RZ_manifold[:,0], RZ_manifold[:,1], Bs[:,0] / np.linalg.norm(Bs, axis=1), Bs[:,2] / np.linalg.norm(Bs, axis=1), alpha=alpha, color='black', linewidth=0.5)
+            psi += pertdic["amplitude"] * np.real(tmp_psi)
 
-    return fig, ax
+        if len(self.perturbations_args) == 0:
+            psi = np.zeros(R.shape)
+        mappable = ax.contourf(R, Z, psi, levels=N_levels, alpha=alpha)
+        fig.colorbar(mappable)
+
+        if RZ_manifold is not None:
+            Bs = np.array([self.B_perturbation([R, 0.0, Z]) for R, Z in RZ_manifold])
+            # max_norm = np.max(np.linalg.norm(Bs, axis=1))
+            # Bs = Bs / max_norm
+
+            ax.quiver(
+                RZ_manifold[:, 0],
+                RZ_manifold[:, 1],
+                Bs[:, 0] / np.linalg.norm(Bs, axis=1),
+                Bs[:, 2] / np.linalg.norm(Bs, axis=1),
+                alpha=alpha,
+                color="black",
+                linewidth=0.5,
+            )
+
+        return fig, ax
