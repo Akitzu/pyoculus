@@ -608,8 +608,8 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 def psi_gaussian(rr, R, Z, d, m, n):
     return (
         np.sqrt(2)
-        * (-R + rr[0] + 1j * (rr[2] - 2 * Z)) ** m
-        * np.exp(-((rr[2] + 2 * Z) ** 2 + (R - rr[0]) ** 2) / (2 * d**2))
+        * (-R + rr[0] + 1j * (rr[2] - Z)) ** m
+        * np.exp(-((Z - rr[2]) ** 2 + (R - rr[0]) ** 2) / (2 * d**2))
         * np.exp(1j * n * rr[1])
         / (2 * np.sqrt(np.pi) * d)
     )
@@ -618,17 +618,17 @@ def psi_gaussian(rr, R, Z, d, m, n):
 def psi_maxwellboltzmann(rr, R, Z, d, m, n):
     return (
         np.sqrt(2)
-        * (-((rr[2] + 2 * Z) ** 2) + (R - rr[0]) ** 2)
-        * (-R + rr[0] + 1j * (rr[2] - 2 * Z)) ** m
-        * np.exp(-((rr[2] + 2 * Z) ** 2 + (R - rr[0]) ** 2) / (2 * d**2))
+        * ((Z - rr[2]) ** 2 + (R - rr[0]) ** 2)
+        * (-R + rr[0] + 1j * (rr[2] - Z)) ** m
+        * np.exp(-((Z - rr[2]) ** 2 + (R - rr[0]) ** 2) / (2 * d**2))
         * np.exp(1j * n * rr[1])
         / (np.sqrt(np.pi) * d**3)
     )
 
 
-def plot_intensities(pyoproblem, ax = None, rw=[2, 5], zw=[-2, 2], nl=[100, 100], RZ_manifold = None, N_levels=50):
+def plot_intensities(pyoproblem, ax = None, rw=[2, 5], zw=[-2, 2], nl=[100, 100], RZ_manifold = None, N_levels=50, alpha = 0.5):
     if ax is None:
-        fig, axs = plt.subplots(2, 3, figsize=(20, 5))
+        fig, ax = plt.subplots(figsize=(20, 5))
     else:
         fig = ax.get_figure()
 
@@ -644,31 +644,32 @@ def plot_intensities(pyoproblem, ax = None, rw=[2, 5], zw=[-2, 2], nl=[100, 100]
         if pertdic["type"] == "maxwell-boltzmann":
             tmp_psi = np.array(
                 [
-                    psi_maxwellboltzmann([r, 0.0, z], **tmp_dict)
+                    psi_maxwellboltzmann([r, 0.0, z], **tmp_dict)/r
                     for r, z in zip(R.flatten(), Z.flatten())
                 ]
             ).reshape(R.shape)
         elif pertdic["type"] == "gaussian":
             tmp_psi = np.array(
                 [
-                    psi_gaussian([r, 0.0, z], **tmp_dict)
+                    psi_gaussian([r, 0.0, z], **tmp_dict)/r
                     for r, z in zip(R.flatten(), Z.flatten())
                 ]
             ).reshape(R.shape)
+        else:
+            tmp_psi = np.zeros(R.shape)
+
         psi += pertdic["amplitude"] * np.real(tmp_psi)
 
     if len(pyoproblem.perturbations_args) == 0:
         psi = np.zeros(R.shape)
-    mappable = axs[0, 0].contourf(R, Z, psi, levels=N_levels)
+    mappable = ax.contourf(R, Z, psi, levels=N_levels, alpha=alpha)
     fig.colorbar(mappable)
 
     if RZ_manifold is not None:
-        U, V = [np.array([pyoproblem.B_equilibrium([R, 0.0, Z])[0], pyoproblem.B_equilibrium([R, 0.0, Z])[2]]) for R, Z in RZ_manifold]
-        plt.quiver(R, Z, U, V)
+        Bs = np.array([pyoproblem.B_perturbation([R, 0.0, Z]) for R, Z in RZ_manifold])
+        # max_norm = np.max(np.linalg.norm(Bs, axis=1))
+        # Bs = Bs / max_norm
+        
+        ax.quiver(RZ_manifold[:,0], RZ_manifold[:,1], Bs[:,0] / np.linalg.norm(Bs, axis=1), Bs[:,2] / np.linalg.norm(Bs, axis=1), alpha=alpha, color='black', linewidth=0.5)
 
-    # Set the aspect equal
-    for ax in axs.flatten():
-        # ax.set_aspect("equal")
-        ax.scatter(pyoproblem._R0, pyoproblem._Z0, color="r", s=1)
-
-    return fig, axs
+    return fig, ax

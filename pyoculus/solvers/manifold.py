@@ -302,6 +302,8 @@ class Manifold(BaseSolver):
                     #     ax.scatter(yr, yz, color=color[i], alpha=1, s=5)
                     if color is None:
                         tmpcolor = default["colors"][i]
+                    else:
+                        tmpcolor = color
                     if end is not None:
                         if end > out.shape[1]:
                             raise ValueError("End index out of bounds")
