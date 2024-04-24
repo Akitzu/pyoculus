@@ -456,19 +456,20 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         instance.find_axis(guess, **kwargs)
         return instance
 
-    def find_axis(self, guess = None, **kwargs):
-        """Tries to re-find the axis. This is useful when the perturbations have been changed. 
+    def find_axis(self, guess=None, **kwargs):
+        """Tries to re-find the axis. This is useful when the perturbations have been changed.
         If the axis is not found, the previous axis is kept."""
         if guess is None:
             guess = [self._R0, self._Z0]
-        
-        defaults = {"Rbegin": guess[0]-2, "Rend": guess[0]+2}
+
+        defaults = {"Rbegin": guess[0] - 2, "Rend": guess[0] + 2}
         defaults.update(kwargs)
 
-        R0, Z0 = super(AnalyticCylindricalBfield, self).find_axis(guess, Nfp=1, **defaults)
+        R0, Z0 = super(AnalyticCylindricalBfield, self).find_axis(
+            guess, Nfp=1, **defaults
+        )
         self._R0 = R0
         self._Z0 = Z0
-
 
     @property
     def amplitudes(self):
@@ -501,7 +502,9 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         self.perturbations_args.append(perturbation_args)
         self._perturbations.append(None)
         self.perturbations_args[-1].update({"R": self._R0, "Z": self._Z0})
-        self._initialize_perturbations(len(self.perturbations_args) - 1, find_axis=find_axis)
+        self._initialize_perturbations(
+            len(self.perturbations_args) - 1, find_axis=find_axis
+        )
 
     def remove_perturbation(self, index=None, find_axis=True):
         """Remove the perturbation at index or the last one if no index is given."""
@@ -600,84 +603,69 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 ## Additional plotting functions
 
 
-# psi functions
-def gaussian_psi(rr, R=3.0, d=0.1, m=2, n=1):
+# Flux (Psi) functions for the perturbations
+
+def psi_gaussian(rr, R, Z, d, m, n):
     return (
-        ((rr[0] - R + rr[2] * 1j) ** m)
-        * np.exp(-0.5 * ((-rr[0] + R) ** 2 + rr[2] ** 2) / d**2 + 1j * n * 0)
-        / (np.sqrt(d**2) * np.sqrt(2 * np.pi))
+        np.sqrt(2)
+        * (-R + rr[0] + 1j * (rr[2] - 2 * Z)) ** m
+        * np.exp(-((rr[2] + 2 * Z) ** 2 + (R - rr[0]) ** 2) / (2 * d**2))
+        * np.exp(1j * n * rr[1])
+        / (2 * np.sqrt(np.pi) * d)
     )
 
 
-def mb_psi(rr, R=3.0, d=0.1, m=2, n=1):
+def psi_maxwellboltzmann(rr, R, Z, d, m, n):
     return (
-        np.exp(-0.5 * ((-rr[0] + R) ** 2 + rr[2] ** 2) / d**2 + n * rr[1] * 1j)
-        * np.sqrt(2 / np.pi)
-        * (rr[0] - R + rr[2] * 1j) ** m
-        * ((-rr[0] + R) ** 2 + rr[2] ** 2)
-        / d**3
+        np.sqrt(2)
+        * (-((rr[2] + 2 * Z) ** 2) + (R - rr[0]) ** 2)
+        * (-R + rr[0] + 1j * (rr[2] - 2 * Z)) ** m
+        * np.exp(-((rr[2] + 2 * Z) ** 2 + (R - rr[0]) ** 2) / (2 * d**2))
+        * np.exp(1j * n * rr[1])
+        / (np.sqrt(np.pi) * d**3)
     )
 
 
-def plot_intensities(ps, rw=[2, 5], zw=[-2, 2], nl=[100, 100], N_levels=50):
-    fig, axs = plt.subplots(2, 3, figsize=(20, 5))
+def plot_intensities(pyoproblem, ax = None, rw=[2, 5], zw=[-2, 2], nl=[100, 100], RZ_manifold = None, N_levels=50):
+    if ax is None:
+        fig, axs = plt.subplots(2, 3, figsize=(20, 5))
+    else:
+        fig = ax.get_figure()
 
     r = np.linspace(rw[0], rw[1], nl[0])
     z = np.linspace(zw[0], zw[1], nl[1])
 
     R, Z = np.meshgrid(r, z)
-    Bs = np.array(
-        [ps.B([r, 0.0, z]) for r, z in zip(R.flatten(), Z.flatten())]
-    ).reshape(R.shape + (3,))
-    mappable = axs[1, 0].contourf(R, Z, Bs[:, :, 0], levels=N_levels)
-    fig.colorbar(mappable)
-    mappable = axs[1, 1].contourf(R, Z, Bs[:, :, 1], levels=N_levels)
-    fig.colorbar(mappable)
-    mappable = axs[1, 2].contourf(R, Z, Bs[:, :, 2], levels=N_levels)
-    fig.colorbar(mappable)
-
-    Bs = np.array(
-        [ps.B([r, 0.0, z]) for r, z in zip(R.flatten(), Z.flatten())]
-    ).reshape(R.shape + (3,))
-    mappable = axs[0, 2].contourf(R, Z, np.linalg.norm(Bs, axis=2), levels=N_levels)
-    fig.colorbar(mappable)
-
-    R, Z = np.meshgrid(r, z)
-    Bs = np.array(
-        [ps.B_perturbation([r, 0.0, z]) for r, z in zip(R.flatten(), Z.flatten())]
-    ).reshape(R.shape + (3,))
-    mappable = axs[0, 1].contourf(R, Z, np.linalg.norm(Bs, axis=2), levels=N_levels)
-    fig.colorbar(mappable)
-
     psi = 0
-    for pertdic in ps.perturbations_args:
+    for pertdic in pyoproblem.perturbations_args:
         tmp_dict = pertdic.copy()
         tmp_dict.pop("amplitude")
         tmp_dict.pop("type")
         if pertdic["type"] == "maxwell-boltzmann":
             tmp_psi = np.array(
                 [
-                    mb_psi([r, 0.0, z], **tmp_dict)
+                    psi_maxwellboltzmann([r, 0.0, z], **tmp_dict)
                     for r, z in zip(R.flatten(), Z.flatten())
                 ]
             ).reshape(R.shape)
         elif pertdic["type"] == "gaussian":
             tmp_psi = np.array(
                 [
-                    gaussian_psi([r, 0.0, z], **tmp_dict)
+                    psi_gaussian([r, 0.0, z], **tmp_dict)
                     for r, z in zip(R.flatten(), Z.flatten())
                 ]
             ).reshape(R.shape)
         psi += pertdic["amplitude"] * np.real(tmp_psi)
 
-    if len(ps.perturbations_args) == 0:
+    if len(pyoproblem.perturbations_args) == 0:
         psi = np.zeros(R.shape)
-    mappable = axs[0, 0].contourf(R, Z, psi)
+    mappable = axs[0, 0].contourf(R, Z, psi, levels=N_levels)
     fig.colorbar(mappable)
+
 
     # Set the aspect equal
     for ax in axs.flatten():
         # ax.set_aspect("equal")
-        ax.scatter(ps._R0, ps._Z0, color="r", s=1)
+        ax.scatter(pyoproblem._R0, pyoproblem._Z0, color="r", s=1)
 
     return fig, axs
