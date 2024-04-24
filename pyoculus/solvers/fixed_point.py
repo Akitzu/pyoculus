@@ -325,6 +325,57 @@ class FixedPoint(BaseSolver):
 
         return rdata
 
+    def compute_all_jacobians(self):
+        """! Computes the fixed point evolution and founds its other apparences as well as computing
+        the Jacobian and Greene's Residue for every apparition."""
+
+        if not self.successful:
+            raise Exception("A successful call of compute() is needed")
+        
+        # We iterate the map to get the fixed points and the Jacobian
+        t = self.zeta[0]
+        dt = 2 * np.pi / self.Nfp
+
+        ic_list = []
+        if self._is_cylindrical_problem:
+            R0 = self._problem._R0
+            Z0 = self._problem._Z0
+            for r, z in zip(self.x[1:-2], self.z[1:-2]):
+                theta0 = np.arctan2(z-Z0, r-R0)
+                ic = np.array([r, z, R0, Z0, theta0, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
+                ic_list.append(ic)
+        else:
+            for s, theta in zip(self.s[1:-2], self.theta[1:-2]):
+                ic = np.array([s, theta, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
+                ic_list.append(ic)
+
+        self.all_jacobians = [self.jacobian]
+        for ic in ic_list:
+            self._integrator.set_initial_value(t, ic)
+            for _ in range(1, self.qq + 1):
+                st = self._integrator.integrate(t + dt)
+                t = t + dt
+
+            # the jacobian
+            if self._is_cylindrical_problem:
+                self.all_jacobians.append(np.array(
+                    [[st[5], st[7]], [st[6], st[8]]], dtype=np.float64
+                ))
+            else:
+                self.all_jacobians.append(np.array(
+                    [[st[2], st[4]], [st[3], st[5]]], dtype=np.float64
+                ))
+        
+        self.all_GreenesResidues = []
+        self.all_MeanResidues = []
+        for jac in self.all_jacobians:
+            # Greene's Residue
+            greensres = 0.25 * (2.0 - np.trace(jac))
+            self.all_GreenesResidues.append(greensres)
+            self.all_MeanResidues.append(np.power(
+                np.abs(self.GreenesResidue) / 0.25, 1 / float(self.qq)
+            ))
+
     def plot(
         self, plottype=None, xlabel=None, ylabel=None, xlim=None, ylim=None, **kwargs
     ):

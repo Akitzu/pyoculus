@@ -282,6 +282,8 @@ class Manifold(BaseSolver):
         default = {"markersize": 2, "fmt": "-o", "colors": ['red', 'blue', 'green', 'purple']}
         default.update({key: value for key, value in kwargs.items() if key in default})
 
+        plotkwargs = {key: value for key, value in kwargs.items() if key not in default}
+
         if ax is None:
             fig, ax = plt.subplots()
         else:
@@ -306,7 +308,7 @@ class Manifold(BaseSolver):
                         out = out[:, :end]
 
                     out = out.T.flatten()
-                    ax.plot(out[::2], out[1::2], default['fmt'], label=f'{dir} - manifold', color=tmpcolor, markersize=default["markersize"])
+                    ax.plot(out[::2], out[1::2], default['fmt'], label=f'{dir} - manifold', color=tmpcolor, markersize=default["markersize"], **plotkwargs)
                     #     # ax.scatter(yr, yz, alpha=1, s=5)
                     #     ax.scatter(yr, yz, color=color[i], alpha=1, s=5)
 
