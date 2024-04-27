@@ -6,6 +6,7 @@ from jax import config
 config.update("jax_enable_x64", True)
 
 from jax import jit, jacfwd
+from jax.lax import cond
 import jax.numpy as jnp
 import numpy as np
 
@@ -13,14 +14,30 @@ import numpy as np
 
 
 def psitob(f):
-    """Decorator to calculate the contribution of a Psi function to a B field 
+    """Decorator to calculate the contribution of a Psi function to a B field
     using the relation B = grad x A, with A_\phi = \psi / r.
     """
 
     @wraps(f)
     def dfun(rr, *args, **kwargs):
         deriv = jacfwd(f)(rr, *args, **kwargs)
-        return jnp.array([-deriv[2], 0.0, deriv[0]]) / rr[0]
+        return jnp.array([-1 * deriv[2], 0.0, deriv[0]]) / rr[0]
+
+    return dfun
+
+
+def rot(f):
+    """Decorator that calculate the rotational in cylindrical coordinates, useful to get
+    the B field from a vector potential A using the relation B = grad x A. It takes a 
+    non-holonomous vector (orthonormal basis) and returns a holonomous vector (cylindrical metric).
+    """
+
+    @wraps(f)
+    def dfun(rr, *args, **kwargs):
+        a = lambda rr: jnp.multiply(jnp.array([1,rr[0],1]), jnp.array(f(rr, *args, **kwargs)))
+        deriv = jacfwd(f)(rr, *args, **kwargs)
+
+        return jnp.array([deriv[2][1] - deriv[1][2], deriv[0][2] - deriv[2][0], deriv[1][0] - deriv[0][1]]) / rr[0]
 
     return dfun
 
@@ -37,6 +54,12 @@ def psi_ellipse(rr, R, Z, A, B):
     """Psi flux function for the squared ellipse equilibrium field."""
     return (Z - rr[2]) ** 2 / B**2 + (R - rr[0]) ** 2 / A**2
 
+
+def A_z_squared(rr, R, Z, sf, shear):
+    rho = jnp.sqrt((R - rr[0]) ** 2 + (Z - rr[2]) ** 2)
+    Atheta = rho * (sf + 0.5 * shear * rho ** 2)
+    theta = jnp.arctan2(rr[2] - Z, rr[0] - R)
+    return jnp.array([-Atheta*jnp.sin(theta), 0., Atheta*jnp.cos(theta)])
 
 def F_squared(rr, R, Z, sf, shear):
     """F flux function for the squared circle equilibrium field."""
@@ -88,10 +111,10 @@ def equ_squared_ellipse(rr, R, Z, sf, shear, A, B):
 
 ## Perturbation fields
 
-## Maxwell-Boltzmann distributed perturbation
+# Maxwell-Boltzmann distributed perturbation
 
 
-def psi_maxwellboltzmann(rr, R, Z, d, m, n):
+def psi_maxwellboltzmann(rr, R, Z, d, m, n, phase_poloidal=0.0):
     """Maxwell-Boltzmann distributed Psi flux function.
 
     Args:
@@ -101,45 +124,61 @@ def psi_maxwellboltzmann(rr, R, Z, d, m, n):
         d (float): Standard deviation of the Maxwell-Boltzmann distribution
         m (int): Poloidal mode number
         n (int): Toroidal mode number
+        phase_poloidal (float): Poloidal phase of the perturbation
     """
 
     rho2 = (Z - rr[2]) ** 2 + (R - rr[0]) ** 2
 
-    return jnp.real(
-        jnp.sqrt(2)
-        * rho2
-        * (-R + rr[0] + 1j * (rr[2] - Z)) ** m
-        * jnp.exp(-rho2 / (2 * d**2))
-        * jnp.exp(1j * n * rr[1])
-        / (jnp.sqrt(jnp.pi) * d**3)
-        # / jnp.power(rho2, m / 2)
+    def psi_mb(rr):
+        return (
+            jnp.sqrt(2)
+            / (jnp.sqrt(jnp.pi) * d**3)
+            * rho2
+            * jnp.exp(-rho2 / (2 * d**2))
+            * jnp.cos(jnp.arctan2(rr[2] - Z, rr[0] - R) * m + phase_poloidal)
+            * jnp.cos(rr[1] * n)
+        )
+
+    return cond(
+        rho2**2 > jnp.finfo(jnp.float32).tiny,
+        lambda rr: psi_mb(rr),
+        lambda rr: 0.0,
+        jnp.array(rr),
     )
 
 
-## Gaussian distributed perturbation
+# Gaussian distributed perturbation
 
 
-def psi_gaussian(rr, R, Z, d, m, n):
+def psi_gaussian(rr, R, Z, mu, sigma, m, n, phase_poloidal=0.0):
     """Gaussian distributed Psi flux function.
 
     Args:
         rr (array): Position vector in cylindrical coordinates
         R (float): R coordinate of the center of the Gaussian distribution
         Z (float): Z coordinate of the center of the Gaussian distribution
-        d (float): Standard deviation of the Gaussian distribution
+        mu (float): Mean of the Gaussian distribution
+        sigma (float): Standard deviation of the Gaussian distribution
         m (int): Poloidal mode number
         n (int): Toroidal mode number
+        phase_poloidal (float): Poloidal phase of the perturbation
     """
-
     rho2 = (Z - rr[2]) ** 2 + (R - rr[0]) ** 2
 
-    return (
-        np.sqrt(2)
-        * (-R + rr[0] + 1j * (rr[2] - Z)) ** m
-        * np.exp(-rho2 / (2 * d**2))
-        * np.exp(1j * n * rr[1])
-        / (2 * np.sqrt(np.pi) * d)
-        / jnp.power(rho2, m / 2)
+    def psi_g(rr):
+        return (
+            jnp.sqrt(2)
+            / (2 * jnp.sqrt(np.pi) * sigma)
+            * jnp.exp(-((jnp.sqrt(rho2) - mu) ** 2) / (2 * sigma**2))
+            * jnp.cos(jnp.arctan2(rr[2] - Z, rr[0] - R) * m + phase_poloidal)
+            * jnp.cos(rr[1] * n)
+        )
+
+    return cond(
+        rho2**2 > jnp.finfo(jnp.float32).tiny,
+        lambda rr: psi_g(rr),
+        lambda rr: 0.0,
+        jnp.array(rr),
     )
 
 
@@ -225,28 +264,40 @@ def ellpk(m):
     return jnp.polyval(P_coeffs, x) - jnp.log(x) * jnp.polyval(Q_coeffs, x)
 
 
-def field_circularcurrentloop(rr, R, Z):
-    """Field generated at rr = rphiz by a circular current loop located at radius R and height Z."""
-    # alpha2 = R**2 + rr[0] ** 2 + (rr[2] - Z) ** 2 - 2 * R * rr[0]
+def psi_circularcurrentloop(rr, R, Z):
+    """Vector potential (\phi coordinates) generated at rr = rphiz by a circular current loop located at radius R and height Z."""
     alpha2 = (R - rr[0]) ** 2 + (rr[2] - Z) ** 2
     beta2 = alpha2 + 4 * R * rr[0]
-    m = 1 - alpha2 / beta2
-    E = ellpe(m)
-    K = ellpk(m)
+    k2 = 1 - alpha2 / beta2
+    E = ellpe(k2)
+    K = ellpk(k2)
 
-    # singularity = jnp.sqrt((rr[0] - R)**2 + (rr[2] - Z)**2) < tolerance
+    # Note psi = R*A^\phi
+    return rr[0] * R * ((2 - k2) * K - 2 * E) / (jnp.sqrt(beta2) * k2 * jnp.pi)
 
-    return jnp.array(
-        [
-            (rr[2] - Z)
-            / (2 * jnp.pi * rr[0] * alpha2 * jnp.sqrt(beta2))
-            * ((R**2 + rr[0] ** 2 + (rr[2] - Z) ** 2) * E - alpha2 * K),
-            0,
-            1
-            / (2 * jnp.pi * alpha2 * jnp.sqrt(beta2))
-            * ((R**2 - rr[0] ** 2 - (rr[2] - Z) ** 2) * E + alpha2 * K),
-        ]
-    )
+
+# def field_circularcurrentloop(rr, R, Z):
+#     """Field generated at rr = rphiz by a circular current loop located at radius R and height Z."""
+#     # alpha2 = R**2 + rr[0] ** 2 + (rr[2] - Z) ** 2 - 2 * R * rr[0]
+#     alpha2 = (R - rr[0]) ** 2 + (rr[2] - Z) ** 2
+#     beta2 = alpha2 + 4 * R * rr[0]
+#     m = 1 - alpha2 / beta2
+#     E = ellpe(m)
+#     K = ellpk(m)
+
+#     # singularity = jnp.sqrt((rr[0] - R)**2 + (rr[2] - Z)**2) < tolerance
+
+#     return jnp.array(
+#         [
+#             (rr[2] - Z)
+#             / (2 * jnp.pi * rr[0] * alpha2 * jnp.sqrt(beta2))
+#             * ((R**2 + rr[0] ** 2 + (rr[2] - Z) ** 2) * E - alpha2 * K),
+#             0,
+#             1
+#             / (2 * jnp.pi * alpha2 * jnp.sqrt(beta2))
+#             * ((R**2 - rr[0] ** 2 - (rr[2] - Z) ** 2) * E + alpha2 * K),
+#         ]
+#     )
 
 
 # class definition
@@ -284,12 +335,12 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         dBdX_perturbation(rphiz): Gradient of the perturbation field function
     """
 
-    _pert_types_dict = {
-        "maxwell-boltzmann": psitob(psi_maxwellboltzmann),
-        "gaussian": psitob(psi_gaussian),
+    _types_dict = {
         "squared-circle": equ_squared,
         "squared-ellipse": equ_squared_ellipse,
-        "circular-current-loop": field_circularcurrentloop,
+        "maxwell-boltzmann": psitob(psi_maxwellboltzmann),
+        "gaussian": psitob(psi_gaussian),
+        "circular-current-loop": psitob(psi_circularcurrentloop),
     }
 
     def __init__(self, R, Z, sf, shear, perturbations_args=list(), A=None, B=None):
@@ -308,7 +359,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
         Example:
             $ pert1_dict = {m:2, n:-1, d:1, type: "maxwell-boltzmann", amplitude: 1e-2}
-            $ pert2_dict = {m:1, n:0, d:1, type: "gaussian", amplitude: -1e-2}
+            $ pert2_dict = {m:1, n:0, mu:0, sigma:1, type: "gaussian", amplitude: -1e-2}
             $ myBfield = AnalyticCylindricalBfield(R= 3, sf = 1.1, shear=3 pert=[pert1_dict, pert2_dict])
         """
 
@@ -362,13 +413,13 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         instance.find_axis(guess, **kwargs)
         return instance
 
-    def find_axis(self, guess=None, **kwargs):
+    def find_axis(self, guess=None, dr=2, **kwargs):
         """Tries to re-find the axis. This is useful when the perturbations have been changed.
         If the axis is not found, the previous axis is kept."""
         if guess is None:
             guess = [self._R0, self._Z0]
 
-        defaults = {"Rbegin": guess[0] - 2, "Rend": guess[0] + 2}
+        defaults = {"Rbegin": guess[0] - dr, "Rend": guess[0] + dr}
         defaults.update(kwargs)
 
         R0, Z0 = super(AnalyticCylindricalBfield, self).find_axis(
@@ -435,7 +486,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
             tmp_args.pop("type")
 
             self._perturbations[i] = partial(
-                self._pert_types_dict[self.perturbations_args[i]["type"]], **tmp_args
+                self._types_dict[self.perturbations_args[i]["type"]], **tmp_args
             )
 
         if len(self.perturbations_args) > 0:
@@ -509,16 +560,17 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
     def plot_intensities(
         self,
-        ax=None,
-        rw=[2, 5],
-        zw=[-2, 2],
+        rw,
+        zw,
         nl=[100, 100],
         RZ_manifold=None,
         N_levels=50,
         alpha=0.5,
+        ax=None,
     ):
         """Plot the perturbation psi flux function and the perturbation B field in the RZ plane at the provided points.
-        The perturbation psi is the sum of the perturbations defined in the perturbations_args attribute. """
+        The perturbation psi is the sum of the perturbations defined in the perturbations_args attribute.
+        """
         if ax is None:
             fig, ax = plt.subplots(figsize=(20, 5))
         else:
@@ -526,6 +578,9 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
         r = np.linspace(rw[0], rw[1], nl[0])
         z = np.linspace(zw[0], zw[1], nl[1])
+
+        psi_mb = jit(psi_maxwellboltzmann)
+        psi_g = jit(psi_gaussian)
 
         R, Z = np.meshgrid(r, z)
         psi = 0
@@ -536,14 +591,14 @@ class AnalyticCylindricalBfield(CylindricalBfield):
             if pertdic["type"] == "maxwell-boltzmann":
                 tmp_psi = np.array(
                     [
-                        psi_maxwellboltzmann([r, 0.0, z], **tmp_dict) / r
+                        psi_mb([r, 0.0, z], **tmp_dict) / r
                         for r, z in zip(R.flatten(), Z.flatten())
                     ]
                 ).reshape(R.shape)
             elif pertdic["type"] == "gaussian":
                 tmp_psi = np.array(
                     [
-                        psi_gaussian([r, 0.0, z], **tmp_dict) / r
+                        psi_g([r, 0.0, z], **tmp_dict) / r
                         for r, z in zip(R.flatten(), Z.flatten())
                     ]
                 ).reshape(R.shape)
@@ -558,17 +613,21 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         fig.colorbar(mappable)
 
         if RZ_manifold is not None:
-            Bs = np.array([self.B_perturbation([R, 0.0, Z]) for R, Z in RZ_manifold])
-            # max_norm = np.max(np.linalg.norm(Bs, axis=1))
-            # Bs = Bs / max_norm
+            bfuncts = self.perturbations
+            Bs = np.zeros(shape=(RZ_manifold.shape[0], 3))
+            for i, pertdic in enumerate(self.perturbations_args):
+                if pertdic["type"] != "circular-current-loop":
+                    Bs += np.array([bfuncts[i]([R, 0.0, Z]) for R, Z in RZ_manifold])
+
+            norms = np.linalg.norm(Bs, axis=1)
 
             ax.quiver(
                 RZ_manifold[:, 0],
                 RZ_manifold[:, 1],
                 Bs[:, 0] / np.linalg.norm(Bs, axis=1),
                 Bs[:, 2] / np.linalg.norm(Bs, axis=1),
+                norms,
                 alpha=alpha,
-                color="black",
                 linewidth=0.5,
             )
 
