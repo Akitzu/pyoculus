@@ -15,7 +15,8 @@ import numpy as np
 
 def psitob(f):
     """Decorator to calculate the contribution of a Psi function to a B field
-    using the relation B = grad x A, with A_\phi = \psi / r.
+    using the relation B = grad x A, with A_\phi e_\phi = \psi / r e_\phi, where
+    g(e_\phi, e_\phi) = 1
     """
 
     @wraps(f)
@@ -41,7 +42,7 @@ def rot(f, from_holonomous=True):
             exp = 2
 
         a = lambda rr, *args, **kwargs: jnp.multiply(
-            jnp.array([1, rr[0]**exp, 1]), jnp.array(f(rr, *args, **kwargs))
+            jnp.array([1, rr[0] ** exp, 1]), jnp.array(f(rr, *args, **kwargs))
         )
         deriv = jacfwd(a)(rr, *args, **kwargs)
 
@@ -114,7 +115,7 @@ def A_squared(
     rr: jnp.array, R: float, Z: float, sf: float, shear: float
 ) -> jnp.ndarray:
     """Holonomous component of the vector potential for the squared circle equilibrium field."""
-    return jnp.array([0.0, psi_squared(rr, R, Z) / rr[0]**2, 0.0]) + jnp.array(
+    return jnp.array([0.0, psi_squared(rr, R, Z) / rr[0] ** 2, 0.0]) + jnp.array(
         [A_r_squared(rr, R, Z, sf, shear), 0.0, 0.0]
     )
 
@@ -181,6 +182,8 @@ def psi_maxwellboltzmann(
     n: int,
     phase_poloidal: float = 0.0,
     phase_toroidal: float = 0.0,
+    A: float = 1.0,
+    B: float = 1.0,
 ) -> jnp.float64:
     """Maxwell-Boltzmann distributed Psi flux function.
 
@@ -193,9 +196,11 @@ def psi_maxwellboltzmann(
         n (int): Toroidal mode number
         phase_poloidal (float): Poloidal phase of the perturbation
         phase_toroidal (float): Toroidal phase of the perturbation
+        A (float): Scaling factor for the R coordinate
+        B (float): Scaling factor for the Z coordinate
     """
 
-    rho2 = (Z - rr[2]) ** 2 + (R - rr[0]) ** 2
+    rho2 = (R - rr[0]) ** 2 / A**2 + (Z - rr[2]) ** 2 / B**2
 
     def psi_mb(rr):
         return (
@@ -224,13 +229,17 @@ def A_maxwellboltzmann(
     n: int,
     phase_poloidal: float = 0.0,
     phase_toroidal: float = 0.0,
+    A: float = 1.0,
+    B: float = 1.0,
 ) -> jnp.ndarray:
     """Holonomous component of the vector potential for the Maxwell-Boltzmann distributed perturbation."""
     return jnp.array(
         [
             0.0,
-            psi_maxwellboltzmann(rr, R, Z, d, m, n, phase_poloidal, phase_toroidal)
-            / rr[0]**2,
+            psi_maxwellboltzmann(
+                rr, R, Z, d, m, n, phase_poloidal, phase_toroidal, A, B
+            )
+            / rr[0] ** 2,
             0.0,
         ]
     )
@@ -249,6 +258,8 @@ def psi_gaussian(
     n: int,
     phase_poloidal: float = 0.0,
     phase_toroidal: float = 0.0,
+    A: float = 1.0,
+    B: float = 1.0,
 ) -> jnp.float64:
     """Gaussian distributed Psi flux function.
 
@@ -261,8 +272,11 @@ def psi_gaussian(
         m (int): Poloidal mode number
         n (int): Toroidal mode number
         phase_poloidal (float): Poloidal phase of the perturbation
+        phase_toroidal (float): Toroidal phase of the perturbation
+        A (float): Scaling factor for the R coordinate
+        B (float): Scaling factor for the Z coordinate
     """
-    rho2 = (Z - rr[2]) ** 2 + (R - rr[0]) ** 2
+    rho2 = (R - rr[0]) ** 2 / A**2 + (Z - rr[2]) ** 2 / B**2
 
     def psi_g(rr):
         return (
@@ -291,13 +305,17 @@ def A_gaussian(
     n: int,
     phase_poloidal: float = 0.0,
     phase_toroidal: float = 0.0,
+    A: float = 1.0,
+    B: float = 1.0,
 ) -> jnp.ndarray:
     """Holonomous component of the vector potential for the Gaussian distributed perturbation."""
     return jnp.array(
         [
             0.0,
-            psi_gaussian(rr, R, Z, mu, sigma, m, n, phase_poloidal, phase_toroidal)
-            / rr[0]**2,
+            psi_gaussian(
+                rr, R, Z, mu, sigma, m, n, phase_poloidal, phase_toroidal, A, B
+            )
+            / rr[0] ** 2,
             0.0,
         ]
     )
@@ -399,7 +417,7 @@ def psi_circularcurrentloop(rr: jnp.array, R: float, Z: float) -> jnp.float64:
 
 def A_circularcurrentloop(rr: jnp.array, R: float, Z: float) -> jnp.ndarray:
     """Holonomous component of the vector potential for the circular current loop perturbation."""
-    return jnp.array([0.0, psi_circularcurrentloop(rr, R, Z) / rr[0]**2, 0.0])
+    return jnp.array([0.0, psi_circularcurrentloop(rr, R, Z) / rr[0] ** 2, 0.0])
 
 
 # class definition
@@ -495,14 +513,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
     @classmethod
     def without_axis(
-        cls,
-        R,
-        Z,
-        sf,
-        shear,
-        perturbations_args=list(),
-        guess=None,
-        **kwargs
+        cls, R, Z, sf, shear, perturbations_args=list(), guess=None, **kwargs
     ):
         """Create an instance of the class without knowing the magnetic axis. The axis is found by creating a temporary instance and calling the CylindricalBfield.find_axis method.
         The arguments are the same as for the constructor with the addition of a guess position (default : [R,Z]) and the kwargs for the find_axis method.
