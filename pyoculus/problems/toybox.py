@@ -28,21 +28,34 @@ def psitob(f):
 
 def rot(f):
     """Decorator that calculate the rotational in cylindrical coordinates, useful to get
-    the B field from a vector potential A using the relation B = grad x A. It takes a 
+    the B field from a vector potential A using the relation B = grad x A. It takes a
     non-holonomous vector (orthonormal basis) and returns a holonomous vector (cylindrical metric).
     """
 
     @wraps(f)
     def dfun(rr, *args, **kwargs):
-        a = lambda rr: jnp.multiply(jnp.array([1,rr[0],1]), jnp.array(f(rr, *args, **kwargs)))
-        deriv = jacfwd(f)(rr, *args, **kwargs)
+        a = lambda rr, *args, **kwargs: jnp.multiply(
+            jnp.array([1, rr[0], 1]), jnp.array(f(rr, *args, **kwargs))
+        )
+        deriv = jacfwd(a)(rr, *args, **kwargs)
 
-        return jnp.array([deriv[2][1] - deriv[1][2], deriv[0][2] - deriv[2][0], deriv[1][0] - deriv[0][1]]) / rr[0]
+        return (
+            jnp.array(
+                [
+                    deriv[2][1] - deriv[1][2],
+                    deriv[0][2] - deriv[2][0],
+                    deriv[1][0] - deriv[0][1],
+                ]
+            )
+            / rr[0]
+        )
 
     return dfun
 
 
 ## Equilibrium fields
+
+# Potentials
 
 
 def psi_squared(rr, R, Z):
@@ -55,16 +68,83 @@ def psi_ellipse(rr, R, Z, A, B):
     return (Z - rr[2]) ** 2 / B**2 + (R - rr[0]) ** 2 / A**2
 
 
-def A_z_squared(rr, R, Z, sf, shear):
-    rho = jnp.sqrt((R - rr[0]) ** 2 + (Z - rr[2]) ** 2)
-    Atheta = rho * (sf + 0.5 * shear * rho ** 2)
-    theta = jnp.arctan2(rr[2] - Z, rr[0] - R)
-    return jnp.array([-Atheta*jnp.sin(theta), 0., Atheta*jnp.cos(theta)])
+def A_r_squared(rr, R, Z, sf, shear):
+    """A_r vector potential (giving the poloidal flux F) for the squared circle equilibrium field."""
+    def a(rr):
+        return jnp.real(
+            (1 / (4 * rr[0]))
+            * (
+                (
+                    4 * sf
+                    + shear
+                    * (5 * rr[0] ** 2 - 10 * rr[0] * R + 4 * R**2 + 2 * (rr[2] - Z) ** 2)
+                )
+                * jnp.sqrt(-rr[0] ** 2 + 2 * rr[0] * R - (rr[2] - Z) ** 2)
+                * (rr[2] - Z)
+                - 1j
+                * rr[0]
+                * (rr[0] - 2 * R)
+                * (4 * sf + (3 * rr[0] ** 2 - 6 * rr[0] * R + 4 * R**2) * shear)
+                * jnp.log(
+                    -1j * rr[2]
+                    + jnp.sqrt(-rr[0] * (rr[0] - 2 * R) - (rr[2] - Z) ** 2)
+                    + 1j * Z
+                )
+            )
+        )
+    
+    return cond(
+        R**2 - (R - rr[0]) ** 2 - (Z - rr[2]) ** 2 > 0.,
+        lambda rr: a(rr),
+        lambda rr: 0.0,
+        jnp.array(rr),
+    )
 
-def F_squared(rr, R, Z, sf, shear):
-    """F flux function for the squared circle equilibrium field."""
-    temp = jnp.maximum(R**2 - (R - rr[0]) ** 2 - (Z - rr[2]) ** 2, 0.0)
-    return (2 * sf + 2 * shear * ((R - rr[0]) ** 2 + (Z - rr[2]) ** 2)) * jnp.sqrt(temp)
+
+
+# def F_squared(rr, R, Z, sf, shear):
+#     """F flux function for the squared circle equilibrium field."""
+#     temp = jnp.maximum(R**2 - (R - rr[0]) ** 2 - (Z - rr[2]) ** 2, 0.0)
+#     return (2 * sf + 2 * shear * ((R - rr[0]) ** 2 + (Z - rr[2]) ** 2)) * jnp.sqrt(temp)
+
+def A_squared(rr, R, Z, sf, shear) -> jnp.ndarray:
+    """A vector potential for the squared circle equilibrium field."""
+    return jnp.array([0.0, psi_squared(rr, R, Z)/rr[0], 0.0])+jnp.array([A_r_squared(rr, R, Z, sf, shear), 0.0, 0.0])
+
+
+
+# def A_z_ellipse(rr, R, Z, sf, shear, A, B):
+#     return -0.25 * (
+#         (
+#             (
+#                 -5 * B**2 * (rr[0] - R) ** 2 * shear
+#                 + A**2
+#                 * (B**2 * (-4 * sf + R**2 * shear) - 2 * shear * (rr[2] - Z) ** 2)
+#             )
+#             * jnp.sqrt(
+#                 ((rr[0] + (-1 + A) * R) * (-rr[0] + R + A * R)) / A**2 - (rr[2] - Z) ** 2 / B**2
+#             )
+#             * (rr[2] - Z)
+#         )
+#         / (A**2 * B**2)
+#         + (
+#             B
+#             * (rr[0] + (-1 + A) * R)
+#             * (rr[0] - (1 + A) * R)
+#             * (3 * (rr[0] - R) ** 2 * shear + A**2 * (4 * sf + R**2 * shear))
+#             * (jnp.pi/2 - jnp.arctan(
+#                 (
+#                     B
+#                     * jnp.sqrt(
+#                         ((rr[0] + (-1 + A) * R) * (-rr[0] + R + A * R)) / A**2
+#                         - (rr[2] - Z) ** 2 / B**2
+#                     )
+#                 )
+#                 / (rr[2] - Z)
+#             ))
+#         )
+#         / A**4
+#     ) / rr[0]
 
 
 def F_ellipse(rr, R, Z, sf, shear, A, B):
@@ -77,19 +157,23 @@ def F_ellipse(rr, R, Z, sf, shear, A, B):
     ) * jnp.sqrt(temp)
 
 
-def equ_squared(rr, R, Z, sf, shear):
-    """
-    Returns the B field derived from the Psi and F flux functions derived with the fluxes:
-    $$
-        \psi = (z-Z)^{2} + \left(R - r\right)^{2}
-        F = \left(2 sf + 2 shear \left(z^{2} + \left(R - r\right)^{2}\right)\right) \sqrt{R^{2} - z^{2} - \left(R - r\right)^{2}}
-    $$
-    """
-    sgn = (1 + jnp.sign(R**2 - (R - rr[0]) ** 2 - (Z - rr[2]) ** 2)) / 2
-    return sgn * (
-        psitob(psi_squared)(rr, R, Z)
-        + jnp.array([0.0, F_squared(rr, R, Z, sf, shear), 0.0]) / rr[0] ** 2
-    )
+# Fields
+
+
+# def equ_squared(rr, R, Z, sf, shear):
+#     """
+#     Returns the B field derived from the Psi and F flux functions derived with the fluxes:
+#     $$
+#         \psi = (z-Z)^{2} + \left(R - r\right)^{2}
+#         F = \left(2 sf + 2 shear \left(z^{2} + \left(R - r\right)^{2}\right)\right) \sqrt{R^{2} - z^{2} - \left(R - r\right)^{2}}
+#     $$
+#     """
+#     sgn = (1 + jnp.sign(R**2 - (R - rr[0]) ** 2 - (Z - rr[2]) ** 2)) / 2
+#     return sgn * (
+#         psitob(psi_squared)(rr, R, Z)
+#         + jnp.array([0.0, F_squared(rr, R, Z, sf, shear), 0.0])
+#         / rr[0]**2
+#     )
 
 
 def equ_squared_ellipse(rr, R, Z, sf, shear, A, B):
@@ -109,7 +193,7 @@ def equ_squared_ellipse(rr, R, Z, sf, shear, A, B):
     )
 
 
-## Perturbation fields
+## Perturbations
 
 # Maxwell-Boltzmann distributed perturbation
 
@@ -336,7 +420,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
     """
 
     _types_dict = {
-        "squared-circle": equ_squared,
+        "squared-circle": rot(A_squared),
         "squared-ellipse": equ_squared_ellipse,
         "maxwell-boltzmann": psitob(psi_maxwellboltzmann),
         "gaussian": psitob(psi_gaussian),
@@ -372,7 +456,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
                 equ_squared_ellipse, R=R, Z=Z, sf=sf, shear=shear, A=A, B=B
             )
         else:
-            self.B_equilibrium = partial(equ_squared, R=R, Z=Z, sf=sf, shear=shear)
+            self.B_equilibrium = partial(self._types_dict['squared-ellipse'], R=R, Z=Z, sf=sf, shear=shear)
 
         self.dBdX_equilibrium = lambda rr: jnp.array(jacfwd(self.B_equilibrium)(rr))
 
@@ -499,8 +583,19 @@ class AnalyticCylindricalBfield(CylindricalBfield):
                 ),
                 axis=0,
             )
+
+            # self._A_pertrubation = lambda rr: jnp.sum(
+            #     jnp.array(
+            #         [
+            #             pertdic["amplitude"] * self.(rr)
+            #             for i, pertdic in enumerate(self.perturbations_args)
+            #         ]
+            #     ),
+            #     axis=0,
+            # )
         else:
             self.B_perturbation = lambda rr: jnp.array([0, 0, 0])
+            self._A_pertrubation = lambda rr: jnp.array([0, 0, 0])
 
         # gradient of the resulting perturbation
         self.dBdX_perturbation = lambda rr: jnp.array(jacfwd(self.B_perturbation)(rr))
@@ -550,6 +645,10 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         return self.B_many(r, phi, z).flatten(), np.array(
             [self._dBdX([r[i], phi[i], z[i]]) for i in range(len(r))]
         )
+    
+    def A(self, rr):
+        """Total vector potential function at the point rr."""
+        return np.array(self._A(rr))
 
     def divB(self, rr):
         """Divergence of the total field function at the point rr."""
