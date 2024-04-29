@@ -1,7 +1,7 @@
 from ..problems.bfield_problem import BfieldProblem
 from .base_solver import BaseSolver
 from .fixed_point import FixedPoint
-from scipy.optimize import newton_krylov, fsolve
+from scipy.optimize import root
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -62,6 +62,7 @@ class Manifold(BaseSolver):
         self.rfp_u = np.array([self.fixedpoint.x[0], self.fixedpoint.z[0]])
         self.lambda_s, self.vector_s, self.lambda_u, self.vector_u = self.eig(self.fixedpoint.all_jacobians[0])
         self.directions = "u+s+"
+        self.clinics = []
 
     def find_N(self, guess_eps_s = 1e-3, guess_eps_u = 1e-3):
         """Finding the number of times the map needs to be applied for the stable and unstable points to cross."""
@@ -94,8 +95,12 @@ class Manifold(BaseSolver):
         else:
             return n_s, n_u
 
+    def clinic_bijection(self, eps_s, eps_u, n_s, n_u):
+        eps_s_1, eps_u_1 = self.find_homoclinic(eps_s, eps_u, n_s, n_u)
+        pass
+
     def find_homoclinic(self, guess_eps_s = 1e-3, guess_eps_u = 1e-3, **kwargs):
-        defaults = {"maxiter": 100, "n_s": None, "n_u": None}
+        defaults = {"tol": 1e-10, "n_s": None, "n_u": None}
         defaults.update({key: value for key, value in kwargs.items() if key in defaults})
 
         if defaults['n_s'] is None or defaults['n_u'] is None:
@@ -112,22 +117,26 @@ class Manifold(BaseSolver):
             r_s_evolved, jac_s = self.integrate_single(r_s, n_s, -1)
             r_u_evolved, jac_u = self.integrate_single(r_u, n_u, 1)
 
-            return r_s_evolved - r_u_evolved, np.array([jac_s @ self.vector_s, -jac_u @ self.vector_u])
-        
-        def residual(eps, n_s, n_u):
-            return evolution(eps, n_s, n_u)[0]
+            return r_s_evolved, r_s_evolved - r_u_evolved, np.array([jac_s @ self.vector_s, -jac_u @ self.vector_u])
 
-        def jacobian(eps, n_s, n_u):
-            return evolution(eps, n_s, n_u)[1]
+        def residual(eps, n_s, n_u):
+            return evolution(eps, n_s, n_u)[1:]
         
-        eps_s_1, eps_u_1 = fsolve(residual, [guess_eps_s, guess_eps_u], args=(n_s, n_u), fprime=jacobian)
-        print(f"Eps 1: {eps_s_1}, {eps_u_1}")
-        if eps_s_1 < 0 or eps_u_1 < 0:
+        r = root(residual, [guess_eps_s, guess_eps_u], args=(n_s, n_u), jac=True, tol=defaults['tol'])
+        
+        if not r.success:
+            raise ValueError("Homoclinic search not successful.")
+        
+        eps_s, eps_u = r.x
+        print(f"Eps_s : {eps_s:.3e}, Eps_u : {eps_u:.3e} gives a difference in endpoint [R,Z] : {r.fun}")
+        if eps_s < 0 or eps_u < 0:
             raise ValueError("Homoclinic point epsilon cannot be negative.")
         # if self.error_linear_regime(self.rfp_s, self.lambda_s, self.vector_s) > 1e-4 or self.error_linear_regime(self.rfp_u, self.lambda_u, self.vector_u) > 1e-4:
         #     raise ValueError("Homoclinic point epsilon was be found in linear regime.")    
         
-        return eps_s_1, eps_u_1
+        self.clinics.append(evolution([eps_s, eps_u], n_s, n_u)[0])
+
+        return eps_s, eps_u
 
     def compute(self, epsilon = None, fp_num = None, **kwargs):
         """Compute the manifolds of the fixed point. If no fixed point number is given, the two manifold coicinding with the tangle plot is computed otherwise 
@@ -215,9 +224,8 @@ class Manifold(BaseSolver):
     def find_epsilon(self, eps_guess, rfp, eigenvector, direction = 1, iter = 4):
         find_eps = lambda x: self.start_config(x, rfp, eigenvector, neps = 1, direction = direction)[1]
 
-        # eps_root = fsolve(find_eps, eps_guess, xtol=options['xtol'])
         try:
-            eps_root = newton_krylov(find_eps, eps_guess, inner_maxiter=iter)[0]
+            eps_root = root(find_eps, eps_guess, inner_maxiter=iter)[0]
             print(f"Newton-Krylov succeeded, epsilon = {eps_root}")
         except:
             print("Newton-Krylov failed, using the guess for epsilon.")
@@ -253,7 +261,7 @@ class Manifold(BaseSolver):
 
         return rz_path
     
-    def integrate_single(self, RZstart, nintersect, direction = 1, ret_jacobian = True):
+    def integrate_single(self, RZstart, nintersect, direction = 1, ret_jacobian = True, integrate_A = False):
         r, z = RZstart
         t0 = self._params["zeta"]
         dt = direction*2*np.pi/self.bfield.Nfp
@@ -262,6 +270,9 @@ class Manifold(BaseSolver):
         if ret_jacobian:
             ic = np.array([r, z, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
             self._integrator.change_rhs(self.bfield.f_RZ_tangent)
+        elif integrate_A:
+            ic = np.array([r, z, 0.0], dtype=np.float64)
+            self._integrator.change_rhs(self.bfield.f_RZ_A)
         else:
             ic = np.array([r, z], dtype=np.float64)
 
@@ -270,10 +281,13 @@ class Manifold(BaseSolver):
             output = self._integrator.integrate(t + dt)
             t = t + dt
 
-        if ret_jacobian:    
+        if ret_jacobian: 
             self._integrator.change_rhs(self.bfield.f_RZ)
             jacobian = output[2:].reshape((2, 2)).T
             return output[:2], jacobian
+        elif integrate_A:
+            self._integrator.change_rhs(self.bfield.f_RZ)
+            return output[:2], output[2]
         else:
             return output[:2]
 
@@ -315,3 +329,46 @@ class Manifold(BaseSolver):
                     #     ax.scatter(yr, yz, color=color[i], alpha=1, s=5)
 
         return fig, ax
+    
+    def resonance_area(self, n_b, n_f, n_transit = 3):
+        # considering the >_u ordering of the homoclinic points
+        areas = []
+        for homoclinic in self.clinics:
+            n_tmp_f, n_tmp_b = 1, 1
+
+            # Forward integration
+            rze_forward = homoclinic
+            area_forward = 0
+            while n_tmp_f < n_f:
+                rze_end, area_tmp = self.integrate_single(rze_forward, 1, direction=1, ret_jacobian=False, integrate_A=True)
+                
+                if n_tmp_f > n_transit and np.linalg.norm(rze_end - self.rfp_s) > np.linalg.norm(rze_forward - self.rfp_s):
+                    print("Forward integration goes beyond the saddle point.")
+                    print(f"rfp_s: {self.rfp_s}, rze_end: {rze_end}, rze_forward: {rze_forward}")
+                    break
+                    
+                rze_forward = rze_end
+                area_forward += area_tmp
+                n_tmp_f += 1
+
+            print(f"Forward integration completed with area {area_forward}")
+            
+            # Backward integration
+            rze_backward = homoclinic
+            area_backward = 0
+            while n_tmp_b < n_b:
+                rze_end, area_tmp = self.integrate_single(rze_backward, 1, direction=-1, ret_jacobian=False, integrate_A=True)
+                
+                if n_tmp_b > n_transit and np.linalg.norm(rze_end - self.rfp_u) > np.linalg.norm(rze_backward - self.rfp_u):
+                    print("Backward integration goes beyond the saddle point.")
+                    print(f"rfp_u: {self.rfp_u}, rze_end: {rze_end}, rze_forward: {rze_backward}")
+                    break
+
+                rze_backward = rze_end
+                area_backward += area_tmp
+                n_tmp_b += 1
+            
+            print(f"Backward integration completed with area {area_backward}")
+            
+            areas.append(area_forward - area_backward)
+        return np.array(areas)
