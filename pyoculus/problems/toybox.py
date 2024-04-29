@@ -26,16 +26,22 @@ def psitob(f):
     return dfun
 
 
-def rot(f):
+def rot(f, from_holonomous=True):
     """Decorator that calculate the rotational in cylindrical coordinates, useful to get
-    the B field from a vector potential A using the relation B = grad x A. It takes a
-    non-holonomous vector (orthonormal basis) and returns a holonomous vector (cylindrical metric).
+    the B field from a vector potential A using the relation B = grad x A. It takes the
+    holonomous component (or non-holonomous, orthonormal basis)
+    and returns the holonomous components (cylindrical metric).
     """
 
     @wraps(f)
     def dfun(rr, *args, **kwargs):
+        if not from_holonomous:
+            exp = 1
+        else:
+            exp = 2
+
         a = lambda rr, *args, **kwargs: jnp.multiply(
-            jnp.array([1, rr[0], 1]), jnp.array(f(rr, *args, **kwargs))
+            jnp.array([1, rr[0]**exp, 1]), jnp.array(f(rr, *args, **kwargs))
         )
         deriv = jacfwd(a)(rr, *args, **kwargs)
 
@@ -53,23 +59,21 @@ def rot(f):
     return dfun
 
 
-## Equilibrium fields
+## Equilibrium
 
-# Potentials
+# Equilibrium with q-profile = sf + shear * rho^2 with rho^2 = (rr[0]-R)^2 + (rr[2]-R)^2
 
 
-def psi_squared(rr, R, Z):
+def psi_squared(rr: jnp.array, R: float, Z: float) -> jnp.float64:
     """Psi flux function for the squared circle equilibrium field."""
     return (Z - rr[2]) ** 2 + (R - rr[0]) ** 2
 
 
-def psi_ellipse(rr, R, Z, A, B):
-    """Psi flux function for the squared ellipse equilibrium field."""
-    return (Z - rr[2]) ** 2 / B**2 + (R - rr[0]) ** 2 / A**2
-
-
-def A_r_squared(rr, R, Z, sf, shear):
+def A_r_squared(
+    rr: jnp.array, R: float, Z: float, sf: float, shear: float
+) -> jnp.float64:
     """A_r vector potential (giving the poloidal flux F) for the squared circle equilibrium field."""
+
     def a(rr):
         return jnp.real(
             (1 / (4 * rr[0]))
@@ -77,7 +81,12 @@ def A_r_squared(rr, R, Z, sf, shear):
                 (
                     4 * sf
                     + shear
-                    * (5 * rr[0] ** 2 - 10 * rr[0] * R + 4 * R**2 + 2 * (rr[2] - Z) ** 2)
+                    * (
+                        5 * rr[0] ** 2
+                        - 10 * rr[0] * R
+                        + 4 * R**2
+                        + 2 * (rr[2] - Z) ** 2
+                    )
                 )
                 * jnp.sqrt(-rr[0] ** 2 + 2 * rr[0] * R - (rr[2] - Z) ** 2)
                 * (rr[2] - Z)
@@ -92,27 +101,30 @@ def A_r_squared(rr, R, Z, sf, shear):
                 )
             )
         )
-    
+
     return cond(
-        R**2 - (R - rr[0]) ** 2 - (Z - rr[2]) ** 2 > 0.,
+        R**2 - (R - rr[0]) ** 2 - (Z - rr[2]) ** 2 > 0.0,
         lambda rr: a(rr),
         lambda rr: 0.0,
         jnp.array(rr),
     )
 
 
-
-# def F_squared(rr, R, Z, sf, shear):
-#     """F flux function for the squared circle equilibrium field."""
-#     temp = jnp.maximum(R**2 - (R - rr[0]) ** 2 - (Z - rr[2]) ** 2, 0.0)
-#     return (2 * sf + 2 * shear * ((R - rr[0]) ** 2 + (Z - rr[2]) ** 2)) * jnp.sqrt(temp)
-
-def A_squared(rr, R, Z, sf, shear) -> jnp.ndarray:
-    """A vector potential for the squared circle equilibrium field."""
-    return jnp.array([0.0, psi_squared(rr, R, Z)/rr[0], 0.0])+jnp.array([A_r_squared(rr, R, Z, sf, shear), 0.0, 0.0])
+def A_squared(
+    rr: jnp.array, R: float, Z: float, sf: float, shear: float
+) -> jnp.ndarray:
+    """Holonomous component of the vector potential for the squared circle equilibrium field."""
+    return jnp.array([0.0, psi_squared(rr, R, Z) / rr[0]**2, 0.0]) + jnp.array(
+        [A_r_squared(rr, R, Z, sf, shear), 0.0, 0.0]
+    )
 
 
-
+# # Equilibrium with q-profile = sf + shear * b^2 with b^2 = (rr[0]-R)^2/A^2 + (rr[2]-R)^2/B^2
+#
+# def psi_ellipse(rr: jnp.array, R: float, Z: float, A: float, B: float) -> jnp.float64:
+#     """Psi flux function for the squared ellipse equilibrium field."""
+#     return (Z - rr[2]) ** 2 / B**2 + (R - rr[0]) ** 2 / A**2
+#
 # def A_z_ellipse(rr, R, Z, sf, shear, A, B):
 #     return -0.25 * (
 #         (
@@ -145,60 +157,31 @@ def A_squared(rr, R, Z, sf, shear) -> jnp.ndarray:
 #         )
 #         / A**4
 #     ) / rr[0]
-
-
-def F_ellipse(rr, R, Z, sf, shear, A, B):
-    """F flux function for the squared ellipse equilibrium field."""
-    temp = jnp.maximum(
-        R**2 - (Z - rr[2]) ** 2 / B**2 - (R - rr[0]) ** 2 / A**2, 0.0
-    )
-    return (
-        2 * sf + 2 * shear * ((Z - rr[2]) ** 2 / B**2 + (R - rr[0]) ** 2 / A**2)
-    ) * jnp.sqrt(temp)
-
-
-# Fields
-
-
-# def equ_squared(rr, R, Z, sf, shear):
-#     """
-#     Returns the B field derived from the Psi and F flux functions derived with the fluxes:
-#     $$
-#         \psi = (z-Z)^{2} + \left(R - r\right)^{2}
-#         F = \left(2 sf + 2 shear \left(z^{2} + \left(R - r\right)^{2}\right)\right) \sqrt{R^{2} - z^{2} - \left(R - r\right)^{2}}
-#     $$
-#     """
-#     sgn = (1 + jnp.sign(R**2 - (R - rr[0]) ** 2 - (Z - rr[2]) ** 2)) / 2
-#     return sgn * (
-#         psitob(psi_squared)(rr, R, Z)
-#         + jnp.array([0.0, F_squared(rr, R, Z, sf, shear), 0.0])
-#         / rr[0]**2
+#
+# def F_ellipse(rr, R, Z, sf, shear, A, B):
+#     """F flux function for the squared ellipse equilibrium field."""
+#     temp = jnp.maximum(
+#         R**2 - (Z - rr[2]) ** 2 / B**2 - (R - rr[0]) ** 2 / A**2, 0.0
 #     )
-
-
-def equ_squared_ellipse(rr, R, Z, sf, shear, A, B):
-    """
-    Returns the B field derived from the Psi and F flux functions derived with the fluxes:
-    $$
-        \psi = (z-Z)^{2}/B^2 + \left(R - r\right)^{2}/A^2
-        F = \left(2 sf + 2 shear \left(\frac{\left(Z - z\right)^{2}}{B^{2}} + \frac{\left(R - r\right)^{2}}{A^{2}}\right)\right) \sqrt{R^{2} - \frac{\left(Z - z\right)^{2}}{B^{2}} - \frac{\left(R - r\right)^{2}}{A^{2}}}
-    $$
-    """
-    sgn = (
-        1 + jnp.sign(R**2 - (Z - rr[2]) ** 2 / B**2 - (R - rr[0]) ** 2 / A**2)
-    ) / 2
-    return sgn * (
-        psitob(psi_ellipse)(rr, R, Z, A, B)
-        + jnp.array([0.0, F_ellipse(rr, R, Z, sf, shear, A, B), 0.0]) / rr[0] ** 2
-    )
-
+#     return (
+#         2 * sf + 2 * shear * ((Z - rr[2]) ** 2 / B**2 + (R - rr[0]) ** 2 / A**2)
+#     ) * jnp.sqrt(temp)
 
 ## Perturbations
 
 # Maxwell-Boltzmann distributed perturbation
 
 
-def psi_maxwellboltzmann(rr, R, Z, d, m, n, phase_poloidal=0.0):
+def psi_maxwellboltzmann(
+    rr: jnp.array,
+    R: float,
+    Z: float,
+    d: float,
+    m: int,
+    n: int,
+    phase_poloidal: float = 0.0,
+    phase_toroidal: float = 0.0,
+) -> jnp.float64:
     """Maxwell-Boltzmann distributed Psi flux function.
 
     Args:
@@ -209,6 +192,7 @@ def psi_maxwellboltzmann(rr, R, Z, d, m, n, phase_poloidal=0.0):
         m (int): Poloidal mode number
         n (int): Toroidal mode number
         phase_poloidal (float): Poloidal phase of the perturbation
+        phase_toroidal (float): Toroidal phase of the perturbation
     """
 
     rho2 = (Z - rr[2]) ** 2 + (R - rr[0]) ** 2
@@ -220,7 +204,7 @@ def psi_maxwellboltzmann(rr, R, Z, d, m, n, phase_poloidal=0.0):
             * rho2
             * jnp.exp(-rho2 / (2 * d**2))
             * jnp.cos(jnp.arctan2(rr[2] - Z, rr[0] - R) * m + phase_poloidal)
-            * jnp.cos(rr[1] * n)
+            * jnp.cos(rr[1] * n + phase_toroidal)
         )
 
     return cond(
@@ -231,10 +215,41 @@ def psi_maxwellboltzmann(rr, R, Z, d, m, n, phase_poloidal=0.0):
     )
 
 
+def A_maxwellboltzmann(
+    rr: jnp.array,
+    R: float,
+    Z: float,
+    d: float,
+    m: int,
+    n: int,
+    phase_poloidal: float = 0.0,
+    phase_toroidal: float = 0.0,
+) -> jnp.ndarray:
+    """Holonomous component of the vector potential for the Maxwell-Boltzmann distributed perturbation."""
+    return jnp.array(
+        [
+            0.0,
+            psi_maxwellboltzmann(rr, R, Z, d, m, n, phase_poloidal, phase_toroidal)
+            / rr[0]**2,
+            0.0,
+        ]
+    )
+
+
 # Gaussian distributed perturbation
 
 
-def psi_gaussian(rr, R, Z, mu, sigma, m, n, phase_poloidal=0.0):
+def psi_gaussian(
+    rr: jnp.array,
+    R: float,
+    Z: float,
+    mu: float,
+    sigma: float,
+    m: int,
+    n: int,
+    phase_poloidal: float = 0.0,
+    phase_toroidal: float = 0.0,
+) -> jnp.float64:
     """Gaussian distributed Psi flux function.
 
     Args:
@@ -255,7 +270,7 @@ def psi_gaussian(rr, R, Z, mu, sigma, m, n, phase_poloidal=0.0):
             / (2 * jnp.sqrt(np.pi) * sigma)
             * jnp.exp(-((jnp.sqrt(rho2) - mu) ** 2) / (2 * sigma**2))
             * jnp.cos(jnp.arctan2(rr[2] - Z, rr[0] - R) * m + phase_poloidal)
-            * jnp.cos(rr[1] * n)
+            * jnp.cos(rr[1] * n + phase_toroidal)
         )
 
     return cond(
@@ -263,6 +278,28 @@ def psi_gaussian(rr, R, Z, mu, sigma, m, n, phase_poloidal=0.0):
         lambda rr: psi_g(rr),
         lambda rr: 0.0,
         jnp.array(rr),
+    )
+
+
+def A_gaussian(
+    rr: jnp.array,
+    R: float,
+    Z: float,
+    mu: float,
+    sigma: float,
+    m: int,
+    n: int,
+    phase_poloidal: float = 0.0,
+    phase_toroidal: float = 0.0,
+) -> jnp.ndarray:
+    """Holonomous component of the vector potential for the Gaussian distributed perturbation."""
+    return jnp.array(
+        [
+            0.0,
+            psi_gaussian(rr, R, Z, mu, sigma, m, n, phase_poloidal, phase_toroidal)
+            / rr[0]**2,
+            0.0,
+        ]
     )
 
 
@@ -348,7 +385,7 @@ def ellpk(m):
     return jnp.polyval(P_coeffs, x) - jnp.log(x) * jnp.polyval(Q_coeffs, x)
 
 
-def psi_circularcurrentloop(rr, R, Z):
+def psi_circularcurrentloop(rr: jnp.array, R: float, Z: float) -> jnp.float64:
     """Vector potential (\phi coordinates) generated at rr = rphiz by a circular current loop located at radius R and height Z."""
     alpha2 = (R - rr[0]) ** 2 + (rr[2] - Z) ** 2
     beta2 = alpha2 + 4 * R * rr[0]
@@ -360,28 +397,9 @@ def psi_circularcurrentloop(rr, R, Z):
     return rr[0] * R * ((2 - k2) * K - 2 * E) / (jnp.sqrt(beta2) * k2 * jnp.pi)
 
 
-# def field_circularcurrentloop(rr, R, Z):
-#     """Field generated at rr = rphiz by a circular current loop located at radius R and height Z."""
-#     # alpha2 = R**2 + rr[0] ** 2 + (rr[2] - Z) ** 2 - 2 * R * rr[0]
-#     alpha2 = (R - rr[0]) ** 2 + (rr[2] - Z) ** 2
-#     beta2 = alpha2 + 4 * R * rr[0]
-#     m = 1 - alpha2 / beta2
-#     E = ellpe(m)
-#     K = ellpk(m)
-
-#     # singularity = jnp.sqrt((rr[0] - R)**2 + (rr[2] - Z)**2) < tolerance
-
-#     return jnp.array(
-#         [
-#             (rr[2] - Z)
-#             / (2 * jnp.pi * rr[0] * alpha2 * jnp.sqrt(beta2))
-#             * ((R**2 + rr[0] ** 2 + (rr[2] - Z) ** 2) * E - alpha2 * K),
-#             0,
-#             1
-#             / (2 * jnp.pi * alpha2 * jnp.sqrt(beta2))
-#             * ((R**2 - rr[0] ** 2 - (rr[2] - Z) ** 2) * E + alpha2 * K),
-#         ]
-#     )
+def A_circularcurrentloop(rr: jnp.array, R: float, Z: float) -> jnp.ndarray:
+    """Holonomous component of the vector potential for the circular current loop perturbation."""
+    return jnp.array([0.0, psi_circularcurrentloop(rr, R, Z) / rr[0]**2, 0.0])
 
 
 # class definition
@@ -389,12 +407,12 @@ def psi_circularcurrentloop(rr, R, Z):
 
 class AnalyticCylindricalBfield(CylindricalBfield):
     """Analytical Bfield problem class that allows adding analytical perturbations to an analytical equilibrium field. The equilibrium field is
-    defined by the function `equ_squared(R, sf, shear)` or its ellipsoid equivalent and the perturbations can be choosen from the type dictionary. The possible types are:
+    derived from the vector potential `A_squared(R, Z, sf, shear)` (circular quadratic q-profile) and the perturbations can be choosen from the
+    type dictionary. The possible types are:
         - "maxwell-boltzmann": Maxwell-Boltzmann distributed perturbation
         - "gaussian": Normally distributed perturbation
         - "circular-current-loop": Field generated by a constant current toroidal loop
         - "squared-circle": Field generated by a squared circle (in fact from equ_squared)
-        - "squared-ellipse": Field generated by a squared ellipse (in fact from equ_squared_ellipse)
 
     Attributes:
         sf (float): Safety factor on the magnetic axis
@@ -413,21 +431,28 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         set_amplitude(index, value): Set the amplitude of the perturbation at index to value
         set_perturbation(index, perturbation_args): Set the perturbation at index to be defined by perturbation_args
         add_perturbation(perturbation_args): Add a new perturbation defined by perturbation_args
+        remove_perturbation(index): Remove the perturbation at index, (default: -1, the last one)
         B_equilibrium(rphiz): Equilibrium field function
         dBdX_equilibrium(rphiz): Gradient of the equilibrium field function
         B_perturbation(rphiz): Perturbation field function
         dBdX_perturbation(rphiz): Gradient of the perturbation field function
     """
 
-    _types_dict = {
+    _field_types_dict = {
         "squared-circle": rot(A_squared),
-        "squared-ellipse": equ_squared_ellipse,
         "maxwell-boltzmann": psitob(psi_maxwellboltzmann),
         "gaussian": psitob(psi_gaussian),
         "circular-current-loop": psitob(psi_circularcurrentloop),
     }
 
-    def __init__(self, R, Z, sf, shear, perturbations_args=list(), A=None, B=None):
+    _pot_types_dict = {
+        "squared-circle": A_squared,
+        "maxwell-boltzmann": A_maxwellboltzmann,
+        "gaussian": A_gaussian,
+        "circular-current-loop": A_circularcurrentloop,
+    }
+
+    def __init__(self, R, Z, sf, shear, perturbations_args=list()):
         """
         Args:
             R (float): Major radius of the magnetic axis of the equilibrium field
@@ -435,11 +460,6 @@ class AnalyticCylindricalBfield(CylindricalBfield):
             sf (float): Safety factor on the magnetic axis
             shear (float): Shear factor
             perturbations_args (list): List of dictionaries with the arguments of each perturbation
-
-            Optional:
-            If A and B are provided, the equilibrium field will be defined as an ellipse with major radius A and minor radius B.
-            A (float): Major radius of the ellipse in the squared-ellipse equilibrium field
-            B (float): Minor radius of the ellipse in the squared-ellipse equilibrium field
 
         Example:
             $ pert1_dict = {m:2, n:-1, d:1, type: "maxwell-boltzmann", amplitude: 1e-2}
@@ -450,14 +470,13 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         self.sf = sf
         self.shear = shear
 
-        # Define the equilibrium field and its gradient
-        if A is not None and B is not None:
-            self.B_equilibrium = partial(
-                equ_squared_ellipse, R=R, Z=Z, sf=sf, shear=shear, A=A, B=B
-            )
-        else:
-            self.B_equilibrium = partial(self._types_dict['squared-ellipse'], R=R, Z=Z, sf=sf, shear=shear)
-
+        # Define the equilibrium vector potential, the field and its gradient
+        self.B_equilibrium = partial(
+            self._field_types_dict["squared-circle"], R=R, Z=Z, sf=sf, shear=shear
+        )
+        self.A_equilibrium = partial(
+            self._pot_types_dict["squared-circle"], R=R, Z=Z, sf=sf, shear=shear
+        )
         self.dBdX_equilibrium = lambda rr: jnp.array(jacfwd(self.B_equilibrium)(rr))
 
         # Define the perturbations and the gradient of the resulting field sum
@@ -482,8 +501,6 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         sf,
         shear,
         perturbations_args=list(),
-        A=None,
-        B=None,
         guess=None,
         **kwargs
     ):
@@ -493,7 +510,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         if guess is None:
             guess = [R, Z]
 
-        instance = cls(R, Z, sf, shear, perturbations_args, A, B)
+        instance = cls(R, Z, sf, shear, perturbations_args)
         instance.find_axis(guess, **kwargs)
         return instance
 
@@ -547,10 +564,8 @@ class AnalyticCylindricalBfield(CylindricalBfield):
             len(self.perturbations_args) - 1, find_axis=find_axis
         )
 
-    def remove_perturbation(self, index=None, find_axis=True):
+    def remove_perturbation(self, index=-1, find_axis=True):
         """Remove the perturbation at index or the last one if no index is given."""
-        if index is None:
-            index = len(self.perturbations_args) - 1
 
         self.perturbations_args.pop(index)
         self._perturbations.pop(index)
@@ -570,7 +585,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
             tmp_args.pop("type")
 
             self._perturbations[i] = partial(
-                self._types_dict[self.perturbations_args[i]["type"]], **tmp_args
+                self._field_types_dict[self.perturbations_args[i]["type"]], **tmp_args
             )
 
         if len(self.perturbations_args) > 0:
@@ -584,29 +599,38 @@ class AnalyticCylindricalBfield(CylindricalBfield):
                 axis=0,
             )
 
-            # self._A_pertrubation = lambda rr: jnp.sum(
-            #     jnp.array(
-            #         [
-            #             pertdic["amplitude"] * self.(rr)
-            #             for i, pertdic in enumerate(self.perturbations_args)
-            #         ]
-            #     ),
-            #     axis=0,
-            # )
+            self.A_pertrubation = lambda rr: jnp.sum(
+                jnp.array(
+                    [
+                        pertdic["amplitude"]
+                        * self._pot_types_dict[self.perturbations_args[i]["type"]](
+                            rr,
+                            **{
+                                k: v
+                                for k, v in pertdic.items()
+                                if k not in ["type", "amplitude"]
+                            }
+                        )
+                        for i, pertdic in enumerate(self.perturbations_args)
+                    ]
+                ),
+                axis=0,
+            )
         else:
             self.B_perturbation = lambda rr: jnp.array([0, 0, 0])
-            self._A_pertrubation = lambda rr: jnp.array([0, 0, 0])
+            self.A_pertrubation = lambda rr: jnp.array([0, 0, 0])
 
         # gradient of the resulting perturbation
         self.dBdX_perturbation = lambda rr: jnp.array(jacfwd(self.B_perturbation)(rr))
 
         # Define the total field and its gradient
+        self._A = jit(lambda rr: self.A_equilibrium(rr) + self.A_pertrubation(rr))
         self._B = jit(lambda rr: self.B_equilibrium(rr) + self.B_perturbation(rr))
         self._dBdX = jit(
             lambda rr: self.dBdX_equilibrium(rr) + self.dBdX_perturbation(rr)
         )
 
-        # Refind the axis
+        # Find the axis
         if find_axis:
             self.find_axis()
 
@@ -645,7 +669,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         return self.B_many(r, phi, z).flatten(), np.array(
             [self._dBdX([r[i], phi[i], z[i]]) for i in range(len(r))]
         )
-    
+
     def A(self, rr):
         """Total vector potential function at the point rr."""
         return np.array(self._A(rr))
