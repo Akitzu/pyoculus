@@ -208,7 +208,7 @@ def psi_maxwellboltzmann(
             / (jnp.sqrt(jnp.pi) * d**3)
             * rho2
             * jnp.exp(-rho2 / (2 * d**2))
-            * jnp.cos(jnp.arctan2(rr[2] - Z, rr[0] - R) * m + phase_poloidal)
+            * jnp.cos(jnp.arctan2((rr[2] - Z)/B, (rr[0] - R)/A) * m + phase_poloidal)
             * jnp.cos(rr[1] * n + phase_toroidal)
         )
 
@@ -283,7 +283,7 @@ def psi_gaussian(
             jnp.sqrt(2)
             / (2 * jnp.sqrt(np.pi) * sigma)
             * jnp.exp(-((jnp.sqrt(rho2) - mu) ** 2) / (2 * sigma**2))
-            * jnp.cos(jnp.arctan2(rr[2] - Z, rr[0] - R) * m + phase_poloidal)
+            * jnp.cos(jnp.arctan2((rr[2] - Z)/B, (rr[0] - R)/A) * m + phase_poloidal)
             * jnp.cos(rr[1] * n + phase_toroidal)
         )
 
