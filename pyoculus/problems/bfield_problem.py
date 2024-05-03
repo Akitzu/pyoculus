@@ -53,3 +53,11 @@ class BfieldProblem():
         raise NotImplementedError(
             "dBdX_many is not implemented"
         )
+    
+    def A(self, coords, *args):
+        """! Returns vector potential
+        @param coordinates
+        @param *args extra parameters
+        @returns the vector potential
+        """
+        raise NotImplementedError("Vector potential is not implemented")

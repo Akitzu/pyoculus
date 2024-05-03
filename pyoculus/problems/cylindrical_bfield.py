@@ -39,7 +39,7 @@ class CylindricalBfield(CylindricalProblem, BfieldProblem):
         tmpProblem._R0 = guess[0]
         tmpProblem._Z0 = guess[1]
         tmpProblem.Nfp = Nfp
-
+        
         fpaxis = FixedPoint(tmpProblem, params=params, integrator=integrator, integrator_params=integrator_params, evolve_axis=False)
         RZ_axis = fpaxis.find_axis(R_guess = guess[0], Z_guess = guess[1], **options)
 
@@ -103,3 +103,30 @@ class CylindricalBfield(CylindricalProblem, BfieldProblem):
         dRZ = np.matmul(M, dRZ)
 
         return np.array([dRdt, dZdt, dRZ[0, 0], dRZ[1, 0], dRZ[0, 1], dRZ[1, 1]])
+    
+    def f_RZ_A(self, phi, y, *args):
+        """! Returns ODE RHS, with the integral of A
+        @param phi cylindrical angle in ODE
+        @param y \f$(R, Z, \int\vect{A}\cdot\vect{dl})\f$ in ODE
+        @param *args extra parameters for the ODE
+        @returns the RHS of the ODE, with the integral of A
+        """
+        R = y[0]
+        Z = y[1]
+        
+        RphiZ = np.array([R, phi, Z])
+
+        Bfield = self.B(RphiZ, *args)
+
+        # R, Z evolution
+        dRdphi = Bfield[0] / Bfield[1]
+        dZdphi = Bfield[2] / Bfield[1]
+
+        # Integral of A, step
+        A = self.A(RphiZ, *args)
+        dl = np.array([dRdphi, 1, dZdphi])
+        dl = np.array([1, R**2, 1])*dl
+        
+        dintegralAdphi = np.dot(A, dl)
+
+        return np.array([dRdphi, dZdphi, dintegralAdphi])

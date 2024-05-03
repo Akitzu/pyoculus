@@ -97,6 +97,41 @@ class CartesianBfield(CylindricalProblem, BfieldProblem):
 
         return np.array([dRdt, dZdt, dRZ[0, 0], dRZ[1, 0], dRZ[0, 1], dRZ[1, 1]])
 
+    def f_RZ_A(self, phi, y, *args):
+        """! Returns ODE RHS, with the integral of A
+        @param phi cylindrical angle in ODE
+        @param y \f$(R, Z, \int\vect{A}\cdot\vect{dl})\f$ in ODE
+        @param *args extra parameters for the ODE
+        @returns the RHS of the ODE, with the integral of A
+        """
+        R = y[0]
+        Z = y[1]
+        
+        xyz = np.array([
+                    R * np.cos(phi),
+                    R * np.sin(phi),
+                    Z
+                ])
+                
+        B = np.array([self.B(xyz, *args)]).T
+
+        invJacobian = self._inv_Jacobian(R,phi,Z)
+
+        dRphiZ = np.matmul(invJacobian, B).T[0]
+        dRdt = dRphiZ[0]/dRphiZ[1]
+        dZdt = dRphiZ[2]/dRphiZ[1]
+
+        # Integral of A, step
+        A = np.array([self.A(xyz, *args)]).T
+        Acyl = np.matmul(invJacobian, A).T[0]
+
+        dl = np.array([dRdt, 1, dZdt])
+        dl = np.array([1, R**2, 1])*dl
+        
+        dintegralAdphi = np.dot(Acyl, dl)
+
+        return np.array([dRdt, dZdt, dintegralAdphi])
+
     @staticmethod
     def _inv_Jacobian(R, phi, Z):
         return np.array([

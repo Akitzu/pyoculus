@@ -45,3 +45,8 @@ class SimsoptBfieldProblem(CartesianBfield):
     def dBdX_many(self, x1arr, x2arr, x3arr, input1D=True):
         B = self.B_many(x1arr, x2arr, x3arr, input1D=input1D)
         return [B], self.bs.dB_by_dX()
+    
+    def A(self, xyz):
+        xyz = np.reshape(xyz, (-1, 3))
+        self.bs.set_points(xyz)
+        return self.bs.A().flatten()
