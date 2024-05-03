@@ -28,8 +28,8 @@ def psitob(f):
 
 
 def rot(f, from_holonomous=True):
-    """Decorator that calculate the rotational in cylindrical coordinates, useful to get
-    the B field from a vector potential A using the relation B = grad x A. It takes the
+    """Decorator that calculate the curl in cylindrical coordinates, useful to get
+    the B field from a vector potential A using the relation B = Nabla x A. It takes the
     holonomous component (or non-holonomous, orthonormal basis)
     and returns the holonomous components (cylindrical metric).
     """
