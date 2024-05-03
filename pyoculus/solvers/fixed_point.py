@@ -87,15 +87,15 @@ class FixedPoint(BaseSolver):
     def compute(self, guess, pp, qq, sbegin=-1.0, send=1.0, tol=None, checkonly=True):
         """! Looks for the fixed point with rotation number pp/qq
         @param guess the initial guess, `[s, theta]`, if `params['theta'] == None`, `[s]`, if `params['theta'] ==` somevalue
-        @param pp integer, the numerator of the rotation number
-        @param qq integer, the denominator of the rotation number
+        @param pp integer, the numerator (toroidal number) of the rotation number (iota = q^-1)
+        @param qq integer, the denominator (poloidal number) of the rotation number (iota = q^-1)
         @param sbegin=-1.0 the allowed minimum s or R
         @param send=1.0    the allowed maximum s or R
         @param tol=self._integrator_params['rtol']*qq -- the tolerance of the fixed point
         @param checkonly=False, if set to True finds the fixed point in (R,Z) plane and then checks if the poloidal number is correct
 
         @returns rdata a class that contains the results that contains
-        `rdata.x,rdata.y,rdata,z` -- the fixed points in xyz coordinates
+        `rdata.x,rdata.y,rdata.z` -- the fixed points in xyz coordinates
 
         `rdata.s,rdata,theta,rdata,zeta` -- the fixed points in s,theta,zeta coordinates
 
@@ -118,6 +118,7 @@ class FixedPoint(BaseSolver):
         else:
             pp = -int(np.abs(pp))
             qq = int(np.abs(qq))
+        # if np.gcd(pp, qq) != 1:
 
         self.pp = pp
         self.qq = qq
