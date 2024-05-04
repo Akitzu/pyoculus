@@ -15,6 +15,8 @@ class FixedPoint(BaseSolver):
     Fixed point class to find points that satisfy f^t(x) = x.
     """
 
+    ## Findings fixed points methods
+
     def find(self, t, guess, niter=100, nrestart=0, tol=1e-10):
         """
         Finds a fixed point of a map applied 't' times.    
@@ -57,7 +59,7 @@ class FixedPoint(BaseSolver):
 
         return rdata
 
-    def find_with_iota(self, pp, qq, guess, x_axis = None, niter=100, nrestart=0, tol=1e-10):
+    def find_with_iota(self, pp, qq, guess, x_axis, niter=100, nrestart=0, tol=1e-10):
         """
         Computes the fixed point of a continuous map with winding number iota = q^-1 = pp/qq around x_axis.
 
@@ -161,36 +163,87 @@ class FixedPoint(BaseSolver):
         domain = [(low if low is not -np.inf else -1e100, high if high is not np.inf else 1e100) for (low, high) in domain]
         return np.array([np.random.uniform(low, high) for (low, high) in domain])
 
-    def _newton_method_winding(
-            self, guess, niter, tol
-        ):
+    ## Newton's methods
 
-        tmp = np.array(guess)
-        self.history.append(tmp.copy())
+    def _newton_method_winding(
+        self, guess, x_axis, niter, tol
+    ):
+        x = np.array(guess, dtype=np.float64)
+        x_axis = np.array(x_axis, dtype=np.float64)
+
+        self.history.append(x.copy())
+        succeeded = False
 
         for ii in range(niter):
+            log.info(f"Newton {ii} - RZ : {x}")
+
+            dH = self._map.df_theta(self.t, x)
+            x_evolved, _, x_theta = self._map.f_theta(self.t, x)
             
-
-            dtheta = output[1] - theta - dzeta * pp
-            jacobian = output[3]
-
-            # if the resolution is good enough
-            if abs(dtheta) < tol:
+            # Stop if the resolution is good enough
+            log.info(f"Newton {ii} - [DeltaR, DeltaZ] : {x_evolved-x} - dtheta : {x_theta}")
+            if abs(x_theta[-1]) < tol:
                 succeeded = True
                 break
-            s_new = s - dtheta / jacobian
-            s = s_new
-
-            if s > send or s < sbegin:  # search failed, return None
+            
+            # Newton's step
+            step = np.linalg.solve(dH, -1*x_theta)
+            x_new = x + step
+            
+            # Update the variables
+            log.info(f"Newton {ii} - [StepR, StepZ]: {x_new-x}")
+            x = x_new
+           
+            if any((xi < lwb) or (xi > upb) for xi, lwb, upb in zip(x, self._map.domain)):
+                log.info(f"Newton {ii} - out of domain")
                 return None
 
-            ic = np.array([s, theta, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-            self.history.append(ic[0:1].copy())
+            self.history.append(x.copy())
 
         if succeeded:
-            return np.array([s, theta, zeta], dtype=np.float64)
+            return x
         else:
             return None
+
+    def _newton_method(self, guess, niter, tol):
+        x = np.array(guess, dtype=np.float64)
+        self.history.append(x.copy())
+        succeeded = False
+
+        for ii in range(niter):
+            log.info(f"Newton {ii} - RZ : {x}")
+
+            df = self._map.df(self.t, x)
+            x_evolved = self._map.f(self.t, x)
+            
+            # Stop if the resolution is good enough
+            log.info(f"Newton {ii} - [DeltaR, DeltaZ] : {x_evolved-x}")
+            if np.linalg.norm(x_evolved-x) < tol:
+                succeeded = True
+                break
+            
+            # Newton's step
+            delta_x = x_evolved - x
+            step = np.linalg.solve(df-np.eye(self._map.dimension), -1*delta_x)
+            x_new = x + step
+            
+            # Update the variables
+            log.info(f"Newton {ii} - [StepR, StepZ]: {x_new-x}")
+            x = x_new
+           
+            if any((xi < lwb) or (xi > upb) for xi, lwb, upb in zip(x, self._map.domain)):
+                log.info(f"Newton {ii} - out of domain")
+                return None
+
+            self.history.append(x.copy())
+
+        if succeeded:
+            return x
+        else:
+            return None
+    
+
+    # Plotting method
 
     def plot(
         self, plottype=None, xlabel=None, ylabel=None, xlim=None, ylim=None, **kwargs
@@ -259,303 +312,3 @@ class FixedPoint(BaseSolver):
                 plt.xlim(xlim)
             if ylim is not None:
                 plt.ylim(ylim)
-
-    def _newton_method_2(
-        self, pp, qq, s_guess, sbegin, send, theta_guess, zeta, dzeta, niter, tol
-    ):
-        """driver to run Newton's method for two variable (s,theta)
-        pp,qq -- integers, the numerator and denominator of the rotation number
-        s_guess -- the guess of s
-        sbegin -- the allowed minimum s
-        send -- the allowed maximum s
-        theta_guess -- the guess of theta
-        zeta -- the toroidal plain to investigate
-        dzeta -- period in zeta
-        niter -- the maximum number of iterations
-        tol -- the tolerance of finding a fixed point
-        """
-
-        self.successful = False
-
-        s = s_guess
-        theta = theta_guess
-
-        # set up the initial condition
-        ic = np.array([s, theta, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-        self.history.append(ic[0:1].copy())
-
-        t0 = zeta
-        dt = dzeta
-
-        succeeded = False
-
-        st = np.array([s, theta], dtype=np.float64)
-
-        for ii in range(niter):
-            t = t0
-            self._integrator.set_initial_value(t0, ic)
-            for jj in range(qq):
-                output = self._integrator.integrate(t + dt)
-                t = t + dt
-
-            dtheta = output[1] - theta - dzeta * pp
-            ds = output[0] - s
-            dst = np.array([ds, dtheta], dtype=np.float64)
-            jacobian = np.array(
-                [[output[2], output[4]], [output[3], output[5]]], dtype=np.float64
-            )
-
-            # if the resolution is good enough
-            if np.sqrt(dtheta ** 2 + ds ** 2) < tol:
-                succeeded = True
-                break
-
-            # Newton's step
-            st_new = st - np.matmul(np.linalg.inv(jacobian - np.eye(2)), dst)
-            s = st_new[0]
-            theta = st_new[1]
-            st = st_new
-
-            if s > send or s < sbegin:  # search failed, return None
-                return None
-
-            ic = np.array([s, theta, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-            self.history.append(ic[0:1].copy())
-
-        if succeeded:
-            self.successful = True
-            return np.array([s, theta, zeta], dtype=np.float64)
-        else:
-            return None    
-
-    def _newton_method_3(
-        self, pp, qq, R_guess, Rbegin, Rend, Z, zeta, dzeta, niter, tol
-    ):
-        """driver to run Newton's method for one variable R, for cylindrical problem
-        pp,qq -- integers, the numerator and denominator of the rotation number
-        R_guess -- the guess of R
-        Rbegin -- the allowed minimum R
-        Rend -- the allowed maximum R
-        Z -- the Z value (fixed)
-        zeta -- the toroidal plain to investigate
-        dzeta -- period in zeta
-        niter -- the maximum number of iterations
-        tol -- the tolerance of finding a fixed point
-        """
-
-        R = R_guess
-        R0 = self._problem._R0
-        Z0 = self._problem._Z0
-        theta = np.arctan2(Z-Z0, R-R0)
-
-        # set up the initial condition
-        ic = np.array([R, Z, R0, Z0, theta, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-        self.history.append(ic[0:1].copy())
-
-        t0 = zeta
-        dt = dzeta
-
-        succeeded = False
-
-        for ii in range(niter):
-            t = t0
-            self._integrator.set_initial_value(t0, ic)
-
-            for jj in range(qq):
-                output = self._integrator.integrate(t + dt)
-                t = t + dt
-
-            dtheta = output[4] - theta - dzeta * pp
-            print(f"[R,Z] : {[output[0], output[1]]} - dtheta : {dtheta}")
-
-            dR = output[5]
-            dZ = output[6]
-            
-            deltaR = output[0] - R0
-            deltaZ = output[1] - Z0
-
-            jacobian = (deltaR * dZ - deltaZ * dR) / (deltaR**2 + deltaZ**2)
-
-            # if the resolution is good enough
-            if abs(dtheta) < tol:
-                succeeded = True
-                break
-            R_new = R - dtheta / jacobian
-            R = R_new
-            print(f"R : {R}")
-            theta = np.arctan2(Z-Z0, R-R0)
-
-            if R > Rend or R < Rbegin:  # search failed, return None
-                return None
-
-            ic = np.array([R, Z, R0, Z0, theta, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-            self.history.append(ic[0:1].copy())
-
-        if succeeded:
-            return np.array([R, Z, zeta], dtype=np.float64)
-        else:
-            return None
-    
-    def _newton_method_RZ(
-        self, pp, qq, x_guess, niter, tol, checkonly
-    ):
-        # Set up the initial guess
-        RZ = np.array([R_guess, Z_guess], dtype=np.float64)
-
-        # Set up the initial condition  
-        RZ_Axis = np.array([self._problem._R0, self._problem._Z0], dtype=np.float64)
-        rhotheta = np.array([np.linalg.norm(RZ-RZ_Axis), np.arctan2(RZ[1]-RZ_Axis[1], RZ[0]-RZ_Axis[0])], dtype=np.float64)
-        
-        ic = np.array([RZ[0], RZ[1], RZ_Axis[0], RZ_Axis[1], rhotheta[1], 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-        
-        self.history_Revolved = []
-        self.history.append(ic[0:2].copy())
-        
-        t0 = zeta
-        dt = dzeta
-
-        succeeded = False
-
-        for ii in range(niter):
-
-            t = t0
-            self._integrator.set_initial_value(t0, ic)
-
-            for jj in range(qq):
-                output = self._integrator.integrate(t + dt)
-                t = t + dt
-
-            RZ_evolved = np.array([output[0],output[1]])
-            rhotheta_evolved = np.array([np.linalg.norm(RZ_evolved-RZ_Axis), 
-                                         output[4] - dzeta * pp], dtype=np.float64)
-            
-            # Stop if the resolution is good enough
-            condA = checkonly and np.linalg.norm(RZ_evolved-RZ) < tol
-            condB = (not checkonly) and abs(rhotheta_evolved[1]-rhotheta[1]) < tol
-            print(f"{ii} - [DeltaR, DeltaZ] : {RZ_evolved-RZ} - dtheta : {abs(rhotheta_evolved[1]-rhotheta[1])}")
-            if condA or condB:
-                succeeded = True
-                break
-            
-            # dG switch to the convention of 
-            # df = [[dG^R/dR, dG^r/dZ]
-            #       [dG^Z/dR, df^Z/dZ]]
-            dG = np.array([
-                [output[5], output[7]],
-                [output[6], output[8]]
-            ], dtype=np.float64)
-
-            if not checkonly:
-                # dH = dH(G(R,Z))
-                deltaRZ = RZ_evolved - RZ_Axis
-                dH = np.array([
-                    np.array([deltaRZ[0], deltaRZ[1]], dtype=np.float64) / np.sqrt(deltaRZ[0]**2 + deltaRZ[1]**2),
-                    np.array([-deltaRZ[1], deltaRZ[0]], dtype=np.float64) / (deltaRZ[0]**2 + deltaRZ[1]**2)
-                ], dtype=np.float64)
-
-                # dP = dH(R,Z)
-                deltaRZ = RZ - RZ_Axis
-                dP = np.array([
-                    np.array([deltaRZ[0], deltaRZ[1]], dtype=np.float64) / np.sqrt(deltaRZ[0]**2 + deltaRZ[1]**2),
-                    np.array([-deltaRZ[1], deltaRZ[0]], dtype=np.float64) / (deltaRZ[0]**2 + deltaRZ[1]**2)
-                ], dtype=np.float64)
-                
-                # Jacobian of the map F = H(G(R,Z)) - H(R,Z) 
-                jacobian = dH @ dG - dP
-                
-                # Map F = H(G(R,Z)) - H(R,Z)
-                F_evolved = rhotheta_evolved-rhotheta
-
-            else:
-                # Jacobian of the map F = G(R,Z) - (R,Z)
-                jacobian = dG - np.eye(2)
-
-                # Map F = G(R,Z) - (R,Z)
-                F_evolved = RZ_evolved-RZ
-
-            # Newton's step
-            step = np.linalg.solve(jacobian, -1*F_evolved)
-            RZ_new = RZ + step
-            
-            # Update the variables
-            print(f"{ii} - [StepR, StepZ]: {RZ_new-RZ}")
-            RZ = RZ_new
-            rhotheta = np.array([np.linalg.norm(RZ-RZ_Axis), 
-                                 np.arctan2(RZ[1]-RZ_Axis[1], RZ[0]-RZ_Axis[0])], dtype=np.float64)
-
-            print(f"{ii+1} - RZ : {RZ} - rhotheta : {rhotheta}")
-            # Check if the search is out of the provided R domain
-            if RZ[0] > Rend or RZ[0] < Rbegin:
-                return None
-            
-            ic = np.array([RZ[0], RZ[1], RZ_Axis[0], RZ_Axis[1], rhotheta[1], 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-
-            self.history.append(ic[0:2].copy())
-            self.history_Revolved.append(RZ_evolved)
-
-        if succeeded:
-            #assert abs(rhotheta_evolved[1]-rhotheta[1]) < 1e-3, "Found fixed-point as not the right poloidal number (pp)"
-            return np.array([RZ[0], RZ[1], zeta], dtype=np.float64)
-        else:
-            return None
-    
-    def find_axis(
-        self, R_guess, Z_guess, niter=100
-    ):
-        
-        # Set up the initial guess
-        RZ = np.array([R_guess, Z_guess], dtype=np.float64)
-        
-        # Set up the
-        self.history = []
-        self.history.append(ic[0:2].copy())
-        
-        succeeded = False
-
-        for ii in range(self.niter):
-                
-            # Integrate to the next periodic plane
-            dG = self._problem.df(0.0, ic)
-            RZ_evolved = self._problem.f(0.0, ic)
-            
-
-            # Stop if the resolution is good enough
-            print(f"{ii} - dr : {np.linalg.norm(RZ_evolved-RZ)}")
-            if np.linalg.norm(RZ_evolved-RZ) < tol:
-                succeeded = True
-                break
-            
-            # dG switch to the convention of 
-            # df = [[dG^R/dR, dG^r/dZ]
-            #       [dG^Z/dR, df^Z/dZ]]
-            dG = np.array([
-                [output[2], output[4]],
-                [output[3], output[5]]
-            ], dtype=np.float64)
-
-            # Jacobian of the map F = G(R,Z) - (R,Z)
-            jacobian = dG - np.eye(2)
-
-            # Map F = G(R,Z) - (R,Z)
-            F_evolved = RZ_evolved-RZ
-
-            # Newton's step
-            step = np.linalg.solve(jacobian, -1*F_evolved)
-            RZ_new = RZ + step
-            
-            # Update the variables
-            RZ = RZ_new
-           
-            print(f"{ii+1} - RZ : {RZ}")
-            # Check if the search is out of the provided R domain
-            if RZ[0] > Rend or RZ[0] < Rbegin:
-                return None
-            
-            ic = np.array([RZ[0], RZ[1], 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-
-            self.history.append(ic[0:2].copy())
-
-        if succeeded:
-            return np.array([RZ[0], RZ[1], t0], dtype=np.float64)
-        else:
-            return None
