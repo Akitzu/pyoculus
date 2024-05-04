@@ -14,8 +14,10 @@ class ToroidalBfield(IntegrationMap, BfieldProblem):
     Class that sets up a Map given by following the a magnetic field in toroidal system :math:`(s, \\theta, \\zeta)`.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, phi0=0., Nfp=1, **kwargs):
         super().__init__(dim=2, **kwargs)
+        self.phi0 = phi0
+        self.Nfp = Nfp
 
     ## BaseMap methods
 
@@ -31,7 +33,7 @@ class ToroidalBfield(IntegrationMap, BfieldProblem):
 
     @overrides
     def lagrangian(self, y0, t):
-        self._integrator.change_rhs(self._rhs_RZ_A)
+        self._integrator.change_rhs(self._ode_rhs_A)
         return self._integrate(t, y0)
 
     ## Integration methods
@@ -88,3 +90,6 @@ class ToroidalBfield(IntegrationMap, BfieldProblem):
         df[2:6] = deltax.flatten()
 
         return df
+
+    def _ode_rhs_A():
+        raise NotImplementedError("A is not implemented.")

@@ -16,7 +16,7 @@ class CylindricalBfield(IntegrationMap, BfieldProblem):
         Nfp (int): The number of field periods, default is 1. Gives the periodicity of the magnetic field (T = 2*pi/Nfp).
     """
 
-    def __init__(self, phi0, R0=None, Z0=None, Nfp=1, finderargs=dict(), **kwargs):
+    def __init__(self, phi0=0., R0=None, Z0=None, Nfp=1, finderargs=dict(), **kwargs):
         """
         Initializes the CylindricalBfield object and calls the IntegrationMap constructor. If R0 or Z0 is not provided, the magnetic axis will be found using a FixedPoint solver.
         """
