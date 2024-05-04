@@ -46,7 +46,7 @@ class BaseMap:
             "A BaseMap object should have a jacobian mapping df method."
         )
 
-    def lagrangian(self, y0, t = None):
+    def lagrangian(self, y0, t=None):
         """
         Calculates the Lagrangian at a given point or the difference in Lagrangian between two points.
 

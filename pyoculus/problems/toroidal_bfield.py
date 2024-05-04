@@ -3,39 +3,80 @@
 #  @author Zhisong Qu (zhisong.qu@anu.edu.au)
 #
 
-from .toroidal_map import ToroidalProblem
+from overrides import overrides
+from .integration_map import IntegrationMap
 from .bfield_problem import BfieldProblem
 import numpy as np
 
 
-class ToroidalBfield(ToroidalProblem, BfieldProblem):
-    def __init__(self):
-        """! Set up the problem with two cyclical coordinates, e.g. \f[ (s, \theta, \zeta)  \f]"""
-        super().__init__()
+class ToroidalBfield(IntegrationMap, BfieldProblem):
+    """
+    Class that sets up a Map given by following the a magnetic field in toroidal system :math:`(s, \\theta, \\zeta)`.
+    """
 
-    def f(self, zeta, st, *args):
-        """! Returns ODE RHS
-        @param zeta cylindrical angle in ODE
-        @param st \f$(s, \theta)\f$ in ODE
-        @param *args extra parameters for the ODE
-        @returns the RHS of the ODE
+    def __init__(self, **kwargs):
+        super().__init__(dim=2, **kwargs)
+
+    ## BaseMap methods
+
+    @overrides
+    def f(self, t, y0):
+        self._integrator.change_rhs(self._ode_rhs)
+        return self._integrate(t, y0)
+
+    @overrides
+    def df(self, t, y0):
+        self._integrator.change_rhs(self._ode_rhs_tangent)
+        return self._integrate(t, y0)
+
+    @overrides
+    def lagrangian(self, y0, t):
+        self._integrator.change_rhs(self._rhs_RZ_A)
+        return self._integrate(t, y0)
+
+    ## Integration methods
+
+    def _integrate(self, t, y0):
         """
-        stz = np.array([st[0], st[1], zeta])
+        Integrates the ODE for a number of periods.
+        """
+        dphi = t * 2 * np.pi / self.Nfp
+        y = np.array(y0)
+        self._integrator.set_initial_value(self.phi0, y)
+        return self._integrator.integrate(self.phi0 + dphi)
+
+    def _ode_rhs(self, phi, st, *args):
+        """
+        Calculates the right-hand side (RHS) of the ODE.
+
+        Args:
+            phi (float): The current cylindrical angle.
+            st (array): The cylindrical coordinates :math:`(s, \\theta)` in the ODE.
+            *args: Additional parameters for the ODE.
+
+        Returns:
+            array: The RHS of the ODE.
+        """
+        stz = np.array([st[0], st[1], phi])
         B = self.B(stz, *args)
-        f = np.array([B[0] / B[2], B[1] / B[2]])
-        return f
+        return np.array([B[0] / B[2], B[1] / B[2]])
 
-    def f_tangent(self, zeta, st, *args):
-        """! Returns ODE RHS, with tangent
-        @param zeta cylindrical angle in ODE
-        @param st \f$(s, \theta, ds_1, d\theta_1, ds_2, d\theta_2)\f$ in ODE
-        @param *args extra parameters for the ODE
-        @returns the RHS of the ODE, with tangent
+    def _ode_rhs_tangent(self, phi, y, *args):
         """
-        stz = np.array([st[0], st[1], zeta])
+        Calculates the right-hand side (RHS) of the ODE with differential of the dependent variables.
+
+        Args:
+            phi (float): The current cylindrical angle.
+            st (array): The cylindrical coordinates :math:`(s, \\theta, ds_1, d\\theta_1, ds_2, d\\theta_2))` in the ODE.
+            *args: Additional parameters for the ODE.
+
+        Returns:
+            array: The RHS of the ODE.
+        """
+        stz = np.array([y[0], y[1], phi])
         Bu, dBu = self.dBdX(stz, *args)
 
-        deltax = np.reshape(st[2:], [2,2])
+        deltax = np.reshape(y[2:], [2, 2])
         gBzeta = Bu[2]
 
         M = dBu[0:2, 0:2] * gBzeta - dBu[0:2, 2, np.newaxis] * Bu[0:2]

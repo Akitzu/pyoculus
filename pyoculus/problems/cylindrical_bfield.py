@@ -7,8 +7,8 @@ import numpy as np
 
 class CylindricalBfield(IntegrationMap, BfieldProblem):
     """
-    Class that sets up a Map given by following the a magnetic field in cylindrical system :math:`(R, \varphi, Z)`.
-    
+    Class that sets up a Map given by following the a magnetic field in cylindrical system :math:`(R, \\varphi, Z)`.
+
     Attributes:
         phi0 (float): The cylindrical angle from which to start following the field.
         R0 (float): The major radius of the magnetic axis in the phi0 plane.
@@ -20,16 +20,16 @@ class CylindricalBfield(IntegrationMap, BfieldProblem):
         """
         Initializes the CylindricalBfield object and calls the IntegrationMap constructor. If R0 or Z0 is not provided, the magnetic axis will be found using a FixedPoint solver.
         """
+        super().__init__(dim=2, **kwargs)
         self.phi0 = phi0
+        self.Nfp = Nfp
 
         if R0 is None or Z0 is None:
             axisfinder = FixedPoint(self)
             R0, Z0 = axisfinder.find_axis(finderargs)
-            
+
         self.R0 = R0
         self.Z0 = Z0
-        self.Nfp = Nfp
-        super().__init__(dim=2, **kwargs)
 
     ## BaseMap methods
 
@@ -47,10 +47,13 @@ class CylindricalBfield(IntegrationMap, BfieldProblem):
     def lagrangian(self, y0, t):
         self._integrator.change_rhs(self._rhs_RZ_A)
         return self._integrate(t, y0)
-    
+
     ## Integration methods
 
     def _integrate(self, t, y0):
+        """
+        Integrates the ODE for a number of periods.
+        """
         dphi = t * 2 * np.pi / self.Nfp
         y = np.array(y0)
         self._integrator.set_initial_value(self.phi0, y)
@@ -76,7 +79,9 @@ class CylindricalBfield(IntegrationMap, BfieldProblem):
         deltaR = R - R0
         deltaZ = Z - Z0
         # dartan2(Z-Z0, R-R0)/d(R-R0) * d(R-R0)/dphi + dartan2(Z-Z0, R-R0)/d(Z-Z0) * d(Z-Z0)/dphi
-        dtheta = (deltaR * (dRZ[1] - dRZ0[1]) - deltaZ * (dRZ[0] - dRZ0[0])) / (deltaR ** 2 + deltaZ ** 2)
+        dtheta = (deltaR * (dRZ[1] - dRZ0[1]) - deltaZ * (dRZ[0] - dRZ0[0])) / (
+            deltaR**2 + deltaZ**2
+        )
 
         return np.array([*dRZ, *dRZ0, dtheta])
 
@@ -140,25 +145,33 @@ class CylindricalBfield(IntegrationMap, BfieldProblem):
         dBdRphiZ = np.array(dBdRphiZ, dtype=np.float64)
 
         # R, Z evolution as in _rhs_RZ
-        dRdphi = Bfield[0]/Bfield[1]
-        dZdphi = Bfield[2]/Bfield[1]
+        dRdphi = Bfield[0] / Bfield[1]
+        dZdphi = Bfield[2] / Bfield[1]
 
         # Matrix of the derivatives of (B^R/B^phi, B^Z/B^phi) with respect to (R, Z)
-        M[0,0] = dBdRphiZ[0,0] / Bfield[1]  - Bfield[0] / Bfield[1]**2 * dBdRphiZ[1,0]
-        M[0,1] = dBdRphiZ[0,2] / Bfield[1]  - Bfield[0] / Bfield[1]**2 * dBdRphiZ[1,2]
-        M[1,0] = dBdRphiZ[2,0] / Bfield[1]  - Bfield[2] / Bfield[1]**2 * dBdRphiZ[1,0]
-        M[1,1] = dBdRphiZ[2,2] / Bfield[1]  - Bfield[2] / Bfield[1]**2 * dBdRphiZ[1,2]
+        M[0, 0] = (
+            dBdRphiZ[0, 0] / Bfield[1] - Bfield[0] / Bfield[1] ** 2 * dBdRphiZ[1, 0]
+        )
+        M[0, 1] = (
+            dBdRphiZ[0, 2] / Bfield[1] - Bfield[0] / Bfield[1] ** 2 * dBdRphiZ[1, 2]
+        )
+        M[1, 0] = (
+            dBdRphiZ[2, 0] / Bfield[1] - Bfield[2] / Bfield[1] ** 2 * dBdRphiZ[1, 0]
+        )
+        M[1, 1] = (
+            dBdRphiZ[2, 2] / Bfield[1] - Bfield[2] / Bfield[1] ** 2 * dBdRphiZ[1, 2]
+        )
 
         dRZ = np.matmul(M, dRZ)
 
         return np.array([dRdphi, dZdphi, dRZ[0, 0], dRZ[1, 0], dRZ[0, 1], dRZ[1, 1]])
-    
+
     # dLangrangian ODE RHS
 
     def _rhs_RZ_A(self, phi, y, *args):
         """
         Returns RHS of the ODE for the integral of the vector potential along the field line.
-        
+
         Args:
             phi (float): The current cylindrical angle.
             y (array): The current R, Z, integral of A.
@@ -174,8 +187,8 @@ class CylindricalBfield(IntegrationMap, BfieldProblem):
 
         # Integral of A, step
         dl = np.array([dRdphi, 1, dZdphi])
-        dl = np.array([1, y[0]**2, 1])*dl
-        
+        dl = np.array([1, y[0] ** 2, 1]) * dl
+
         dintegralAdphi = np.dot(A, dl)
 
         return np.array([dRdphi, dZdphi, dintegralAdphi])
