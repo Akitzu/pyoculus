@@ -25,11 +25,18 @@ class CylindricalBfield(IntegrationMap, BfieldProblem):
         self.Nfp = Nfp
 
         if R0 is None or Z0 is None:
-            axisfinder = FixedPoint(self)
-            R0, Z0 = axisfinder.find_axis(finderargs)
+            self.find_axis(finderargs)
+        else:
+            self.R0 = R0
+            self.Z0 = Z0
 
-        self.R0 = R0
-        self.Z0 = Z0
+    def find_axis(self, **kwargs):
+        """
+        Finds the magnetic axis using a FixedPoint solver.
+        """
+        axisfinder = FixedPoint(self)
+        axisfinder.find(1, **kwargs)
+        self.R0, self.Z0 = axisfinder.coords[0]
 
     ## BaseMap methods
 
@@ -40,13 +47,15 @@ class CylindricalBfield(IntegrationMap, BfieldProblem):
 
     @overrides
     def df(self, t, y0):
+        ic = np.array([*y0, 1., 0., 0., 1.])
         self._integrator.change_rhs(self._ode_rhs_tangent)
-        return self._integrate(t, y0)
+        return self._integrate(t, ic)
 
     @overrides
     def lagrangian(self, y0, t):
+        ic = np.array([*y0, 0.])
         self._integrator.change_rhs(self._rhs_RZ_A)
-        return self._integrate(t, y0)
+        return self._integrate(t, ic)
 
     ## Integration methods
 

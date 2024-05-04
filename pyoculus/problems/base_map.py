@@ -1,3 +1,5 @@
+import numpy as np
+
 class BaseMap:
     """
     Defines a base class for a map object.
@@ -14,15 +16,20 @@ class BaseMap:
         lagrangian: This method calculates the Lagrangian, as defined in the paper by Meiss (https://doi.org/10.1063/1.4915831).
     """
 
-    def __init__(self, dim=2, continuous=True):
+    def __init__(self, dim=2, continuous=True, domain=None):
         """Initializes BaseMap object.
 
         Args:
             dim (int): Dimension of the map.
             continuous (bool): Whether the map is continuous.
+            domain (list of tuples, optional): The domain of the map. Each tuple should contain the lower and upper bounds for each dimension. If None, the domain is assumed to be (-inf, inf) for each dimension.
         """
+        if domain is None:
+            domain = [(-np.inf, np.inf)]*dim
+
         self.dimension = dim
         self.is_continous = continuous
+        self.domain = domain
 
     def f(self, t, y0):
         """
