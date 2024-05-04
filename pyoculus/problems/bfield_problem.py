@@ -3,61 +3,80 @@
 #  @author Zhisong Qu (zhisong.qu@anu.edu.au)
 #
 
-class BfieldProblem():
 
+class BfieldProblem:
     def __init__(self):
-        """! Set up the problem
+        """
+        Initializes the BfieldProblem class.
         """
         ## if the output magnetic field contains the jacobian factor or not
         self.has_jacobian = False
 
-
     def B(self, coords, *args):
-        """! Returns magnetic fields
-        @param coordinates
-        @param *args extra parameters
-        @returns the contravariant magnetic fields
         """
-        raise NotImplementedError("A problem class should implement member function B")
+        Returns the contravariant magnetic fields at the given coordinates.
+
+        Args:
+            coords (array): The coordinates at which to calculate the magnetic fields.
+            *args: Additional parameters.
+        """
+        raise NotImplementedError("A problem class should implement member function B.")
 
     def dBdX(self, coords, *args):
-        """! Returns magnetic fields
-        @param coordinates
-        @param *args extra parameters
-        @returns B, dBdX, the contravariant magnetic fields, the derivatives of them
+        """
+        Returns the contravariant magnetic fields and their derivatives at the given coordinates.
+
+        Args:
+            coords (array): The coordinates at which to calculate the magnetic fields and their derivatives.
+            *args: Additional parameters.
+
+        Returns:
+            array: The contravariant magnetic fields
+            array: The derivatives of the contravariant magnetic fields
         """
         raise NotImplementedError(
-            "A problem class should implement member function dBdX"
+            "A problem class should implement member function dBdX."
         )
+
+    def A(self, coords, *args):
+        """
+        Returns the contravariant vector potential at the given coordinates.
+
+        Args:
+            coords (array): The coordinates at which to calculate the vector potential.
+            *args: Additional parameters.
+        """
+        raise NotImplementedError("Vector potential is not implemented.")
 
     def B_many(self, x1arr, x2arr, x3arr, input1D=True, *args):
-        """! Returns magnetic fields, with multipy coordinate inputs
-        @param x1arr the first coordinates. Should have the same length as the other two if input1D=True.
-        @param x2arr the second coordinates. Should have the same length as the other two if input1D=True.
-        @param x3arr the third coordinates. Should have the same length as the other two if input1D=True.
-        @param input1D if False, create a meshgrid with sarr, tarr and zarr, if True, treat them as a list of points
-        @param *args extra parameters
-        @returns the contravariant magnetic fields
         """
-        raise NotImplementedError("B_many is not implemented")
+        Returns the contravariant magnetic fields at multiple coordinates.
+
+        Args:
+            x1arr, x2arr, x3arr (arrays): The coordinates at which to calculate the magnetic fields.
+            input1D (bool, optional): If False, create a meshgrid with x1arr, x2arr and x3arr. If True, treat them as a list of points.
+            *args: Additional parameters.
+        """
+        raise NotImplementedError("B_many is not implemented.")
 
     def dBdX_many(self, x1arr, x2arr, x3arr, input1D=True, *args):
-        """! Returns magnetic fields
-        @param x1arr the first coordinates. Should have the same length as the other two if input1D=True.
-        @param x2arr the second coordinates. Should have the same length as the other two if input1D=True.
-        @param x3arr the third coordinates. Should have the same length as the other two if input1D=True.
-        @param input1D if False, create a meshgrid with sarr, tarr and zarr, if True, treat them as a list of points
-        @param *args extra parameters
-        @returns B, dBdX, the contravariant magnetic fields, the derivatives of them
         """
-        raise NotImplementedError(
-            "dBdX_many is not implemented"
-        )
-    
-    def A(self, coords, *args):
-        """! Returns vector potential
-        @param coordinates
-        @param *args extra parameters
-        @returns the vector potential
+        Returns the contravariant magnetic fields and their derivatives at multiple coordinates.
+
+        Args:
+            x1arr, x2arr, x3arr (arrays): The coordinates at which to calculate the magnetic fields and their derivatives.
+            input1D (bool, optional): If False, create a meshgrid with x1arr, x2arr and x3arr. If True, treat them as a list of points.
+            *args: Additional parameters.
         """
-        raise NotImplementedError("Vector potential is not implemented")
+        raise NotImplementedError("dBdX_many is not implemented.")
+
+    def A_many(self, x1arr, x2arr, x3arr, input1D=True, *args):
+        """
+        Returns the contravariant vector potential at multiple coordinates.
+
+        Args:
+            x1arr, x2arr, x3arr (arrays): The coordinates at which to calculate the vector potential.
+            input1D (bool, optional): If False, create a meshgrid with x1arr, x2arr and x3arr. If True, treat them as a list of points.
+            *args: Additional parameters.
+        """
+        raise NotImplementedError("A_many is not implemented.")

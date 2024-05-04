@@ -3,7 +3,7 @@
 #  @author Zhisong Qu (zhisong.qu@anu.edu.au)
 #
 
-from .toroidal_problem import ToroidalProblem
+from .toroidal_map import ToroidalProblem
 from .bfield_problem import BfieldProblem
 import numpy as np
 
