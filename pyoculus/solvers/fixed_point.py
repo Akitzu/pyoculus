@@ -4,113 +4,82 @@
 #
 
 from .base_solver import BaseSolver
-from pyoculus.problems.cylindrical_problem import CylindricalProblem
-from pyoculus.problems.toroidal_problem import ToroidalProblem
+from ..problems import BaseMap
 import numpy as np
 
-## Class that used to setup the fixed point finder.
+import structlog
+log = structlog.get_logger()
+
 class FixedPoint(BaseSolver):
-    def __init__(
-        self, problem, params=dict(), integrator=None, integrator_params=dict(), evolve_axis=True
-    ):
-        """! Set up the class of the fixed point finder
-        @param problem must inherit pyoculus.problems.BaseProblem, the problem to solve
-        @param params dict, the parameters for the solver
-        @param integrator the integrator to use, must inherit \pyoculus.integrators.BaseIntegrator, if set to None by default using RKIntegrator
-        @param integrator_params dict, the parmaters passed to the integrator
+    """
+    Fixed point class to find points that satisfy f^t(x) = x.
+    """
 
-        <code> params['niter']=100 </code> -- the maximum number of Newton iterations
-
-        <code> params['theta']=None </code>-- if we look for fixed point on some symmetry line
-                        =None : theta is also a free variable to look for
-                        =somenumber : only look for theta with this number
-
-        <code> params['zeta']=0.0 </code>-- the toroidal plane we are after
-
-        <code> params['nrestart']=1 </code>-- if search failed, the number of time to restart (randomly within the domain)
+    def find(self, t, guess, niter=100, nrestart=0, tol=1e-10):
         """
+        Finds a fixed point of a map applied 't' times.    
+        """
+        if not self._map.is_continuous and not isinstance(t, int):
+            raise ValueError("The iteration number should be an integer for a discrete map.")
 
-        if "niter" not in params.keys():
-            params["niter"] = 100
+        self.t = t
+        self.history = []
+        x_fp = None
 
-        if "theta" not in params.keys():
-            params["theta"] = None
+        # set up the guess
+        if len(guess) != self._map.dimension:
+            raise ValueError("The guess should have the same dimension as the map domain.")
 
-        if "zeta" not in params.keys():
-            params["zeta"] = 0.0
+        # run the Newton's method
+        for ii in range(nrestart+1):
+            try:  # run the solver, if failed, try a different random initial condition
+                x_fp, jac = self._newton_method(guess, niter, tol)
+                if self.successful:
+                    break
+            except Exception as e:
+                log.info(f"Search {ii} - failed: {e}")
+            
+            if ii < nrestart:
+                log.info(f"Search {ii+1} starting from a random initial guesss!")
+                guess = self.random_initial_guess()
 
-        if "nrestart" not in params.keys():
-            params["nrestart"] = 1
+        if x_fp is not None:
+            self.coords = x_fp
+            self.jacobians = jac
 
-        # detect the type of the problem
-        if isinstance(problem, ToroidalProblem):
-            self._is_cylindrical_problem = False
-            if "theta" not in params.keys():
-                params["theta"] = None
-
-            if params["theta"] is None:
-                self.is_theta_fixed = False
-            else:
-                self.is_theta_fixed = True
-
-        elif isinstance(problem, CylindricalProblem):
-            self._is_cylindrical_problem = True
-            if "Z" not in params.keys():
-                params["Z"] = None
-
-            if params["Z"] is None:
-                self.is_Z_fixed = False
-            else:
-                self.is_Z_fixed = True
+            rdata = FixedPoint.OutputData()
+            rdata.coords = self.coords.copy()
+            rdata.jacobians = self.jacobians.copy()
 
         else:
-            raise TypeError(
-                "problem should inherit either ToroidalProblem or CylindricalProblem"
-            )
+            rdata = None
+            log.info(f"Fixed point search unsuccessful for t={self.t}.")
+
+        return rdata
+
+    def find_with_iota(self, pp, qq, guess, x_axis = None, niter=100, nrestart=0, tol=1e-10):
+        """
+        Computes the fixed point of a continuous map with winding number iota = q^-1 = pp/qq around x_axis.
+
+        Args:
+            guess (array): the initial guess of the fixed point
+            x_axis (array): the point around which the winding number is calculated 
+            niter (int): the maximum number of iterations
+            nrestarts (int): the maximum number of restart with different initial conditions
+            tol (float): the tolerance of the fixed point
+
+        Returns:
+            coords (array): the fixed point in the coordinates of the problem
+            jac (array): the Jacobian the fixed point
+            GreenesResidues (array): the Greene's Residue of the fixed point
+            MeanResidues (array): the 'Average Residue' f as defined by Greene
+        """
+
+        if not self._map.is_continuous:
+            raise ValueError("The map needs to be continuous to find a fixed point with a winding number.")
         
-        if evolve_axis:
-            integrator_params["ode"] = problem.f_tangent
-        else:
-            integrator_params["ode"] = problem.f_RZ_tangent
-
-        super().__init__(
-            problem=problem,
-            params=params,
-            integrator=integrator,
-            integrator_params=integrator_params,
-        )
-
-        self.Nfp = problem.Nfp
-        self.niter = params["niter"]
-        self.nrestart = params["nrestart"]
-
-    def compute(self, guess, pp, qq, sbegin=-1.0, send=1.0, tol=None, checkonly=True):
-        """! Looks for the fixed point with rotation number pp/qq
-        @param guess the initial guess, `[s, theta]`, if `params['theta'] == None`, `[s]`, if `params['theta'] ==` somevalue
-        @param pp integer, the numerator (toroidal number) of the rotation number (iota = q^-1)
-        @param qq integer, the denominator (poloidal number) of the rotation number (iota = q^-1)
-        @param sbegin=-1.0 the allowed minimum s or R
-        @param send=1.0    the allowed maximum s or R
-        @param tol=self._integrator_params['rtol']*qq -- the tolerance of the fixed point
-        @param checkonly=False, if set to True finds the fixed point in (R,Z) plane and then checks if the poloidal number is correct
-
-        @returns rdata a class that contains the results that contains
-        `rdata.x,rdata.y,rdata.z` -- the fixed points in xyz coordinates
-
-        `rdata.s,rdata,theta,rdata,zeta` -- the fixed points in s,theta,zeta coordinates
-
-        `rdata.jacobian` -- the Jacobian of the fixed point constructed by following the tangent map
-
-        `rdata.GreenesResidue` -- the Greene's Residue of the fixed point
-
-        `rdata.MeanResidue` -- the 'Average Residue' f as defined by Greene
-        """
-
         if not isinstance(pp, int) or not isinstance(qq, int):
             raise ValueError("pp and qq should be integers")
-
-        if tol is None:
-            tol = self._integrator_params["rtol"] * qq
 
         if pp * qq >= 0:
             pp = int(np.abs(pp))
@@ -118,264 +87,110 @@ class FixedPoint(BaseSolver):
         else:
             pp = -int(np.abs(pp))
             qq = int(np.abs(qq))
-        # if np.gcd(pp, qq) != 1:
+
+        gcd = np.gcd(pp, qq)
+        self.t = qq // gcd
 
         self.pp = pp
         self.qq = qq
-        self.dzeta = 2 * np.pi / self.Nfp
 
         # arrays that save the data
-        self.s = np.zeros([qq + 1], dtype=np.float64)
-        self.theta = np.zeros([qq + 1], dtype=np.float64)
-        self.zeta = np.zeros([qq + 1], dtype=np.float64)
-        self.x = np.zeros([qq + 1], dtype=np.float64)
-        self.y = np.zeros([qq + 1], dtype=np.float64)
-        self.z = np.zeros([qq + 1], dtype=np.float64)
-
+        self.coords = np.zeros(shape=(self.qq + 1, self._map.dimension), dtype=np.float64)
+        self.jacobians = np.zeros(shape=(self.qq + 1, self._map.dimension, self._map.dimension), dtype=np.float64)
+        self.GreenesResidues = np.zeros(self.qq + 1, dtype=np.float64)    
+        self.MeanResidues = np.zeros(self.qq + 1, dtype=np.float64)    
+        
         self.history = []
+        x_fp = None
 
         # set up the guess
-        if isinstance(guess, float):
-            s_guess = guess
-        else:
-            guess = np.array(guess, dtype=np.float64)
-            s_guess = guess[0]
-
-        if not self._is_cylindrical_problem:
-            if self._params["theta"] is None:
-                theta_guess = guess[1]
-            else:
-                theta_guess = self._params["theta"]
-        else:
-            if self._params["Z"] is None:
-                Z_guess = guess[1]
-            else:
-                Z_guess = self._params["Z"]
+        if len(guess) != self._map.dimension:
+            raise ValueError("The guess should have the same dimension as the map domain.")
 
         # run the Newton's method
-        for ii in range(self._params["nrestart"] + 1):
+        for ii in range(nrestart+1):
             try:  # run the solver, if failed, try a different random initial condition
-                if self._is_cylindrical_problem:
-                    if self.is_Z_fixed:
-                        result = self._newton_method_3(
-                            pp,
-                            qq,
-                            s_guess,
-                            sbegin,
-                            send,
-                            Z_guess,
-                            self._params["zeta"],
-                            self.dzeta,
-                            self.niter,
-                            tol,
-                        )
-                    else:
-                        result = self._newton_method_RZ(
-                            pp,
-                            qq,
-                            s_guess,
-                            sbegin,
-                            send,
-                            Z_guess,
-                            self._params["zeta"],
-                            self.dzeta,
-                            self.niter,
-                            tol,
-                            checkonly
-                        )
-                else:
-                    if self.is_theta_fixed:
-                        result = self._newton_method_1(
-                            pp,
-                            qq,
-                            s_guess,
-                            sbegin,
-                            send,
-                            theta_guess,
-                            self._params["zeta"],
-                            self.dzeta,
-                            self.niter,
-                            tol,
-                        )
-                    else:
-                        result = self._newton_method_2(
-                            pp,
-                            qq,
-                            s_guess,
-                            sbegin,
-                            send,
-                            theta_guess,
-                            self._params["zeta"],
-                            self.dzeta,
-                            self.niter,
-                            tol,
-                        )
-            except AssertionError as ae:
-                if ae.args[0] == "Found fixed-point as not the right poloidal number (pp)":
-                    rdata = FixedPoint.OutputData()
-                    rdata.failed = ae
-                    return rdata
-                else:
-                    result = None
-            except:
-                    result = None
-
-
-            if result is not None:  # if it is successful:
-                break
-            else:  # not successful, change to a random initial condition
-                print("Search failed: starting from a random initial guesss!")
-                random_guess = np.random.rand(2)
-                s_guess = sbegin + (send - sbegin) * random_guess[0]
-                if self._is_cylindrical_problem:
-                    if self._params["Z"] is None:
-                        Z_guess = random_guess[1] * (send - sbegin)
-                else:
-                    if self._params["theta"] is None:
-                        theta_guess = random_guess[1] * 2 * np.pi
+                x_fp, jac = self._newton_method_winding(guess, x_axis, niter, tol)
+                if self.successful:
+                    break
+            except Exception as e:
+                log.info(f"Search {ii} - failed: {e}")
+            
+            if ii < nrestart:
+                log.info(f"Search {ii+1} starting from a random initial guesss!")
+                guess = self.random_initial_guess()
 
         # now we go and get all the fixed points by iterating the map                
-        if result is not None:
-            t = self.zeta[0]
-            dt = 2 * np.pi / self.Nfp
+        if x_fp is not None:
+            self.coords[0] = x_fp
+            self.jacobians[0] = jac
 
-            if self._is_cylindrical_problem:
-                self.x[0] = result[0]
-                self.z[0] = result[1]
-                self.zeta[0] = self._params["zeta"]
-
-                R0 = self._problem._R0
-                Z0 = self._problem._Z0
-                theta0 = np.arctan2(result[1]-Z0, result[0]-R0)
-
-                self.theta[0] = theta0
-
-                ic = np.array([result[0], result[1], R0, Z0, theta0, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-            else:
-                self.s[0] = result[0]
-                self.theta[0] = result[1]
-                self.zeta[0] = self._params["zeta"]
-
-                ic = np.array([result[0], result[1], 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-            self._integrator.set_initial_value(t, ic)
-
-            # integrate to get a series of fixed points
-            for jj in range(1, qq + 1):
-
-                # run the integrator
-                st = self._integrator.integrate(t + dt)
-
-                # extract the result to s theta zeta
-                if self._is_cylindrical_problem:
-                    self.x[jj] = st[0]
-                    self.z[jj] = st[1]
-                    self.theta[jj] = st[4]
+            steps = 1 if self._map.is_continuous else self.pp
+            for jj in range(0, self.qq + 1, steps):
+                if self._map.is_continuous:
+                    self.coords[jj] = self._map.f(jj/self.pp * self.t, x_fp)
                 else:
-                    self.s[jj] = st[0]
-                    self.theta[jj] = st[1]
-                self.zeta[jj] = t + dt
-
-                # advance in time
-                t = t + dt
-
-            # convert coordinates
-            if not self._is_cylindrical_problem:
-                for jj in range(0, qq + 1):
-                    stz = np.array(
-                        [self.s[jj], self.theta[jj], self.zeta[jj]], dtype=np.float64
-                    )
-                    xyz = self._problem.convert_coords(stz)
-                    self.x[jj] = xyz[0]
-                    self.y[jj] = xyz[1]
-                    self.z[jj] = xyz[2]
+                    self.coords[jj] = self._map.f(jj*self.t, x_fp)
+                self.jacobians[jj] = self._map.df(jj*self.t, self.coords[jj])
+                
+            for jj in range(0, self.qq + 1, steps):
+                self.GreenesResidues[jj] = 0.25 * (2.0 - np.trace(self.jacobians[jj]))
+                self.MeanResidues[jj] = np.power(
+                    np.abs(self.GreenesResidues[jj]) / 0.25, 1 / float(self.qq)
+                )
 
             rdata = FixedPoint.OutputData()
-            rdata.failed = None
-            rdata.x = self.x.copy()
-            rdata.y = self.y.copy()
-            rdata.z = self.z.copy()
-            rdata.s = self.s.copy()
-            rdata.theta = self.theta.copy()
-            rdata.zeta = self.zeta.copy()
-
-            # the jacobian
-            if self._is_cylindrical_problem:
-                rdata.jacobian = np.array(
-                    [[st[5], st[7]], [st[6], st[8]]], dtype=np.float64
-                )
-            else:
-                rdata.jacobian = np.array(
-                    [[st[2], st[4]], [st[3], st[5]]], dtype=np.float64
-                )
-            self.jacobian = rdata.jacobian
-            
+            rdata.coords = self.coords.copy()
+            rdata.jacobians = self.jacobians.copy() 
+        
             # Greene's Residue
-            rdata.GreenesResidue = 0.25 * (2.0 - np.trace(rdata.jacobian))
-            rdata.MeanResidue = np.power(
-                np.abs(rdata.GreenesResidue) / 0.25, 1 / float(qq)
-            )
-            self.GreenesResidue = rdata.GreenesResidue
-            self.MeanResidue = rdata.MeanResidue
-
-            # set the successful flag
-            self.successful = True
+            rdata.GreenesResidues = self.GreenesResidues.copy()
+            rdata.MeanResidues = self.MeanResidues.copy()
 
         else:
             rdata = None
-            print("Fixed point search unsuccessful for pp/qq=", pp, "/", qq)
+            log.info(f"Fixed point search unsuccessful for pp/qq={self.pp}/{self.qq}.")
 
         return rdata
 
-    def compute_all_jacobians(self):
-        """! Computes the fixed point evolution and founds its other apparences as well as computing
-        the Jacobian and Greene's Residue for every apparition."""
+    def random_initial_guess(self):
+        """
+        Returns a random initial guess for the fixed point inside the map domain.
+        """
+        domain = self._map.domain
+        domain = [(low if low is not -np.inf else -1e100, high if high is not np.inf else 1e100) for (low, high) in domain]
+        return np.array([np.random.uniform(low, high) for (low, high) in domain])
 
-        if not self.successful:
-            raise Exception("A successful call of compute() is needed")
-        
-        # We iterate the map to get the fixed points and the Jacobian
-        t = self.zeta[0]
-        dt = 2 * np.pi / self.Nfp
+    def _newton_method_winding(
+            self, guess, niter, tol
+        ):
 
-        ic_list = []
-        if self._is_cylindrical_problem:
-            R0 = self._problem._R0
-            Z0 = self._problem._Z0
-            for r, z in zip(self.x[1:-2], self.z[1:-2]):
-                theta0 = np.arctan2(z-Z0, r-R0)
-                ic = np.array([r, z, R0, Z0, theta0, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-                ic_list.append(ic)
+        tmp = np.array(guess)
+        self.history.append(tmp.copy())
+
+        for ii in range(niter):
+            
+
+            dtheta = output[1] - theta - dzeta * pp
+            jacobian = output[3]
+
+            # if the resolution is good enough
+            if abs(dtheta) < tol:
+                succeeded = True
+                break
+            s_new = s - dtheta / jacobian
+            s = s_new
+
+            if s > send or s < sbegin:  # search failed, return None
+                return None
+
+            ic = np.array([s, theta, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
+            self.history.append(ic[0:1].copy())
+
+        if succeeded:
+            return np.array([s, theta, zeta], dtype=np.float64)
         else:
-            for s, theta in zip(self.s[1:-2], self.theta[1:-2]):
-                ic = np.array([s, theta, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-                ic_list.append(ic)
-
-        self.all_jacobians = [self.jacobian]
-        for ic in ic_list:
-            self._integrator.set_initial_value(t, ic)
-            for _ in range(1, self.qq + 1):
-                st = self._integrator.integrate(t + dt)
-                t = t + dt
-
-            # the jacobian
-            if self._is_cylindrical_problem:
-                self.all_jacobians.append(np.array(
-                    [[st[5], st[7]], [st[6], st[8]]], dtype=np.float64
-                ))
-            else:
-                self.all_jacobians.append(np.array(
-                    [[st[2], st[4]], [st[3], st[5]]], dtype=np.float64
-                ))
-        
-        self.all_GreenesResidues = []
-        self.all_MeanResidues = []
-        for jac in self.all_jacobians:
-            # Greene's Residue
-            greensres = 0.25 * (2.0 - np.trace(jac))
-            self.all_GreenesResidues.append(greensres)
-            self.all_MeanResidues.append(np.power(
-                np.abs(self.GreenesResidue) / 0.25, 1 / float(self.qq)
-            ))
+            return None
 
     def plot(
         self, plottype=None, xlabel=None, ylabel=None, xlim=None, ylim=None, **kwargs
@@ -444,61 +259,6 @@ class FixedPoint(BaseSolver):
                 plt.xlim(xlim)
             if ylim is not None:
                 plt.ylim(ylim)
-
-    def _newton_method_1(
-        self, pp, qq, s_guess, sbegin, send, theta, zeta, dzeta, niter, tol
-    ):
-        """driver to run Newton's method for one variable s
-        pp,qq -- integers, the numerator and denominator of the rotation number
-        s_guess -- the guess of s
-        sbegin -- the allowed minimum s
-        send -- the allowed maximum s
-        theta -- the theta value (fixed)
-        zeta -- the toroidal plain to investigate
-        dzeta -- period in zeta
-        niter -- the maximum number of iterations
-        tol -- the tolerance of finding a fixed point
-        """
-
-        s = s_guess
-
-        # set up the initial condition
-        ic = np.array([s, theta, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-        self.history.append(ic[0:1].copy())
-
-        t0 = zeta
-        dt = dzeta
-
-        succeeded = False
-
-        for ii in range(niter):
-            t = t0
-            self._integrator.set_initial_value(t0, ic)
-
-            for jj in range(qq):
-                output = self._integrator.integrate(t + dt)
-                t = t + dt
-
-            dtheta = output[1] - theta - dzeta * pp
-            jacobian = output[3]
-
-            # if the resolution is good enough
-            if abs(dtheta) < tol:
-                succeeded = True
-                break
-            s_new = s - dtheta / jacobian
-            s = s_new
-
-            if s > send or s < sbegin:  # search failed, return None
-                return None
-
-            ic = np.array([s, theta, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-            self.history.append(ic[0:1].copy())
-
-        if succeeded:
-            return np.array([s, theta, zeta], dtype=np.float64)
-        else:
-            return None
 
     def _newton_method_2(
         self, pp, qq, s_guess, sbegin, send, theta_guess, zeta, dzeta, niter, tol
@@ -637,7 +397,7 @@ class FixedPoint(BaseSolver):
             return None
     
     def _newton_method_RZ(
-        self, pp, qq, R_guess, Rbegin, Rend, Z_guess, zeta, dzeta, niter, tol, checkonly
+        self, pp, qq, x_guess, niter, tol, checkonly
     ):
         # Set up the initial guess
         RZ = np.array([R_guess, Z_guess], dtype=np.float64)
@@ -740,35 +500,25 @@ class FixedPoint(BaseSolver):
             return None
     
     def find_axis(
-        self, R_guess, Rbegin, Rend, Z_guess, niter, tol
+        self, R_guess, Z_guess, niter=100
     ):
-        if not isinstance(self._problem, CylindricalProblem):
-            raise TypeError("problem should inherit CylindricalProblem to find an unknown axis")
-
+        
         # Set up the initial guess
         RZ = np.array([R_guess, Z_guess], dtype=np.float64)
         
-        ic = np.array([RZ[0], RZ[1], 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-
+        # Set up the
         self.history = []
         self.history.append(ic[0:2].copy())
         
-        t0 = self._params["zeta"]
-        dt = 2 * np.pi / self.Nfp
-
         succeeded = False
 
-        for ii in range(niter):
-
-            t = t0
-            self._integrator.set_initial_value(t0, ic)
-            
+        for ii in range(self.niter):
+                
             # Integrate to the next periodic plane
-            output = self._integrator.integrate(t + dt)
-            t = t + dt
-
-            RZ_evolved = np.array([output[0],output[1]])
+            dG = self._problem.df(0.0, ic)
+            RZ_evolved = self._problem.f(0.0, ic)
             
+
             # Stop if the resolution is good enough
             print(f"{ii} - dr : {np.linalg.norm(RZ_evolved-RZ)}")
             if np.linalg.norm(RZ_evolved-RZ) < tol:

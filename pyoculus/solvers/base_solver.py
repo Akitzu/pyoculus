@@ -3,9 +3,7 @@
 #  @author Zhisong Qu (zhisong.qu@anu.edu.au)
 #
 
-from pyoculus.integrators import BaseIntegrator
-from pyoculus.integrators import RKIntegrator
-from pyoculus.problems import BaseProblem
+from pyoculus.problems import BaseMap
 
 ## Abstract class that used to setup all other solvers.
 class BaseSolver:
@@ -15,9 +13,7 @@ class BaseSolver:
         def __init__(self):
             pass
 
-    def __init__(
-        self, problem, params=dict(), integrator=None, integrator_params=dict()
-    ):
+    def __init__(self, map: BaseMap):
         """! Sets up the solver
         @param problem must inherit pyoculus.problems.BaseProblem, the problem to solve
         @param params dict, the parameters for the solver
@@ -27,26 +23,12 @@ class BaseSolver:
         ## flagging if the computation is done and successful
         self.successful = False
 
-        # check the integrator
-        if integrator is None:
-            self._integrator_type = RKIntegrator
-        else:
-            # check the integrator
-            if not issubclass(integrator, BaseIntegrator):
-                raise ValueError(
-                    "The Integrator is not a derived type of BaseIntegrator class"
-                )
-            self._integrator_type = integrator
+        # check the map
+        if not isinstance(map, BaseMap):
+            raise ValueError("The problem is not a derived type of BaseMap class.")
 
-        # check the problem
-        if not isinstance(problem, BaseProblem):
-            raise ValueError("The problem is not a derived type of BaseProblem class")
+        self._map = map
 
-        self._params = dict(params)
-        self._integrator = self._integrator_type(integrator_params)
-        self._problem = problem
-
-        self._integrator_params = dict(integrator_params)
 
     def is_successful(self):
         """! Returns True if the computation is successfully completed
