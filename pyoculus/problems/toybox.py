@@ -1,3 +1,4 @@
+from overrides import overrides
 from .cylindrical_bfield import CylindricalBfield
 import matplotlib.pyplot as plt
 from functools import partial, wraps
@@ -208,7 +209,9 @@ def psi_maxwellboltzmann(
             / (jnp.sqrt(jnp.pi) * d**3)
             * rho2
             * jnp.exp(-rho2 / (2 * d**2))
-            * jnp.cos(jnp.arctan2((rr[2] - Z)/B, (rr[0] - R)/A) * m + phase_poloidal)
+            * jnp.cos(
+                jnp.arctan2((rr[2] - Z) / B, (rr[0] - R) / A) * m + phase_poloidal
+            )
             * jnp.cos(rr[1] * n + phase_toroidal)
         )
 
@@ -283,7 +286,9 @@ def psi_gaussian(
             jnp.sqrt(2)
             / (2 * jnp.sqrt(np.pi) * sigma)
             * jnp.exp(-((jnp.sqrt(rho2) - mu) ** 2) / (2 * sigma**2))
-            * jnp.cos(jnp.arctan2((rr[2] - Z)/B, (rr[0] - R)/A) * m + phase_poloidal)
+            * jnp.cos(
+                jnp.arctan2((rr[2] - Z) / B, (rr[0] - R) / A) * m + phase_poloidal
+            )
             * jnp.cos(rr[1] * n + phase_toroidal)
         )
 
@@ -470,7 +475,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         "circular-current-loop": A_circularcurrentloop,
     }
 
-    def __init__(self, R, Z, sf, shear, perturbations_args=list()):
+    def __init__(self, R, Z, sf, shear, perturbations_args=list(), **kwargs):
         """
         Args:
             R (float): Major radius of the magnetic axis of the equilibrium field
@@ -509,11 +514,11 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         self._initialize_perturbations(find_axis=False)
 
         # Call the CylindricalBfield constructor with (R,Z) of the axis
-        super().__init__(R, Z, Nfp=1)
+        super().__init__(phi0=0., R0=R, Z0=Z, Nfp=1, **kwargs)
 
     @classmethod
     def without_axis(
-        cls, R, Z, sf, shear, perturbations_args=list(), guess=None, **kwargs
+        cls, R, Z, sf, shear, perturbations_args=list(), guess=None, finderargs=dict(), **kwargs
     ):
         """Create an instance of the class without knowing the magnetic axis. The axis is found by creating a temporary instance and calling the CylindricalBfield.find_axis method.
         The arguments are the same as for the constructor with the addition of a guess position (default : [R,Z]) and the kwargs for the find_axis method.
@@ -521,24 +526,9 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         if guess is None:
             guess = [R, Z]
 
-        instance = cls(R, Z, sf, shear, perturbations_args)
-        instance.find_axis(guess, **kwargs)
+        instance = cls(R, Z, sf, shear, perturbations_args, **kwargs)
+        instance.find_axis(guess, **finderargs)
         return instance
-
-    def find_axis(self, guess=None, dr=2, **kwargs):
-        """Tries to re-find the axis. This is useful when the perturbations have been changed.
-        If the axis is not found, the previous axis is kept."""
-        if guess is None:
-            guess = [self._R0, self._Z0]
-
-        defaults = {"Rbegin": guess[0] - dr, "Rend": guess[0] + dr}
-        defaults.update(kwargs)
-
-        R0, Z0 = super(AnalyticCylindricalBfield, self).find_axis(
-            guess, Nfp=1, **defaults
-        )
-        self._R0 = R0
-        self._Z0 = Z0
 
     @property
     def amplitudes(self):
@@ -562,7 +552,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         """Set the perturbation at index to be defined by perturbation_args"""
 
         self.perturbations_args[index] = perturbation_args
-        self.perturbations_args[index].update({"R": self._R0, "Z": self._Z0})
+        self.perturbations_args[index].update({"R": self.R0, "Z": self.Z0})
         self._initialize_perturbations(index, find_axis=find_axis)
 
     def add_perturbation(self, perturbation_args, find_axis=True):
@@ -570,7 +560,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
         self.perturbations_args.append(perturbation_args)
         self._perturbations.append(None)
-        self.perturbations_args[-1].update({"R": self._R0, "Z": self._Z0})
+        self.perturbations_args[-1].update({"R": self.R0, "Z": self.Z0})
         self._initialize_perturbations(
             len(self.perturbations_args) - 1, find_axis=find_axis
         )
@@ -643,7 +633,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
         # Find the axis
         if find_axis:
-            self.find_axis()
+            self.find_axis(guess=[self.R0, self.Z0])
 
     @property
     def perturbations(self):
@@ -664,26 +654,29 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
     # BfieldProblem methods implementation
 
-    def B(self, rr):
+    @overrides
+    def B(self, coords, *args):
         """Total field function at the point rr. Where B = B_equilibrium + B_perturbation."""
-        return np.array(self._B(rr))
+        return np.array(self._B(coords))
 
-    def dBdX(self, rr):
-        """Gradient of the total field function at the point rr. Where (dBdX)^i_j = dB^i/dX^j with i the row index and j the column index of the matrix."""
-        rr = np.array(rr)
-        return [self.B(rr)], np.array(self._dBdX(rr))
+    @overrides
+    def dBdX(self, coords, *args):
+        """Gradient of the total field function at the point coords. Where (dBdX)^i_j = dB^i/dX^j with i the row index and j the column index of the matrix."""
+        rr = np.array(coords)
+        return [self.B(rr)], np.array(self._dBdX(coords))
 
-    def B_many(self, r, phi, z, input1D=True):
-        return np.array([self._B([r[i], phi[i], z[i]]) for i in range(len(r))])
-
-    def dBdX_many(self, r, phi, z, input1D=True):
-        return self.B_many(r, phi, z).flatten(), np.array(
-            [self._dBdX([r[i], phi[i], z[i]]) for i in range(len(r))]
-        )
-
-    def A(self, rr):
+    @overrides
+    def A(self, coords, *args):
         """Total vector potential function at the point rr."""
-        return np.array(self._A(rr))
+        return np.array(self._A(coords))
+
+    # def B_many(self, r, phi, z, input1D=True):
+    #     return np.array([self._B([r[i], phi[i], z[i]]) for i in range(len(r))])
+
+    # def dBdX_many(self, r, phi, z, input1D=True):
+    #     return self.B_many(r, phi, z).flatten(), np.array(
+    #         [self._dBdX([r[i], phi[i], z[i]]) for i in range(len(r))]
+    #     )
 
     def divB(self, rr):
         """Divergence of the total field function at the point rr."""

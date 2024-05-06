@@ -6,11 +6,11 @@ from .toroidal_bfield import ToroidalBfield
 from .interpolate_coordinates import SurfacesToroidal
 import numpy as np
 
+
 ## Class that used to setup the bfield problem based on QFM
 #
 class QFMBfield(ToroidalBfield):
-
-    def __init__(self, pb : ToroidalBfield, surfaces : SurfacesToroidal):
+    def __init__(self, pb: ToroidalBfield, surfaces: SurfacesToroidal):
         """! Set up the problems based on a known magnetic field and the QFM surfaces
         @param pb  the TorodialBfield problem we will used as the original coordinates and fields
         @param surfaces  the QFM surfaces
@@ -24,14 +24,13 @@ class QFMBfield(ToroidalBfield):
         self.Nfp = pb.Nfp
         self.has_jacobian = pb.has_jacobian
 
-    
     def B(self, coords, *args):
         """! Returns magnetic fields
         @param coords \f$(\rho,\vartheta,\zeta)\f$
         @param *args extra parameters
         @returns the contravariant magnetic fields
         """
- 
+
         r = np.atleast_1d(coords[0])
         t = np.atleast_1d(coords[1])
         z = np.atleast_1d(coords[2])
@@ -39,7 +38,9 @@ class QFMBfield(ToroidalBfield):
         coordsout = self.surfaces.get_coords(r, t, z, derivative=1, input1D=True)
         coordsin = np.array([coordsout.s[0], coordsout.t[0], coordsout.z[0]])
         B = np.atleast_2d(self.pb.B(coordsin))
-        B = self.surfaces.contra_vector_transform(B, coordsout, has_jacobian=self.has_jacobian, derivative=False).flatten()
+        B = self.surfaces.contra_vector_transform(
+            B, coordsout, has_jacobian=self.has_jacobian, derivative=False
+        ).flatten()
 
         return B
 
@@ -57,7 +58,13 @@ class QFMBfield(ToroidalBfield):
         coordsout = self.surfaces.get_coords(r, t, z, derivative=2, input1D=True)
         coordsin = np.array([coordsout.s[0], coordsout.t[0], coordsout.z[0]])
         B, dBdX = self.pb.dBdX(coordsin)
-        B, dBdX = self.surfaces.contra_vector_transform(np.atleast_2d(B), coordsout, has_jacobian=self.has_jacobian, derivative=True, dv=dBdX[np.newaxis,:])
+        B, dBdX = self.surfaces.contra_vector_transform(
+            np.atleast_2d(B),
+            coordsout,
+            has_jacobian=self.has_jacobian,
+            derivative=True,
+            dv=dBdX[np.newaxis, :],
+        )
 
         return B[0], dBdX[0]
 
@@ -89,7 +96,9 @@ class QFMBfield(ToroidalBfield):
 
         B = self.pb.B_many(newr.flatten(), newt.flatten(), newz.flatten(), True, *args)
         B = np.reshape(B, np.concatenate([arr_shape, [3]]))
-        B = self.surfaces.contra_vector_transform(B, coordsout, has_jacobian=self.has_jacobian)
+        B = self.surfaces.contra_vector_transform(
+            B, coordsout, has_jacobian=self.has_jacobian
+        )
 
         return B
 
@@ -106,14 +115,16 @@ class QFMBfield(ToroidalBfield):
         t = x2arr
         z = x3arr
 
-        if len(args)==0:
+        if len(args) == 0:
             coordsout = self.surfaces.get_coords(r, t, z, derivative=2, input1D=input1D)
         else:
             coordsout = args[0]
             args.pop()
 
         B, dBdX = self.pb.dBdX_many(r, t, z, input1D, *args)
-        B, dBdX = self.surfaces.contra_vector_transform(B, coordsout, has_jacobian=self.pb.has_jacobian, derivative=True, dv=dBdX)
+        B, dBdX = self.surfaces.contra_vector_transform(
+            B, coordsout, has_jacobian=self.pb.has_jacobian, derivative=True, dv=dBdX
+        )
 
         return B, dBdX
 
@@ -129,5 +140,6 @@ class QFMBfield(ToroidalBfield):
 
         coordsout = self.surfaces.get_coords(r, t, z, derivative=0, input1D=True)
 
-        return self.pb.convert_coords(np.array([coordsout.s[0], coordsout.t[0], coordsout.z[0]]))
-
+        return self.pb.convert_coords(
+            np.array([coordsout.s[0], coordsout.t[0], coordsout.z[0]])
+        )

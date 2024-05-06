@@ -14,6 +14,10 @@ class BaseMap:
         f: This method represents the mapping function. It takes a point in phase space and returns its image under the map.
         df: This method calculates the Jacobian of the mapping function. The Jacobian is a matrix that describes the rate of change of the output of the map with respect to its input.
         lagrangian: This method calculates the Lagrangian, as defined in the paper by Meiss (https://doi.org/10.1063/1.4915831).
+    
+    Continuous maps should also implement the following methods:
+        f_winding: This method calculates how a point in phase space winds around another point after a continuous application of the map.
+        df_winding: This method calculates the Jacobian of the winding function.
     """
 
     def __init__(self, dim=2, continuous=True, domain=None):
@@ -28,7 +32,7 @@ class BaseMap:
             domain = [(-np.inf, np.inf)]*dim
 
         self.dimension = dim
-        self.is_continous = continuous
+        self.is_continuous = continuous
         self.domain = domain
 
     def f(self, t, y0):
@@ -65,3 +69,25 @@ class BaseMap:
             float: The Lagrangian at y0, or the difference in Lagrangian between y1 and y0 (L(y1)-L(y0)) if y1 is provided.
         """
         raise NotImplementedError("A BaseMap object should have a lagrangian method.")
+    
+    def f_winding(self, t, y0, y1=None):
+        """
+        Calculates how the point y0 winds around the point y1 after applying the map t times. This map should take two points in the domain and return a point into a space of same dimension where the last component is the winding number. 
+
+        Args:
+            t (float or int): The number of times the map is applied.
+            y0 (array): The initial point in the phase space.
+            y1 (array): The point around which y0 winds. If None, the origin should be used.
+        """
+        raise NotImplementedError("A Continous BaseMap object should have a winding mapping f_winding method.")
+    
+    def df_winding(self, t, y0, y1=None):
+        """
+        Calculates the Jacobian of the winding of y0 around y1 after applying the map t times.
+
+        Args:
+            t (float or int): The number of times the map is applied.
+            y0 (array): The initial point in the phase space.
+            y1 (array): The point around which y0 winds. If None, the origin should be used.
+        """
+        raise NotImplementedError("A Continous BaseMap object should have a jacobian winding mapping df_winding method.")

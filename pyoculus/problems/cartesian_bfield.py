@@ -1,23 +1,22 @@
-from .cylindrical_bfield import CylindricalBfield
 from functools import wraps
 import numpy as np
 
 
-# Decorators to convert from Cartesian to cylindrical coordinates
-def mat2cyl(func):
-    @wraps(func)
-    def wrapper(self, RphiZ, *args, **kwargs):
-        return mat2cyl(func(self, xyz(*RphiZ), *args, **kwargs), *RphiZ)
+# # Decorators to convert from Cartesian to cylindrical coordinates
+# def mat2cyl(func):
+#     @wraps(func)
+#     def wrapper(self, RphiZ, *args, **kwargs):
+#         return matrice2cyl(func(self, xyz(*RphiZ), *args, **kwargs), *RphiZ)
 
-    return wrapper
+#     return wrapper
 
 
-def vec2cyl(func):
-    @wraps(func)
-    def wrapper(self, RphiZ, *args, **kwargs):
-        return vec2cyl(func(self, xyz(*RphiZ), *args, **kwargs), *RphiZ)
+# def vec2cyl(func):
+#     @wraps(func)
+#     def wrapper(self, RphiZ, *args, **kwargs):
+#         return vector2cyl(func(self, xyz(*RphiZ), *args, **kwargs), *RphiZ)
 
-    return wrapper
+#     return wrapper
 
 
 def inv_Jacobian(R, phi, _):

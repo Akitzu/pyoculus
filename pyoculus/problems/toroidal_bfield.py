@@ -23,17 +23,17 @@ class ToroidalBfield(IntegrationMap, BfieldProblem):
 
     @overrides
     def f(self, t, y0):
-        self._integrator.change_rhs(self._ode_rhs)
+        self._integrator.set_rhs(self._ode_rhs)
         return self._integrate(t, y0)
 
     @overrides
     def df(self, t, y0):
-        self._integrator.change_rhs(self._ode_rhs_tangent)
+        self._integrator.set_rhs(self._ode_rhs_tangent)
         return self._integrate(t, y0)
 
     @overrides
     def lagrangian(self, y0, t):
-        self._integrator.change_rhs(self._ode_rhs_A)
+        self._integrator.set_rhs(self._ode_rhs_A)
         return self._integrate(t, y0)
 
     ## Integration methods

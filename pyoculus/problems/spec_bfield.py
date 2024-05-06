@@ -6,6 +6,7 @@ from .spec_problem import SPECProblem
 from .toroidal_bfield import ToroidalBfield
 import numpy as np
 
+
 ## Class that used to setup the SPEC bfield problem for interfacing Fortran, used in ODE solver.
 # See \ref specbfield for more details.
 #
@@ -13,7 +14,6 @@ import numpy as np
 # \f[ \frac{ds}{d\zeta} = \frac{B^{s}}{B^{\zeta}}  \f]
 # \f[ \frac{d\theta}{d\zeta} = \frac{B^{\theta}}{B^{\zeta}}  \f]
 class SPECBfield(SPECProblem, ToroidalBfield):
-
     ## the problem size, 2 for 1.5D/2D Hamiltonian system
 
     def __init__(self, spec_data, lvol):
@@ -84,7 +84,9 @@ class SPECBfield(SPECProblem, ToroidalBfield):
             Blist = np.reshape(Blist, (x1arr.size, x2arr.size, x3arr.size, 3))
         else:
             n = x1arr.size
-            Blist = self.fortran_module.specbfield.get_bfield_many_1d(x1arr, x2arr, x3arr, n)
+            Blist = self.fortran_module.specbfield.get_bfield_many_1d(
+                x1arr, x2arr, x3arr, n
+            )
 
         return Blist
 
@@ -108,14 +110,18 @@ class SPECBfield(SPECProblem, ToroidalBfield):
             t = np.broadcast_to(x2arr[np.newaxis, :, np.newaxis], size).flatten()
             z = np.broadcast_to(x3arr[np.newaxis, np.newaxis, :], size).flatten()
             n = s.size
-            Blist, dBlist = self.fortran_module.specbfield.get_bfield_tangent_many_1d(s, t, z, n)
+            Blist, dBlist = self.fortran_module.specbfield.get_bfield_tangent_many_1d(
+                s, t, z, n
+            )
             Blist = np.reshape(Blist, (x1arr.size, x2arr.size, x3arr.size, 3))
             dBlist = np.reshape(dBlist, (x1arr.size, x2arr.size, x3arr.size, 3, 3))
 
         else:
             n = x1arr.size
-            Blist, dBlist = self.fortran_module.specbfield.get_bfield_tangent_many_1d(x1arr, x2arr, x3arr, n)
-            
+            Blist, dBlist = self.fortran_module.specbfield.get_bfield_tangent_many_1d(
+                x1arr, x2arr, x3arr, n
+            )
+
         return Blist, dBlist
 
     def convert_coords(self, stz):

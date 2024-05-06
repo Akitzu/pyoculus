@@ -30,7 +30,7 @@ class IntegrationMap(BaseMap):
                 *args: Additional parameters for the ODE.
     """
 
-    def __init__(self, dim=2, domain=None, integrator=RKIntegrator, integrator_params=dict()):
+    def __init__(self, dim=2, domain=None, integrator=RKIntegrator, **kwargs):
         """
         Initializes the IntegrationMap object.
 
@@ -46,4 +46,4 @@ class IntegrationMap(BaseMap):
                 "The Integrator is not a derived type of BaseIntegrator class."
             )
 
-        self._integrator = integrator(integrator_params)
+        self._integrator = integrator(**kwargs)

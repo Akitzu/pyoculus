@@ -5,6 +5,7 @@
 from .toroidal_bfield import ToroidalBfield
 import numpy as np
 
+
 ##
 # A very simple (but still hard) problem for testing the tools and methods
 #
@@ -29,8 +30,6 @@ import numpy as np
 #     ps = TwoWaves(k=0.002)
 #
 class TwoWaves(ToroidalBfield):
-
-
     def __init__(self, k=0.002):
         """! Set up the problem
         @param k the value used in the Hamiltonian
@@ -110,7 +109,7 @@ class TwoWaves(ToroidalBfield):
             ],
             dtype=np.float64,
         )
-    
+
     def B_many(self, x1arr, x2arr, x3arr, input1D=True, *args):
         """! Returns magnetic fields, with multipy coordinate inputs
         @param x1arr the first coordinates. Should have the same length as the other two if input1D=True.

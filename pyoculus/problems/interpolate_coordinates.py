@@ -247,10 +247,10 @@ class SurfacesToroidal:
                     ddssns = dssns[:, :, :, nax, nax]
                     ddtcns = dtcns[:, :, :, nax, nax]
 
-            mmcosalpha = mlist ** 2 * cosalpha
-            mmsinalpha = mlist ** 2 * sinalpha
-            nncosalpha = nlist ** 2 * cosalpha
-            nnsinalpha = nlist ** 2 * sinalpha
+            mmcosalpha = mlist**2 * cosalpha
+            mmsinalpha = mlist**2 * sinalpha
+            nncosalpha = nlist**2 * cosalpha
+            nnsinalpha = nlist**2 * sinalpha
             mncosalpha = mlist * nlist * cosalpha
             mnsinalpha = mlist * nlist * sinalpha
 
@@ -323,7 +323,7 @@ class SurfacesToroidal:
 
         Given \f$N\f$ variables \f$f_1, \cdots, f_N \f$, the jacobi matrix (derivatives wrt the new coordinate is given by the chain rule
         \f[
-            \frac{\partial(f_1, \cdots, f_N)}{\partial(\rho, \vartheta, \zeta)} = \frac{\partial(f_1, \cdots, f_N)}{\partial(s, \theta, \zeta)} 
+            \frac{\partial(f_1, \cdots, f_N)}{\partial(\rho, \vartheta, \zeta)} = \frac{\partial(f_1, \cdots, f_N)}{\partial(s, \theta, \zeta)}
             \cdot \frac{\partial(s, \theta, \zeta)}{\partial(\rho, \vartheta, \zeta)}
         \f]
         """
@@ -435,11 +435,10 @@ class SurfacesToroidal:
 
         if derivative:
             rhs = np.moveaxis(dv, -1, -2) @ coords.jacobi
-            rhs -= np.einsum('...ijk,...j->...ik', coords.djacobi, voutput)
+            rhs -= np.einsum("...ijk,...j->...ik", coords.djacobi, voutput)
             dvoutput = np.moveaxis(np.linalg.solve(coords.jacobi, rhs), -1, -2)
 
         if has_jacobian:
-
             if derivative:
                 dvoutput *= coords.jacobian[..., nax, nax]
                 dvoutput += coords.djacobian[..., :, nax] * voutput[..., nax, :]

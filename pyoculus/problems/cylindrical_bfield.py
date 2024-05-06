@@ -21,6 +21,7 @@ class CylindricalBfield(IntegrationMap, BfieldProblem):
         Initializes the CylindricalBfield object and calls the IntegrationMap constructor. If R0 or Z0 is not provided, the magnetic axis will be found using a FixedPoint solver.
         """
         super().__init__(dim=2, **kwargs)
+
         self.phi0 = phi0
         self.Nfp = Nfp
 
@@ -30,32 +31,86 @@ class CylindricalBfield(IntegrationMap, BfieldProblem):
             self.R0 = R0
             self.Z0 = Z0
 
-    def find_axis(self, **kwargs):
+    def find_axis(self, guess = None, **kwargs):
         """
         Finds the magnetic axis using a FixedPoint solver.
         """
         axisfinder = FixedPoint(self)
-        axisfinder.find(1, **kwargs)
-        self.R0, self.Z0 = axisfinder.coords[0]
+        axisfinder.find(1, guess, **kwargs)
+        if axisfinder.is_successful():
+            self.R0, self.Z0 = axisfinder.coords[0]
+        else:
+            raise ValueError("The magnetic axis could not be found.")
 
     ## BaseMap methods
 
     @overrides
     def f(self, t, y0):
-        self._integrator.change_rhs(self._rhs_RZ)
+        self._integrator.set_rhs(self._rhs_RZ)
         return self._integrate(t, y0)
 
     @overrides
     def df(self, t, y0):
         ic = np.array([*y0, 1., 0., 0., 1.])
-        self._integrator.change_rhs(self._ode_rhs_tangent)
-        return self._integrate(t, ic)
+        self._integrator.set_rhs(self._rhs_RZ_tangent)
+        output = self._integrate(t, ic)
+        return output[2:6].reshape(2, 2).T
 
     @overrides
     def lagrangian(self, y0, t):
         ic = np.array([*y0, 0.])
-        self._integrator.change_rhs(self._rhs_RZ_A)
-        return self._integrate(t, ic)
+        self._integrator.set_rhs(self._rhs_RZ_A)
+        output = self._integrate(t, ic)
+        return output[2]
+
+    @overrides
+    def f_winding(self, t, y0, y1 = None):
+        if y1 is None:
+            y1 = np.array([self.R0, self.Z0])
+
+        theta0 = np.arctan2(y0[1] - y1[1], y0[0] - y1[0])
+        self._integrator.set_rhs(self._ode_rhs)
+        ic = np.array([*y0, *y1, theta0, 1., 0., 0., 1.])
+        output = self._integrate(t, ic)
+        theta1 = np.arctan2(output[1] - output[3], output[0] - output[2])
+        rho = np.sqrt((output[0] - output[2])**2 + (output[1] - output[3])**2)
+
+        return np.array([rho, theta1 - theta0])
+    
+    @overrides
+    def df_winding(self, t, y0, y1 = None):
+        if y1 is None:
+            y1 = np.array([self.R0, self.Z0])
+
+        theta0 = np.arctan2(y0[1] - y1[1], y0[0] - y1[0])
+        self._integrator.set_rhs(self._ode_rhs_tangent)
+        ic = np.array([*y0, *y1, theta0, 1., 0., 0., 1.])
+        output = self._integrate(t, ic)
+
+        theta1 = np.arctan2(output[1] - output[3], output[0] - output[2])
+        rho = np.sqrt((output[0] - output[2])**2 + (output[1] - output[3])**2)
+        
+        dG = np.array([
+                [output[5], output[7]],
+                [output[6], output[8]]
+            ], dtype=np.float64)
+
+        # dH = dH(G(R,Z))
+        deltaRZ = RZ_evolved - RZ_Axis
+        dH = np.array([
+                np.array([deltaRZ[0], deltaRZ[1]], dtype=np.float64) / np.sqrt(deltaRZ[0]**2 + deltaRZ[1]**2),
+                np.array([-deltaRZ[1], deltaRZ[0]], dtype=np.float64) / (deltaRZ[0]**2 + deltaRZ[1]**2)
+        ], dtype=np.float64)
+
+        # dP = dH(R,Z)
+        deltaRZ = RZ - RZ_Axis
+        dP = np.array([
+            np.array([deltaRZ[0], deltaRZ[1]], dtype=np.float64) / np.sqrt(deltaRZ[0]**2 + deltaRZ[1]**2),
+            np.array([-deltaRZ[1], deltaRZ[0]], dtype=np.float64) / (deltaRZ[0]**2 + deltaRZ[1]**2)
+        ], dtype=np.float64)
+                
+        # Jacobian of the map F = H(G(R,Z)) - H(R,Z)
+        return dH @ dG - dP
 
     ## Integration methods
 
@@ -151,6 +206,8 @@ class CylindricalBfield(IntegrationMap, BfieldProblem):
         rphiz = np.array([R, phi, Z])
 
         Bfield, dBdRphiZ = self.dBdX(rphiz, *args)
+        # Bfield is tansformed from [array] into array
+        Bfield = np.array(Bfield[0], dtype=np.float64)
         dBdRphiZ = np.array(dBdRphiZ, dtype=np.float64)
 
         # R, Z evolution as in _rhs_RZ
