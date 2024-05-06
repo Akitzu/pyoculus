@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import structlog
-
 log = structlog.get_logger()
 
 

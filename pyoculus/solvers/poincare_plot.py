@@ -4,118 +4,58 @@
 #
 
 import numpy as np
-import concurrent.futures
 from .base_solver import BaseSolver
-from pyoculus.problems.cylindrical_problem import CylindricalProblem
-from pyoculus.problems.toroidal_problem import ToroidalProblem
+from ..problems import BfieldProblem
 
-## Class that used to setup the Poincare plot.
 class PoincarePlot(BaseSolver):
+    """
+        Class that used to setup the Poincare plot.
+    """
+
     def __init__(
-        self, problem, params=dict(), integrator=None, integrator_params=dict()
+        self, bfield_problem, zeta=0., nPpts=500, nPtrj=10, nthreads=1, **kwargs 
     ):
-        """! Sets up the Poincare plot
-        @param problem must inherit pyoculus.problems.BaseProblem, the problem to solve
-        @param params dict, the parameters for the solver
-        @param integrator the integrator to use, must inherit \pyoculus.integrators.BaseIntegrator, if set to None by default using RKIntegrator
-        @param integrator_params dict, the parmaters passed to the integrator
-
-        <code> params['theta']=0 </code> -- the Poincare plots starts from theta
-
-        <code> params['zeta']=0 </code> -- the Poincare plots for which toroidal section: zeta
-
-        <code> params['nPpts']=500 </code> -- the number of iterations
-
-        <code> params['nPtrj']=10 </code> -- the number of equidistant points in s coordinates
-
-        <code> params['sbegin']=-1.0 </code> -- the lower bound of s
-
-        <code> params['send']=-1.0 </code> -- the upper bound of s
-
-        <code> params['nthreads']=1 </code> -- the number of threads
+        """
+        Sets up the Poincare plot
+        
+        Args:
+            zeta (float, optional): The toroidal section (zeta) for the Poincare plot. Defaults to 0.
+            nPpts (int, optional): The number of iterations for the plot. Defaults to 500.
+            nPtrj (int, optional): The number of equidistant points in the s coordinates for the plot. Defaults to 10.
+            nthreads (int, optional): The number of threads to be used for computation. Defaults to 1.
         """
 
-        if "zeta" not in params.keys():
-            params["zeta"] = 0.0
+        if not isinstance(bfield_problem, BfieldProblem):
+            raise TypeError("bfied_problem should be a BfieldProblem.")
 
-        if "nPpts" not in params.keys():
-            params["nPpts"] = 500
+        super().__init__(bfield_problem)
 
-        if "nPtrj" not in params.keys():
-            params["nPtrj"] = 10
-
-        if "nthreads" not in params.keys():
-            params["nthreads"] = 1
-
-        # detect the type of the problem
-        if isinstance(problem, ToroidalProblem):
-            self._is_cylindrical_problem = False
-            if "sbegin" not in params.keys():
-                params["sbegin"] = -1.0
-            if "send" not in params.keys():
-                params["send"] = 1.0
-            if "theta" not in params.keys():
-                params["theta"] = 0.0
-
-            self._begin = params["sbegin"]
-            self._end = params["send"]
-            self._fixed_coords = params["theta"]
-
-        elif isinstance(problem, CylindricalProblem):
-            self._is_cylindrical_problem = True
-            if "Rbegin" not in params.keys():
-                params["Rbegin"] = problem._R0
-            if "Rend" not in params.keys():
-                params["Rend"] = problem._R0 + 1.0
-            if "Z" not in params.keys():
-                params["Z"] = 0.0
-
-            self._begin = params["Rbegin"]
-            self._end = params["Rend"]
-            self._fixed_coords = params["Z"]
-        else:
-            raise TypeError(
-                "problem should inherit either ToroidalProblem or CylindricalProblem"
-            )
-
-        integrator_params["ode"] = problem.f
-        self.Nfp = problem.Nfp
-        super().__init__(
-            problem=problem,
-            params=params,
-            integrator=integrator,
-            integrator_params=integrator_params,
-        )
-
+        self.zeta = zeta
+        self.nPpts = nPpts
+        self.nPtrj = nPtrj
+        self.nthreads = nthreads
+    
         self.iota_successful = False
 
         # set up the result array
         self.x = np.zeros(
-            [self._params["nPtrj"] + 1, self._params["nPpts"] + 1], dtype=np.float64
+            [nPtrj + 1, nPpts + 1], dtype=np.float64
         )
-        self.y = np.zeros_like(self.x)
-        self.z = np.zeros_like(self.x)
-        self.s = np.zeros_like(self.x)
-        self.theta = np.zeros_like(self.x)
-        self.zeta = np.zeros_like(self.x)
 
-    def compute(self, RZs = None):
-        """! Computes the Poincare plot
-        @returns pdata -- a class that contains the results
-
-        `pdata.x,pdata.y,pdata,z` -- the Poincare data in xyz coordinates
-        `pdata.s,pdata,theta,pdata,zeta` -- the Poincare data in s,theta,zeta coordinates
+    def compute(self, xs):
+        """
+        Computes the Poincare plot
+        
+        Returns:
+            class that contains the results
         """
 
         self.successful = False
 
-        # the zeta interval for each integration
-        self.dt = 2 * np.pi / float(self.Nfp)
-
         swindow = self._end - self._begin
-        ds = swindow / float(self._params["nPtrj"])
+        ds = swindow / float(self.nPtrj)
 
-        for ii in range(self._params["nPtrj"] + 1):
+        for ii in range(self.nPtrj + 1):
             # find which s to start with
             if self._is_cylindrical_problem:
                 if RZs is None:
@@ -136,7 +76,7 @@ class PoincarePlot(BaseSolver):
 
             self.zeta[ii, 0] = self._params["zeta"]
 
-        if self._params["nthreads"] == 1:  # single thread, do it straight away
+        if self.nthreads == 1:  # single thread, do it straight away
 
             for ii in range(self._params["nPtrj"] + 1):
 
@@ -179,58 +119,6 @@ class PoincarePlot(BaseSolver):
                     # advance in time
                     t = t + dt
 
-        # else:  # multi-threading
-
-        # print(
-        #     "Running the Poincare plot using ",
-        #     self._params["nthreads"],
-        #     " threads.",
-        # )
-        # raise Exception("multi-threading not working at the moment")
-        # # prepare a list of input each starting point
-        # inputs = []
-
-        # for ii in range(self._params["nPtrj"] + 1):
-        #     pparams = dict()
-
-        #     pparams["integrator"] = self._integrator
-        #     pparams["t0"] = self.zeta[ii, 0]
-        #     pparams["ic"] = [self.s[ii, 0], self.theta[ii, 0]]
-        #     pparams["dt"] = self.dt
-        #     pparams["nPpts"] = self._params["nPpts"]
-        #     pparams["id"] = ii
-
-        #     inputs.append(pparams)
-
-        # with concurrent.futures.ThreadPoolExecutor(
-        #     max_workers=self._params["nthreads"]
-        # ) as executor:
-        #     futures = {
-        #         executor.submit(self._run_poincare, inputi): inputi
-        #         for inputi in inputs
-        #     }
-        #     for future in concurrent.futures.as_completed(futures):
-        #         data = future.result()
-        #         ii = data["id"]
-        #         self.s[ii, :] = data["s"]
-        #         self.theta[ii, :] = data["theta"]
-        #         self.zeta[ii, :] = data["zeta"]
-
-        # convert everything into xyz
-        if self._is_cylindrical_problem:
-            pass
-        else:
-            for ii in range(self._params["nPtrj"] + 1):
-                for jj in range(self._params["nPpts"] + 1):
-                    stz = np.array(
-                        [self.s[ii, jj], self.theta[ii, jj], self.zeta[ii, jj]],
-                        dtype=np.float64,
-                    )
-                    xyz = self._problem.convert_coords(stz)
-                    self.x[ii, jj] = xyz[0]
-                    self.y[ii, jj] = xyz[1]
-                    self.z[ii, jj] = xyz[2]
-
         self.successful = True
 
         pdata = PoincarePlot.OutputData()
@@ -238,12 +126,6 @@ class PoincarePlot(BaseSolver):
         pdata.z = self.z.copy()
         pdata.theta = self.theta.copy()
         pdata.zeta = self.zeta.copy()
-
-        if self._is_cylindrical_problem:
-            pass
-        else:
-            pdata.y = self.y.copy()
-            pdata.s = self.s.copy()
 
         return pdata
 

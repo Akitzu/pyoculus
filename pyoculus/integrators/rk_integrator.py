@@ -14,7 +14,7 @@ import numpy as np
 #
 # See __init__ for how to set up the integrator
 class RKIntegrator(BaseIntegrator):
-    def __init__(self, params):
+    def __init__(self, **params):
         """! Sets up the ODE solver
         @param params dict, the parameters used in the ODE solver
 
@@ -30,11 +30,6 @@ class RKIntegrator(BaseIntegrator):
         """
 
         # check if the ode is provided. If not, raise an error
-
-        if "ode" not in params.keys():
-            raise ValueError("Please specify the ODE to solve for the Integrator class")
-        else:
-            self.rhs = params["ode"]
 
         if "type" not in params.keys():
             params["type"] = "dopri5"  # set default to RK45
@@ -57,9 +52,8 @@ class RKIntegrator(BaseIntegrator):
         self.args = params["args"]
 
         # set up the integrator
-        self.integrator = ode(self.rhs).set_integrator(
-            params["type"], rtol=params["rtol"], nsteps=self.nsteps
-        )
+        if "ode" in params.keys():
+            self.set_rhs(params["ode"])
 
         super().__init__(params)
 
@@ -100,7 +94,7 @@ class RKIntegrator(BaseIntegrator):
         # set up a new integrator
         return RKIntegrator(self._params)
 
-    def change_rhs(self, rhs):
+    def set_rhs(self, rhs):
         """! Change the RHS function to solve
         @param ode the new RHS function
         """
