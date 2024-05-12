@@ -1,7 +1,9 @@
 from ..problems.bfield_problem import BfieldProblem
 from .base_solver import BaseSolver
 from .fixed_point import FixedPoint
-from scipy.optimize import root
+from scipy.optimize import root, minimize
+
+# from functools import total_ordering
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -114,8 +116,6 @@ class Manifold(BaseSolver):
 
         self.clinics = []
 
-        # Initialize the unstable ordering
-
     def error_linear_regime(self, epsilon, rfp, eigenvector, direction=1):
         """Metric to evaluate if the point rfp + epsilon * eigenvector is in the linear regime of the fixed point."""
         # Initial point and evolution
@@ -127,7 +127,7 @@ class Manifold(BaseSolver):
         norm_eps_dir = np.linalg.norm(eps_dir)
         eps_dir_norm = eps_dir / norm_eps_dir
 
-        return np.linalg.norm(eps_dir_norm - eigenvector)
+        return np.abs(1 - np.dot(eps_dir_norm, eigenvector))
 
     ### Computation of the manifolds
 
@@ -171,19 +171,23 @@ class Manifold(BaseSolver):
 
         return RZs
 
-    def find_epsilon(self, eps_guess, rfp, eigenvector, direction=1):
+    def find_epsilon(self, rfp, eigenvector, eps_guess=1e-6, direction=1):
         """Find the epsilon that lies in the linear regime."""
         find_eps = lambda x: self.error_linear_regime(
             x, rfp, eigenvector, direction=direction
         )
-        rootobj = root(find_eps, eps_guess)
+        minobj = minimize(find_eps, eps_guess, bounds=[(0, 1)], tol=1e-12)
 
-        if not rootobj.success:
-            log.error("Root finding failed, using the guess for epsilon.")
+        if not minobj.success:
+            log.warning(
+                "Search for minimum of the linear error failed, using the guess for epsilon."
+            )
             return eps_guess
         else:
-            esp_root = rootobj.x[0]
-            log.info(f"Root finding succeeded, epsilon = {esp_root:.5e}")
+            esp_root = minobj.x[0]
+            log.info(
+                f"Search for minimum of the linear error succeeded, epsilon = {esp_root:.5e}"
+            )
             return esp_root
 
     def compute(self, epsilon: float = None, fp_num: int = None, **kwargs):
@@ -239,11 +243,11 @@ class Manifold(BaseSolver):
             options["eps_u"] = epsilon
         if options["eps_s"] is None:
             options["eps_s"] = self.find_epsilon(
-                options["eps_guess_s"], rfp_s, vector_s, -1
+                rfp_s, vector_s, options["eps_guess_s"], -1
             )
         if options["eps_u"] is None:
             options["eps_u"] = self.find_epsilon(
-                options["eps_guess_u"], rfp_u, vector_u
+                rfp_u, vector_u, options["eps_guess_u"]
             )
 
         # Compute the unstable starting configuration and the manifold
@@ -333,15 +337,34 @@ class Manifold(BaseSolver):
 
     ### Homo/Hetero-clinic methods
 
-    def find_bounds(self, guess_eps_s, guess_eps_u):    
+    def _order(self, clinic):
+        fund = self.fundamental_segment[1]
+        norm = np.linalg.norm(clinic - self.rfp_u)
+
+        r_ev = clinic
+        max_iterations = 20  # Set a maximum number of iterations
+        for _ in range(max_iterations):
+            if fund[0] <= norm < fund[1]:
+                return norm
+            log.debug(f"norm = {norm}")
+            r_ev = self.integrate_single(r_ev, 1, -1, ret_jacobian=False)
+            norm = np.linalg.norm(r_ev - self.rfp_u)
+
+        raise ValueError(
+            "Failed to find a solution within the maximum number of iterations"
+        )
+
+    def find_bounds(self, guess_eps_s, guess_eps_u):
+        """Find the bounds on the unstable and stable manifolds"""
         r_s = self.rfp_s + guess_eps_s * self.vector_s
         r_u = self.rfp_u + guess_eps_u * self.vector_u
-        r_s_unevolved = self.integrate_single(r_s, 1, 1, ret_jacobian=False)
-        r_u_unevolved = self.integrate_single(r_u, 1, -1, ret_jacobian=False)
-        lowerbound_s = np.linalg.norm(r_s_unevolved - self.rfp_s)
-        lowerbound_u = np.linalg.norm(r_u_unevolved - self.rfp_u)
-        bounds = ((lowerbound_s, guess_eps_s),(lowerbound_u, guess_eps_u))
-        log.debug(f"Bounds found are : {bounds}")
+        r_s_evolved = self.integrate_single(r_s, 1, -1, ret_jacobian=False)
+        r_u_evolved = self.integrate_single(r_u, 1, 1, ret_jacobian=False)
+
+        upperbound_s = np.linalg.norm(r_s_evolved - self.rfp_s)
+        upperbound_u = np.linalg.norm(r_u_evolved - self.rfp_u)
+
+        bounds = ((guess_eps_s, upperbound_s), (guess_eps_u, upperbound_u))
         return bounds
 
     def find_N(self, guess_eps_s=1e-3, guess_eps_u=1e-3):
@@ -366,7 +389,7 @@ class Manifold(BaseSolver):
 
             norm = np.linalg.norm(r_u - r_s)
             # log.debug(f"{np.dot(first_dir, r_u - r_s)} / {last_norm} / {norm}")
-            if np.sign(np.dot(first_dir, r_u - r_s)) < 0: # and last_norm < norm:
+            if np.sign(np.dot(first_dir, r_u - r_s)) < 0:  # and last_norm < norm:
                 success = True
             last_norm = norm
 
@@ -375,17 +398,13 @@ class Manifold(BaseSolver):
         else:
             return n_s, n_u
 
-    def find_homoclinic(self, guess_eps_s=1e-3, guess_eps_u=1e-3, **kwargs):
+    def find_homoclinic(self, guess_eps_s=None, guess_eps_u=None, **kwargs):
         """Find the homo/hetero-clinic points (intersection of the stable and unstable manifold)."""
         defaults = {
             "n_s": None,
             "n_u": None,
             "bounds": None,
-            "root": {
-                "method": "hybr",
-                "jac": False,
-                "callback": None,
-            },
+            "root": {"method": "hybr", "jac": True},
         }
         defaults.update(
             {key: value for key, value in kwargs.items() if key in defaults}
@@ -394,32 +413,68 @@ class Manifold(BaseSolver):
             {key: value for key, value in kwargs.items() if key not in defaults}
         )
 
-        # if self.error_linear_regime(self.rfp_s, self.lambda_s, self.vector_s) > 1e-4 or self.error_linear_regime(self.rfp_u, self.lambda_u, self.vector_u) > 1e-4:
-        #    raise ValueError("Guess epsilon is not in linear regime.")
+        # Initializing the lower bound / Verifying that epsilon lies in linear regime
+        if guess_eps_s is None:
+            eps_s_lb = self.find_epsilon(self.rfp_s, self.vector_s, direction=-1)
+        elif (
+            self.error_linear_regime(
+                guess_eps_s, self.rfp_s, self.vector_s, direction=-1
+            )
+            > 1e-4
+        ):
+            raise ValueError("Guess for stable epsilon is not in the linear regime.")
+        else:
+            eps_s_lb = guess_eps_s
 
+        if guess_eps_u is None:
+            eps_u_lb = self.find_epsilon(self.rfp_u, self.vector_u)
+        elif self.error_linear_regime(guess_eps_u, self.rfp_u, self.vector_u) > 1e-4:
+            raise ValueError("Guess for unstable epsilon is not in the linear regime.")
+        else:
+            eps_u_lb = guess_eps_u
+
+        # Find the bounds of the search domain : lower bound epsilons are map to upper bound epsilons after one iteration
+        if defaults["bounds"] is None:
+            defaults["bounds"] = self.find_bounds(eps_s_lb, eps_u_lb)
+        if guess_eps_s is None:
+            guess_eps_s = (defaults["bounds"][0][1] - defaults["bounds"][0][0]) / 2
+        if guess_eps_u is None:
+            guess_eps_u = (defaults["bounds"][1][1] - defaults["bounds"][1][0]) / 2
+
+        # Initialize the number of times the map needs to be applied
         if defaults["n_s"] is None or defaults["n_u"] is None:
             n_s, n_u = self.find_N(guess_eps_s, guess_eps_u)
-            log.info(f"Found [n_s, n_u] : [{n_s}, {n_u}]")
         else:
             n_s, n_u = defaults["n_s"], defaults["n_u"]
 
-        # Find the bounds for the root finding
-        if defaults['bounds'] is None:
-            defaults['bounds'] = self.find_bounds(guess_eps_s, guess_eps_u)
-            guess_eps_s = (defaults['bounds'][0][1] - defaults['bounds'][0][0])/2
-            guess_eps_u = (defaults['bounds'][1][1] - defaults['bounds'][1][0])/2
-        log.debug(guess_eps_s, guess_eps_u)
+        # Logging the search initial configuration
+        log.debug(f"Guess - {guess_eps_s}, {guess_eps_u}")
+        log.debug(f"Bounds - {defaults['bounds']}")
+        log.debug(f"n_s, n_u - {n_s}, {n_u}")
 
+        self.history = []
+
+        # Residual function for the root finding
         def evolution(eps, n_s, n_u):
             eps_s, eps_u = eps
             r_s = self.rfp_s + eps_s * self.vector_s
             r_u = self.rfp_u + eps_u * self.vector_u
 
-            r_s_evolved, jac_s = self.integrate_single(r_s, n_s, -1)
-            r_u_evolved, jac_u = self.integrate_single(r_u, n_u, 1)
+            try:
+                r_s_evolved, jac_s = self.integrate_single(r_s, n_s, -1)
+            except Exception as e:
+                log.error(f"Error in stable manifold integration : {e}")
+                breakpoint()
+
+            try:
+                r_u_evolved, jac_u = self.integrate_single(r_u, n_u, 1)
+            except Exception as e:
+                log.error(f"Error in unstable manifold integration : {e}")
+                breakpoint()
 
             return (
                 r_s_evolved,
+                r_u_evolved,
                 r_s_evolved - r_u_evolved,
                 np.array([jac_s @ self.vector_s, -jac_u @ self.vector_u]),
             )
@@ -427,75 +482,127 @@ class Manifold(BaseSolver):
         def residual(logeps, n_s, n_u):
             eps_s, eps_u = np.exp(logeps)
 
-            if not defaults['bounds'][0][0] <= eps_s <= defaults['bounds'][0][1] or not defaults['bounds'][1][0] <= eps_u <= defaults['bounds'][1][1]:
-                dist_s = min(abs(eps_s - defaults['bounds'][0][0]), abs(eps_s - defaults['bounds'][0][1]))
-                dist_u = min(abs(eps_u - defaults['bounds'][1][0]), abs(eps_u - defaults['bounds'][1][1]))
-                return 1+np.array([dist_s, dist_u])**2
+            # if not defaults['bounds'][0][0] <= eps_s <= defaults['bounds'][0][1] or not defaults['bounds'][1][0] <= eps_u <= defaults['bounds'][1][1]:
+            #     dist_s = min(abs(eps_s - defaults['bounds'][0][0]), abs(eps_s - defaults['bounds'][0][1]))
+            #     dist_u = min(abs(eps_u - defaults['bounds'][1][0]), abs(eps_u - defaults['bounds'][1][1]))
+            #     coef = 1+10**(np.log(dist_s+dist_u)/np.log(defaults['bounds'][0][1]+defaults['bounds'][1][1]))
+            #     # ret = coef*evolution([min(max(eps_s, defaults['bounds'][0][0]), defaults['bounds'][0][1]), min(max(eps_u, defaults['bounds'][1][0]), defaults['bounds'][1][1])], n_s, n_u)[2]
+            #     ret = (np.array([dist_s, dist_u])/defaults['bounds'][0][0])**2
+            #     log.debug(f"Outside : {eps_s, eps_u} - {ret}")
+            #     return ret
+            # else:
+            #    ret = evolution([eps_s, eps_u], n_s, n_u)[2]
+            #    log.debug(f"Inside : {eps_s, eps_u} - {ret}")
+            #    return ret
 
-            try:
-                ret = evolution([eps_s, eps_u], n_s, n_u)[1]
-            except:
-                breakpoint()
-            return ret
+            ret = evolution([eps_s, eps_u], n_s, n_u)
+            log.debug(f"{eps_s, eps_u} - {ret[:3]}")
+            self.history.append(ret)
+
+            ret[3][:, 0] *= eps_s
+            ret[3][:, 1] *= eps_u
+
+            return ret[2], ret[3]
 
         r = root(
-            residual, [np.log(guess_eps_s), np.log(guess_eps_u)], args=(n_s, n_u), **defaults["root"]
+            residual,
+            np.log([guess_eps_s, guess_eps_u]),
+            args=(n_s, n_u),
+            **defaults["root"],
         )
 
         log.info(f"Root finding status : {r.message}")
         log.debug(f"Root finding object : {r}")
-        log.debug(f"Root finding epsilons : {np.exp(r.x)}")
 
         if not r.success:
             raise ValueError("Homoclinic search not successful.")
 
         eps_s, eps_u = np.exp(r.x)
+        # if self.error_linear_regime(eps_s, self.rfp_s, self.vector_s, direction=-1) > 1e-4:
+        #     raise ValueError("Homoclinic point stable epsilon does not lie linear regime.")
+        # if self.error_linear_regime(eps_u, self.rfp_u, self.vector_u) > 1e-4:
+        #     raise ValueError("Homoclinic point unstable epsilon does not lie linear regime.")
+
         log.info(
             f"Eps_s : {eps_s:.3e}, Eps_u : {eps_u:.3e} gives a difference in endpoint [R,Z] : {r.fun}"
         )
-        if eps_s < 0 or eps_u < 0:
-            raise ValueError("Homoclinic point epsilon cannot be negative.")
-        # if self.error_linear_regime(self.rfp_s, self.lambda_s, self.vector_s) > 1e-4 or self.error_linear_regime(self.rfp_u, self.lambda_u, self.vector_u) > 1e-4:
-        #     raise ValueError("Homoclinic point epsilon was be found in linear regime.")
 
-        self.clinics.append((evolution([eps_s, eps_u], n_s, n_u)[0], eps_s, eps_u))
+        # Recording the homo/hetero-clinic point
+        r_s_ev, r_u_ev = evolution([eps_s, eps_u], n_s, n_u)[:2]
+        if not self.clinics:
+            self.fundamental_segment = self.find_bounds(eps_s, eps_u)
+            order = eps_u
+            self.find_clinic_configuration = {"n_s": n_s, "n_u": n_u}
+        else:
+            order = self._order(self.rfp_u + eps_u * self.vector_u)
+
+        if not np.any([np.isclose(other[0], order) for other in self.clinics]):
+            self.clinics.append((order, eps_s, eps_u, r_s_ev, r_u_ev))
+        else:
+            log.warning("Clinic already recorded, skipping...")
 
         return eps_s, eps_u
 
-    def clinic_bijection(self, guess_eps_s, guess_eps_u, **kwargs):
-        defaults = {"tol": 1e-10, "n_s": None, "n_u": None}
-        defaults.update(
-            {key: value for key, value in kwargs.items() if key in defaults}
-        )
+    def find_clinics(self, n=1, **kwargs):
+        eps_s_0, eps_u_0 = self.find_homoclinic()
+        bounds_0 = self.fundamental_segment
 
-        # Find the first homo/hetero-clinic point
-        eps_s_1, eps_u_1 = self.find_homoclinic(guess_eps_s, guess_eps_u, **defaults)
-        
-        bounds_1 = self.find_bounds(eps_s_1, eps_u_1)
+        for i in range(n - 1):
+            bounds_i = np.array(bounds_0)
+            bounds_i[0][0] = self.clinics[-1][1]
+            bounds_i[1][1] = self.clinics[-1][2]
+            bounds_i = (tuple(bounds_i[0]), tuple(bounds_i[1]))
 
-        guess_2 = [eps_s_1*np.power(self.lambda_s, 1/2), eps_u_1*np.power(self.lambda_u, 1/2)]
-        eps_s_2, eps_u_2 = self.find_homoclinic(guess_2[0], guess_2[1], **defaults)
+            guess_i = [
+                bounds_0[0][1] * np.power(self.lambda_s, 5 / 6),
+                bounds_0[1][0] * np.power(self.lambda_u, 5 / 6),
+            ]
+            log.info(f"Initial guess: {guess_i}")
 
-        # considering the >_u ordering of the homoclinic points
-        
+            n_s = self.find_clinic_configuration["n_s"]
+            n_u = self.find_clinic_configuration["n_u"] - 1
+            self.find_homoclinic(
+                *guess_i, bounds=bounds_i, n_s=n_s, n_u=n_u, options={"factor": 0.1}
+            )
+
+    # def clinic_bijection(self, guess_eps_s, guess_eps_u, **kwargs):
+    #     defaults = {"tol": 1e-10, "n_s": None, "n_u": None}
+    #     defaults.update(
+    #         {key: value for key, value in kwargs.items() if key in defaults}
+    #     )
+
+    #     # Find the first homo/hetero-clinic point
+    #     eps_s_1, eps_u_1 = self.find_homoclinic(guess_eps_s, guess_eps_u, **defaults)
+
+    #     bounds_1 = self.find_bounds(eps_s_1, eps_u_1)
+
+    #     guess_2 = [eps_s_1*np.power(self.lambda_s, 1/2), eps_u_1*np.power(self.lambda_u, 1/2)]
+    #     eps_s_2, eps_u_2 = self.find_homoclinic(guess_2[0], guess_2[1], **defaults)
+
+    #     # considering the >_u ordering of the homoclinic points
 
     ### Calculating Turnstile Area
 
-    def create_ordering(self):
+    def order(self):
         """Order the homo/hetero-clinic points with the induced linear ordering of the unstable manifold >_u."""
-        pass
+        self.clinics = [
+            self.clinics[i] for i in np.argsort([x[0] for x in self.clinics])
+        ]
 
-    def resonance_area(self, n_b, n_f, n_transit=3):
-        # considering the >_u ordering of the homoclinic points
-        areas = []
-        for homoclinic in self.clinics:
-            homoclinic = homoclinic[0]
+    def resonance_area(self, n_f=10, n_b=10, n_transit=3):
+        # considering the >_u ordering of the clinic points
 
-            n_tmp_f, n_tmp_b = 1, 1
+        potential_integrations = []
+        endpoints = []
+
+        # Potential integration
+        for clinic in self.clinics:
+            n_tmp_f, n_tmp_b = 0, 0
 
             # Forward integration
-            rze_forward = homoclinic
-            area_forward = 0
+            rze_forward = clinic[-2]
+            intA_forward = []
+
             while n_tmp_f <= n_f:
                 rze_end, area_tmp = self.integrate_single(
                     rze_forward, 1, direction=1, ret_jacobian=False, integrate_A=True
@@ -504,21 +611,20 @@ class Manifold(BaseSolver):
                 if n_tmp_f > n_transit and np.linalg.norm(
                     rze_end - self.rfp_s
                 ) > np.linalg.norm(rze_forward - self.rfp_s):
-                    log.warning("Forward integration goes beyond the saddle point.")
-                    log.info(
+                    log.info("Forward integration goes beyond stable saddle point.")
+                    log.debug(
                         f"rfp_s: {self.rfp_s}, rze_end: {rze_end}, rze_forward: {rze_forward}"
                     )
                     break
 
                 rze_forward = rze_end
-                area_forward += area_tmp
+                intA_forward.append(area_tmp)
                 n_tmp_f += 1
 
-            log.info(f"Forward integration completed with area {area_forward}")
-
             # Backward integration
-            rze_backward = homoclinic
-            area_backward = 0
+            # taking the point found from unstable manifold to go back to the fixedpoint
+            rze_backward = clinic[-1]
+            intA_backward = []
             while n_tmp_b <= n_b:
                 rze_end, area_tmp = self.integrate_single(
                     rze_backward, 1, direction=-1, ret_jacobian=False, integrate_A=True
@@ -527,20 +633,47 @@ class Manifold(BaseSolver):
                 if n_tmp_b > n_transit and np.linalg.norm(
                     rze_end - self.rfp_u
                 ) > np.linalg.norm(rze_backward - self.rfp_u):
-                    log.warning("Backward integration goes beyond the saddle point.")
-                    log.info(
-                        f"rfp_u: {self.rfp_u}, rze_end: {rze_end}, rze_forward: {rze_backward}"
+                    log.info("Backward integration goes beyond unstable saddle point.")
+                    log.debug(
+                        f"rfp_u: {self.rfp_u}, rze_end: {rze_end}, rze_backward: {rze_backward}"
                     )
                     break
 
                 rze_backward = rze_end
-                area_backward += area_tmp
+                intA_backward.append(area_tmp)
                 n_tmp_b += 1
 
-            log.info(f"Backward integration completed with area {area_backward}")
+            log.info(
+                f"Potential integration completed for homo/hetero-clinic point of order : {clinic[0]:.3e}"
+            )
 
-            areas.append(area_forward - area_backward)
-        return np.array(areas)
+            potential_integrations.append(
+                [np.array(intA_forward), np.array(intA_backward)]
+            )
+            endpoints.append([rze_forward, rze_backward])
+
+        # Area calculation
+        areas = []
+        for intA_h, intA_m in zip(
+            potential_integrations,
+            [
+                potential_integrations[i]
+                for i in np.roll(np.arange(len(potential_integrations), dtype=int), -1)
+            ],
+        ):
+            n_fwd = min(intA_h[0].size, intA_m[0].size)
+            n_bwd = min(intA_h[1].size, intA_m[1].size)
+
+            intm = intA_m[0][:n_fwd].sum() - intA_m[1][:n_bwd].sum()
+            inth = intA_h[0][:n_fwd].sum() - intA_h[1][:n_bwd].sum()
+
+            areas.append(intm - inth)
+
+        areas = np.array(areas)
+
+        self.areas = areas
+
+        return areas, potential_integrations, endpoints
 
     ### Integration methods
 
@@ -573,11 +706,18 @@ class Manifold(BaseSolver):
         return rz_path
 
     def integrate_single(
-        self, RZstart, nintersect, direction=1, ret_jacobian=True, integrate_A=False
+        self,
+        RZstart,
+        nintersect,
+        direction=1,
+        ret_jacobian=True,
+        integrate_A=False,
+        dt=None,
     ):
         r, z = RZstart
         t0 = self._params["zeta"]
-        dt = self.fixedpoint.qq * direction * 2 * np.pi / self._problem.Nfp
+        if dt is None:
+            dt = self.fixedpoint.qq * direction * 2 * np.pi / self._problem.Nfp
 
         t = t0
         if ret_jacobian:
@@ -590,9 +730,14 @@ class Manifold(BaseSolver):
             ic = np.array([r, z], dtype=np.float64)
 
         self._integrator.set_initial_value(t, ic)
-        for _ in range(nintersect):
-            output = self._integrator.integrate(t + dt)
-            t = t + dt
+
+        try:
+            for _ in range(nintersect):
+                output = self._integrator.integrate(t + dt)
+                t = t + dt
+        except Exception as e:
+            self._integrator.change_rhs(self._problem.f_RZ)
+            raise e
 
         if ret_jacobian:
             self._integrator.change_rhs(self._problem.f_RZ)
