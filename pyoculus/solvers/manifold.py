@@ -488,21 +488,20 @@ class Manifold(BaseSolver):
             #     coef = 1+10**(np.log(dist_s+dist_u)/np.log(defaults['bounds'][0][1]+defaults['bounds'][1][1]))
             #     # ret = coef*evolution([min(max(eps_s, defaults['bounds'][0][0]), defaults['bounds'][0][1]), min(max(eps_u, defaults['bounds'][1][0]), defaults['bounds'][1][1])], n_s, n_u)[2]
             #     ret = (np.array([dist_s, dist_u])/defaults['bounds'][0][0])**2
-            #     log.debug(f"Outside : {eps_s, eps_u} - {ret}")
+            #     log.debug(f"Outside : {eps_s, eps_u} - {ret[:3]}")
             #     return ret
             # else:
-            #    ret = evolution([eps_s, eps_u], n_s, n_u)[2]
-            #    log.debug(f"Inside : {eps_s, eps_u} - {ret}")
-            #    return ret
-
             ret = evolution([eps_s, eps_u], n_s, n_u)
-            log.debug(f"{eps_s, eps_u} - {ret[:3]}")
             self.history.append(ret)
 
             ret[3][:, 0] *= eps_s
             ret[3][:, 1] *= eps_u
-
-            return ret[2], ret[3]
+            log.debug(f"Inside : {eps_s, eps_u} - {ret[:3]}")
+            
+            if defaults['root']['jac']:
+                return ret[2], ret[3]
+            else:
+                return ret[2]
 
         r = root(
             residual,
@@ -543,27 +542,36 @@ class Manifold(BaseSolver):
 
         return eps_s, eps_u
 
-    def find_clinics(self, n=1, **kwargs):
-        eps_s_0, eps_u_0 = self.find_homoclinic()
+    def find_clinics(self, indices = None, n_points = 1, **kwargs):
+        eps_s_0, eps_u_0 = self.find_homoclinic(**kwargs)
         bounds_0 = self.fundamental_segment
 
-        for i in range(n - 1):
+        for key in ['n_s', 'n_u']:
+            if key in kwargs:
+                kwargs.pop(key)
+
+        if indices is None:
+            indices = range(1, n_points)
+
+        for i in indices:
             bounds_i = np.array(bounds_0)
             bounds_i[0][0] = self.clinics[-1][1]
             bounds_i[1][1] = self.clinics[-1][2]
             bounds_i = (tuple(bounds_i[0]), tuple(bounds_i[1]))
 
             guess_i = [
-                bounds_0[0][1] * np.power(self.lambda_s, 5 / 6),
-                bounds_0[1][0] * np.power(self.lambda_u, 5 / 6),
+                bounds_0[0][1] * np.power(self.lambda_s, i / n_points),
+                bounds_0[1][0] * np.power(self.lambda_u, i / n_points),
             ]
             log.info(f"Initial guess: {guess_i}")
 
             n_s = self.find_clinic_configuration["n_s"]
             n_u = self.find_clinic_configuration["n_u"] - 1
             self.find_homoclinic(
-                *guess_i, bounds=bounds_i, n_s=n_s, n_u=n_u, options={"factor": 0.1}
+                *guess_i, bounds=bounds_i, n_s=n_s, n_u=n_u, **kwargs
             )
+
+        self.order()
 
     # def clinic_bijection(self, guess_eps_s, guess_eps_u, **kwargs):
     #     defaults = {"tol": 1e-10, "n_s": None, "n_u": None}
