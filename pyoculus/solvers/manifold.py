@@ -412,6 +412,7 @@ class Manifold(BaseSolver):
         defaults["root"].update(
             {key: value for key, value in kwargs.items() if key not in defaults}
         )
+        ERR = 1e-3
 
         # Initializing the lower bound / Verifying that epsilon lies in linear regime
         if guess_eps_s is None:
@@ -420,7 +421,7 @@ class Manifold(BaseSolver):
             self.error_linear_regime(
                 guess_eps_s, self.rfp_s, self.vector_s, direction=-1
             )
-            > 1e-4
+            > ERR
         ):
             raise ValueError("Guess for stable epsilon is not in the linear regime.")
         else:
@@ -428,7 +429,7 @@ class Manifold(BaseSolver):
 
         if guess_eps_u is None:
             eps_u_lb = self.find_epsilon(self.rfp_u, self.vector_u)
-        elif self.error_linear_regime(guess_eps_u, self.rfp_u, self.vector_u) > 1e-4:
+        elif self.error_linear_regime(guess_eps_u, self.rfp_u, self.vector_u) > ERR:
             raise ValueError("Guess for unstable epsilon is not in the linear regime.")
         else:
             eps_u_lb = guess_eps_u
@@ -461,27 +462,40 @@ class Manifold(BaseSolver):
             r_u = self.rfp_u + eps_u * self.vector_u
 
             try:
-                r_s_evolved, jac_s = self.integrate_single(r_s, n_s, -1)
+                if defaults['root']['jac']:
+                    r_s_evolved, jac_s = self.integrate_single(r_s, n_s, -1)
+                else:    
+                    r_s_evolved = self.integrate_single(r_s, n_s, -1, ret_jacobian=False)
             except Exception as e:
                 log.error(f"Error in stable manifold integration : {e}")
                 breakpoint()
 
             try:
-                r_u_evolved, jac_u = self.integrate_single(r_u, n_u, 1)
+                if defaults['root']['jac']:
+                    r_u_evolved, jac_u = self.integrate_single(r_u, n_u, 1)
+                else:    
+                    r_u_evolved = self.integrate_single(r_u, n_u, 1, ret_jacobian=False)
             except Exception as e:
                 log.error(f"Error in unstable manifold integration : {e}")
                 breakpoint()
 
-            return (
-                r_s_evolved,
-                r_u_evolved,
-                r_s_evolved - r_u_evolved,
-                np.array([jac_s @ self.vector_s, -jac_u @ self.vector_u]),
-            )
+            if defaults['root']['jac']:
+                return (
+                    r_s_evolved,
+                    r_u_evolved,
+                    r_s_evolved - r_u_evolved,
+                    np.array([jac_s @ self.vector_s, -jac_u @ self.vector_u]),
+                )
+            else:
+                return (
+                    r_s_evolved,
+                    r_u_evolved,
+                    r_s_evolved - r_u_evolved
+                )
 
         def residual(logeps, n_s, n_u):
             eps_s, eps_u = np.exp(logeps)
-
+            log.debug(f'Inside : {eps_s, eps_u}')
             # if not defaults['bounds'][0][0] <= eps_s <= defaults['bounds'][0][1] or not defaults['bounds'][1][0] <= eps_u <= defaults['bounds'][1][1]:
             #     dist_s = min(abs(eps_s - defaults['bounds'][0][0]), abs(eps_s - defaults['bounds'][0][1]))
             #     dist_u = min(abs(eps_u - defaults['bounds'][1][0]), abs(eps_u - defaults['bounds'][1][1]))
@@ -493,11 +507,14 @@ class Manifold(BaseSolver):
             # else:
             ret = evolution([eps_s, eps_u], n_s, n_u)
             self.history.append(ret)
-
-            ret[3][:, 0] *= eps_s
-            ret[3][:, 1] *= eps_u
-            log.debug(f"Inside : {eps_s, eps_u} - {ret[:3]}")
             
+            if defaults['root']['jac']:
+                ret[3][:, 0] *= eps_s
+                ret[3][:, 1] *= eps_u
+                log.debug(f"Returns - {ret[:3]}")
+            else:
+                log.debug(f"Returns - {ret}")
+                
             if defaults['root']['jac']:
                 return ret[2], ret[3]
             else:
@@ -542,8 +559,10 @@ class Manifold(BaseSolver):
 
         return eps_s, eps_u
 
-    def find_clinics(self, indices = None, n_points = 1, **kwargs):
-        eps_s_0, eps_u_0 = self.find_homoclinic(**kwargs)
+    def find_clinics(self, indices = None, n_points = 1, m = 0, **kwargs):
+        if len(self.clinics) == 0:
+            self.find_homoclinic(**kwargs)
+            
         bounds_0 = self.fundamental_segment
 
         for key in ['n_s', 'n_u']:
@@ -565,8 +584,8 @@ class Manifold(BaseSolver):
             ]
             log.info(f"Initial guess: {guess_i}")
 
-            n_s = self.find_clinic_configuration["n_s"]
-            n_u = self.find_clinic_configuration["n_u"] - 1
+            n_s = self.find_clinic_configuration["n_s"] + m
+            n_u = self.find_clinic_configuration["n_u"] - m - 1
             self.find_homoclinic(
                 *guess_i, bounds=bounds_i, n_s=n_s, n_u=n_u, **kwargs
             )
