@@ -700,6 +700,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         RZ_manifold=None,
         N_levels=50,
         alpha=0.5,
+        zorder=-999,
         ax=None,
     ):
         """Plot the perturbation psi flux function and the perturbation B field in the RZ plane at the provided points.
@@ -743,7 +744,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
         if len(self.perturbations_args) == 0:
             psi = np.zeros(R.shape)
-        mappable = ax.contourf(R, Z, psi, levels=N_levels, alpha=alpha)
+        mappable = ax.contourf(R, Z, psi, levels=N_levels, alpha=alpha, zorder=zorder)
         fig.colorbar(mappable)
 
         if RZ_manifold is not None:
