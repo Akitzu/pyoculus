@@ -468,6 +468,7 @@ class Manifold(BaseSolver):
                     r_s_evolved = self.integrate_single(r_s, n_s, -1, ret_jacobian=False)
             except Exception as e:
                 log.error(f"Error in stable manifold integration : {e}")
+                raise e
                 # breakpoint()
 
             try:
@@ -477,6 +478,7 @@ class Manifold(BaseSolver):
                     r_u_evolved = self.integrate_single(r_u, n_u, 1, ret_jacobian=False)
             except Exception as e:
                 log.error(f"Error in unstable manifold integration : {e}")
+                raise e
                 # breakpoint()
 
             if defaults['root']['jac']:
