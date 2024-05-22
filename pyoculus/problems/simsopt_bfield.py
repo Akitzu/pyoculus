@@ -58,12 +58,12 @@ class SimsoptBfieldProblem(CartesianBfield):
                 
                 p = kwargs.get('p', 2)
                 h = kwargs.get('h', 0.03)
-                surfclassifier = SurfaceClassifier(surf, h=h, p=p)
+                self.surfclassifier = SurfaceClassifier(surf, h=h, p=p)
 
                 deltah = kwargs.get('deltah', 0.05)
                 def skip(rs, phis, zs):
                     rphiz = np.asarray([rs, phis, zs]).T.copy()
-                    dists = surfclassifier.evaluate_rphiz(rphiz)
+                    dists = self.surfclassifier.evaluate_rphiz(rphiz)
                     skip = list((dists < -deltah).flatten())
                     return skip
 
