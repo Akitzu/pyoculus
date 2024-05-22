@@ -554,7 +554,7 @@ class Manifold(BaseSolver):
         else:
             order = self._order(self.rfp_u + eps_u * self.vector_u)
 
-        if not np.any([np.isclose(other[0], order) for other in self.clinics]):
+        if not np.any([np.isclose(order, other[0], rtol=1e-2) for other in self.clinics]):
             self.clinics.append((order, eps_s, eps_u, r_s_ev, r_u_ev))
         else:
             log.warning("Clinic already recorded, skipping...")
@@ -783,9 +783,9 @@ class Manifold(BaseSolver):
             for _ in range(nintersect):
                 output = self._integrator.integrate(t + dt)
                 t = t + dt
-        except Exception as e:
+        except Exception:
             self._integrator.change_rhs(self._problem.f_RZ)
-            raise e
+            raise
 
         if ret_jacobian:
             self._integrator.change_rhs(self._problem.f_RZ)
