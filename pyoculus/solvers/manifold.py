@@ -404,7 +404,7 @@ class Manifold(BaseSolver):
             "n_s": None,
             "n_u": None,
             "bounds": None,
-            "root": {"method": "hybr", "jac": True},
+            "root": {"method": "hybr", "jac": False},
         }
         defaults.update(
             {key: value for key, value in kwargs.items() if key in defaults}
@@ -589,6 +589,9 @@ class Manifold(BaseSolver):
             self.find_homoclinic(
                 *guess_i, bounds=bounds_i, n_s=n_s, n_u=n_u, **kwargs
             )
+        
+        if len(self.clinics) != n_points:
+            log.warning("Number of clinic points is not the expected one.")
 
         self.order()
 
@@ -616,59 +619,60 @@ class Manifold(BaseSolver):
             self.clinics[i] for i in np.argsort([x[0] for x in self.clinics])
         ]
 
-    def resonance_area(self, n_f=10, n_b=10, n_transit=3):
-        # considering the >_u ordering of the clinic points
+    def resonance_area(self, n_f_max=40, n_b_max=40, n_transit=3):
+        """Compute the turnstile area by integrating the vector potential along the trajectory of the homo/hetero-clinics points.
 
-        potential_integrations = []
-        endpoints = []
+        Args:
+            n_f_max (int): Maximum number of forward iteration.
+            n_b_max (int): Maximum number of backward iteration.
+            n_transit (int): Number of iteration consider as transition before being close to the fixedpoints.
+        
+        Returns:
+        """
 
-        # Potential integration
-        for clinic in self.clinics:
-            n_tmp_f, n_tmp_b = 0, 0
+        # Function for forward/backward integration for each clinic point
+        def integrate_direction(rz, n, rfp, direction):
+            history = []
+            intA = []
+            n_tmp = 0
 
-            # Forward integration
-            rze_forward = clinic[-2]
-            intA_forward = []
-
-            while n_tmp_f <= n_f:
-                rze_end, area_tmp = self.integrate_single(
-                    rze_forward, 1, direction=1, ret_jacobian=False, integrate_A=True
+            while n_tmp < n:
+                rz_end, intA_tmp = self.integrate_single(
+                    rz, 1, direction=direction, ret_jacobian=False, integrate_A=True
                 )
 
-                if n_tmp_f > n_transit and np.linalg.norm(
-                    rze_end - self.rfp_s
-                ) > np.linalg.norm(rze_forward - self.rfp_s):
-                    log.info("Forward integration goes beyond stable saddle point.")
+                if n_tmp > n_transit and np.linalg.norm(
+                    rz_end - rfp
+                ) > np.linalg.norm(rz - rfp):
+                    if direction == -1:
+                        direction_str = "Backward"
+                    else:
+                        direction_str = "Forward"
+                    log.info(f"{direction_str} integration goes beyond stable saddle point.")
                     log.debug(
-                        f"rfp_s: {self.rfp_s}, rze_end: {rze_end}, rze_forward: {rze_forward}"
+                        f"rfp: {rfp}, rz_end: {rz_end}, rz: {rz}"
                     )
                     break
 
-                rze_forward = rze_end
-                intA_forward.append(area_tmp)
-                n_tmp_f += 1
+                rz = rz_end
+                history.append(rz)
+                intA.append(intA_tmp)
+                n_tmp += 1
+            
+            return history, intA
+
+        # Potential integration
+        potential_integrations = []
+        history = []
+        for clinic in self.clinics:
+            # Forward integration
+            rz_forward = clinic[-2]
+            history_forward, intA_forward = integrate_direction(rz_forward, n_f_max, self.rfp_s, 1)
 
             # Backward integration
             # taking the point found from unstable manifold to go back to the fixedpoint
-            rze_backward = clinic[-1]
-            intA_backward = []
-            while n_tmp_b <= n_b:
-                rze_end, area_tmp = self.integrate_single(
-                    rze_backward, 1, direction=-1, ret_jacobian=False, integrate_A=True
-                )
-
-                if n_tmp_b > n_transit and np.linalg.norm(
-                    rze_end - self.rfp_u
-                ) > np.linalg.norm(rze_backward - self.rfp_u):
-                    log.info("Backward integration goes beyond unstable saddle point.")
-                    log.debug(
-                        f"rfp_u: {self.rfp_u}, rze_end: {rze_end}, rze_backward: {rze_backward}"
-                    )
-                    break
-
-                rze_backward = rze_end
-                intA_backward.append(area_tmp)
-                n_tmp_b += 1
+            rz_backward = clinic[-1]
+            history_backward, intA_backward = integrate_direction(rz_backward, n_b_max, self.rfp_u, -1)
 
             log.info(
                 f"Potential integration completed for homo/hetero-clinic point of order : {clinic[0]:.3e}"
@@ -677,30 +681,45 @@ class Manifold(BaseSolver):
             potential_integrations.append(
                 [np.array(intA_forward), np.array(intA_backward)]
             )
-            endpoints.append([rze_forward, rze_backward])
+            history.append([history_forward, history_backward])
 
-        # Area calculation
-        areas = []
-        for intA_h, intA_m in zip(
+        # Computation of the turnstile area
+        areas = np.zeros(len(potential_integrations))
+        err_by_diff, err_by_estim = np.zeros_like(areas), np.zeros_like(areas)
+
+        # Loop on the intA values : intA_h current clinic point, intA_m next clinic point (in term of >_u ordering)
+        for i, (intA_h, intA_m) in enumerate(zip(
             potential_integrations,
             [
                 potential_integrations[i]
                 for i in np.roll(np.arange(len(potential_integrations), dtype=int), -1)
             ],
-        ):
+        )):
+            # Set up the maximum number of fwd/bwd usable iterations
             n_fwd = min(intA_h[0].size, intA_m[0].size)
             n_bwd = min(intA_h[1].size, intA_m[1].size)
 
+            # Area calculation
             intm = intA_m[0][:n_fwd].sum() - intA_m[1][:n_bwd].sum()
             inth = intA_h[0][:n_fwd].sum() - intA_h[1][:n_bwd].sum()
+            areas[i] = intm - inth
 
-            areas.append(intm - inth)
+            # Error by difference
+            errf = np.abs(intA_m[0][-1] - intA_h[0][-1])
+            errb = np.abs(intA_m[1][-1] - intA_h[1][-1])
+            err_by_diff[i] = errf + errb
 
-        areas = np.array(areas)
+            # Error by estimation
+            for j, n in enumerate([n_fwd, n_bwd]):
+                r1 = history[i][j][n-1]
+                r2 = history[(i+1)%len(potential_integrations)][j][n-1]
+                rmid = (r2 + r1)/2
+                Amid = self._problem.A([rmid[0], self._params['zeta'], rmid[1]])[0::2]
+                err_by_estim[i] += np.abs(np.dot(Amid, r2 - r1))
 
-        self.areas = areas
-
-        return areas, potential_integrations, endpoints
+        self.areas = np.vstack((areas, err_by_diff, err_by_estim)).T
+        
+        return areas, potential_integrations, history
 
     ### Integration methods
 
