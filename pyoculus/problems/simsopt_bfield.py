@@ -38,7 +38,6 @@ def surf_from_coils(coils, **kwargs):
     return surf
 
 
-
 ### Simsopt magnetic field problem class ###
 class SimsoptBfieldProblem(CartesianBfield):
     def __init__(self, R0, Z0, Nfp, mf, interpolate: Union[bool, InterpolatedField] = False, **kwargs):
@@ -95,6 +94,14 @@ class SimsoptBfieldProblem(CartesianBfield):
     def from_coils(cls, R0, Z0, Nfp, coils, **kwargs):
         mf = BiotSavart(coils)
         return cls(R0, Z0, Nfp, mf, **kwargs)
+
+    @classmethod
+    def without_axis(
+        cls, guess, Nfp, mf, interpolate, **kwargs
+    ):
+        instance = cls(guess[0], guess[1], Nfp, mf, **kwargs)
+        R0, Z0 = instance.find_axis(guess, **kwargs)
+        return cls(R0, Z0, Nfp, mf, interpolate, **kwargs)
 
     # The return of the B field for the two following methods is not the same as the calls are :
     #   - CartesianBfield.f_RZ which does :

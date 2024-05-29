@@ -17,6 +17,30 @@ class CartesianBfield(CylindricalProblem, BfieldProblem):
 
         super().__init__(R0, Z0, Nfp)
 
+    def find_axis(self, guess, Nfp = 1, params=dict(), integrator=None, integrator_params=dict(), **kwargs):
+            """! Find the magnetic axis
+            @param guess the initial guess of the axis
+            @param Nfp the number of field periods
+            @param **kwargs extra parameters for the FixedPoint.find_axis method
+            @returns the axis R0 and Z0
+            """
+            options = {
+                "Rbegin": guess[0]-1, "Rend": guess[0]+1, "niter": 100, "tol": 1e-9
+            }
+            options.update(kwargs)
+
+            self._R0 = guess[0]
+            self._Z0 = guess[1]
+            
+            from ..solvers.fixed_point import FixedPoint
+            fpaxis = FixedPoint(self, params=params, integrator=integrator, integrator_params=integrator_params, evolve_axis=False)
+            RZ_axis = fpaxis.find_axis(R_guess = guess[0], Z_guess = guess[1], **options)
+
+            if RZ_axis is None:
+                raise ValueError("Failed to find the axis")
+            
+            return RZ_axis[0], RZ_axis[1]
+
     def f_RZ(self, phi, RZ, *args):
         """! Returns ODE RHS
         @param phi cylindrical angle in ODE
