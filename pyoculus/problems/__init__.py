@@ -13,4 +13,4 @@ from .simsopt_bfield import *
 from .m3dc1_bfield import *
 from .qfm_bfield import *
 from .interpolate_coordinates import *
-from .toybox import *
+from .cylindrical_bfield_analytic import *
