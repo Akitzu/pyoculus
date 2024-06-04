@@ -153,7 +153,7 @@ class FixedPoint(BaseSolver):
                 Z_guess = self._params["Z"]
 
         # run the Newton's method
-        for ii in range(self._params["nrestart"] + 1):
+        for _ in range(self._params["nrestart"] + 1):
             try:  # run the solver, if failed, try a different random initial condition
                 if self._is_cylindrical_problem:
                     if self.is_Z_fixed:
@@ -217,8 +217,9 @@ class FixedPoint(BaseSolver):
                     return rdata
                 else:
                     result = None
-            except:
-                    result = None
+            except Exception as e:
+                print(e)
+                result = None
 
 
             if result is not None:  # if it is successful:
@@ -341,12 +342,12 @@ class FixedPoint(BaseSolver):
         if self._is_cylindrical_problem:
             R0 = self._problem._R0
             Z0 = self._problem._Z0
-            for r, z in zip(self.x[1:-2], self.z[1:-2]):
+            for r, z in zip(self.x[1:-1], self.z[1:-1]):
                 theta0 = np.arctan2(z-Z0, r-R0)
                 ic = np.array([r, z, R0, Z0, theta0, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
                 ic_list.append(ic)
         else:
-            for s, theta in zip(self.s[1:-2], self.theta[1:-2]):
+            for s, theta in zip(self.s[1:-1], self.theta[1:-1]):
                 ic = np.array([s, theta, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
                 ic_list.append(ic)
 
@@ -661,7 +662,7 @@ class FixedPoint(BaseSolver):
             t = t0
             self._integrator.set_initial_value(t0, ic)
 
-            for jj in range(qq):
+            for _ in range(qq):
                 output = self._integrator.integrate(t + dt)
                 t = t + dt
 
