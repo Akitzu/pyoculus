@@ -307,17 +307,7 @@ class PoincarePlot(BaseSolver):
         if ylabel is None:
             ylabel = self._problem.poincare_plot_ylabel
 
-        if plottype == "RZ":
-            xdata = self.x
-            ydata = self.z
-        elif plottype == "yx":
-            xdata = self.y
-            ydata = self.x
-        elif plottype == "st":
-            xdata = np.mod(self.theta, 2 * np.pi)
-            ydata = self.s
-        else:
-            raise ValueError("Choose the correct type for plottype")
+        xdata, ydata = self.xdata(plottype), self.ydata(plottype)
 
         if plt.get_fignums():
             fig = plt.gcf()
@@ -412,6 +402,41 @@ class PoincarePlot(BaseSolver):
             plt.xlim(xlim)
         if ylim is not None:
             plt.ylim(ylim)
+
+    @property
+    def xdata(self, plottype = None):
+        if plottype is None:
+            plottype = self._problem.poincare_plot_type
+        
+        if plottype == "RZ":
+            return self.x
+        elif plottype == "yx":
+            return self.y
+        elif plottype == "st":
+            return np.mod(self.theta, 2 * np.pi)
+        else:
+            raise ValueError("Choose the correct type for plottype")
+    
+    @property
+    def ydata(self, plottype = None):
+        if plottype is None:
+            plottype = self._problem.poincare_plot_type
+        
+        if plottype == "RZ":
+            return self.z
+        elif plottype == "yx":
+            return self.x
+        elif plottype == "st":
+            return self.s
+        else:
+            raise ValueError("Choose the correct type for plottype")
+
+    def save(self, filename):
+        """! Save the Poincare plot to a file
+        @param filename the filename to save the plot
+        """
+        with open(filename, "wb") as f:
+            np.save(f, np.array([self.xdata, self.ydata]))
 
     @staticmethod
     def _run_poincare(params):
