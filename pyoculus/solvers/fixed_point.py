@@ -237,7 +237,7 @@ class FixedPoint(BaseSolver):
 
         # now we go and get all the fixed points by iterating the map                
         if result is not None:
-            t = self.zeta[0]
+            t = self._params["zeta"]
             dt = 2 * np.pi / self.Nfp
 
             if self._is_cylindrical_problem:
