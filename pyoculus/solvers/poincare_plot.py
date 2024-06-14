@@ -307,7 +307,7 @@ class PoincarePlot(BaseSolver):
         if ylabel is None:
             ylabel = self._problem.poincare_plot_ylabel
 
-        xdata, ydata = self.xdata(plottype), self.ydata(plottype)
+        xdata, ydata = self.xdata, self.ydata   
 
         if plt.get_fignums():
             fig = plt.gcf()
@@ -404,9 +404,8 @@ class PoincarePlot(BaseSolver):
             plt.ylim(ylim)
 
     @property
-    def xdata(self, plottype = None):
-        if plottype is None:
-            plottype = self._problem.poincare_plot_type
+    def xdata(self):
+        plottype = self._problem.poincare_plot_type
         
         if plottype == "RZ":
             return self.x
@@ -418,9 +417,8 @@ class PoincarePlot(BaseSolver):
             raise ValueError("Choose the correct type for plottype")
     
     @property
-    def ydata(self, plottype = None):
-        if plottype is None:
-            plottype = self._problem.poincare_plot_type
+    def ydata(self):
+        plottype = self._problem.poincare_plot_type
         
         if plottype == "RZ":
             return self.z
