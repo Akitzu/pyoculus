@@ -332,7 +332,12 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         if len(self.perturbations_args) == 0:
             psi = np.zeros(R.shape)
         mappable = ax.contourf(R, Z, psi, levels=N_levels, alpha=alpha, zorder=zorder)
-        fig.colorbar(mappable)
+        cbar = fig.colorbar(mappable)
+        
+        from matplotlib.ticker import FormatStrFormatter 
+        cbar.set_label(r'$\psi_{pert}$', fontsize=14)
+        cbar.formatter = FormatStrFormatter('%.1e')
+        cbar.update_ticks()
 
         if RZ_manifold is not None:
             bfuncts = self.perturbations
@@ -341,16 +346,16 @@ class AnalyticCylindricalBfield(CylindricalBfield):
                 if pertdic["type"] != "circular-current-loop":
                     Bs += np.array([bfuncts[i]([R, 0.0, Z]) for R, Z in RZ_manifold])
 
-            norms = np.linalg.norm(Bs, axis=1)
+            # norms = np.linalg.norm(Bs, axis=1)
 
             ax.quiver(
                 RZ_manifold[:, 0],
                 RZ_manifold[:, 1],
-                Bs[:, 0] / np.linalg.norm(Bs, axis=1),
-                Bs[:, 2] / np.linalg.norm(Bs, axis=1),
-                norms,
+                Bs[:, 0],
+                Bs[:, 2],
                 alpha=alpha,
                 linewidth=0.5,
+                zorder=zorder+1,
             )
 
-        return fig, ax
+        return fig, ax, mappable, cbar

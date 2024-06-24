@@ -40,23 +40,25 @@ class Manifold(BaseSolver):
                 raise TypeError(
                     "Need a successful fixed point to compute the manifold"
                 )
+
+        if fixedpoint_2 is not None:
+            self.fixedpoint_1 = fixedpoint_1
+            self.fixedpoint_2 = fixedpoint_2
+
+            # Initialize the inner/outer dictionnaries
+            self.outer = dict()
+            self.inner = dict()
+
+            # Initialize the manifold for later computations
+            self.outer['lfs'] = {"stable": None, "unstable": None}
+            self.inner['lfs'] = {"stable": None, "unstable": None}
+
+            # Set the hetero/homo-clinic lists
+            self.outer['clinics'] = []
+            self.inner['clinics'] = []
         else:
-            fixedpoint_2 = fixedpoint_1
-
-        self.fixedpoint_1 = fixedpoint_1
-        self.fixedpoint_2 = fixedpoint_2
-
-        # Initialize the inner/outer dictionnaries
-        self.outer = dict()
-        self.inner = dict()
-
-        # Initialize the manifold for later computations
-        self.outer['lfs'] = {"stable": None, "unstable": None}
-        self.inner['lfs'] = {"stable": None, "unstable": None}
-
-        # Set the hetero/homo-clinic lists
-        self.outer['clinics'] = []
-        self.inner['clinics'] = []
+            self.fixedpoint = fixedpoint_1
+            # Initialize the dictionnary
 
         # Check that the bfield is a correct BfieldProblem instance
         if not isinstance(bfield, BfieldProblem):
@@ -501,7 +503,7 @@ class Manifold(BaseSolver):
         log.debug(f"Bounds - {defaults['bounds']}")
         log.debug(f"n_s, n_u - {n_s}, {n_u}")
 
-        self.history = []
+        self.onworking["history"] = []
 
         # Residual function for the root finding
         def evolution(eps, n_s, n_u):
@@ -556,7 +558,7 @@ class Manifold(BaseSolver):
             #     return ret
             # else:
             ret = evolution([eps_s, eps_u], n_s, n_u)
-            self.history.append(ret)
+            self.onworking["history"].append(np.array([[eps_s, eps_u], *ret]))
             
             if defaults['root']['jac']:
                 ret[3][:, 0] *= eps_s
@@ -678,15 +680,8 @@ class Manifold(BaseSolver):
     def resonance_area(self):
         pass
 
-    def turnstile_area(self, n_f_max=40, n_b_max=40, n_transit=3):
+    def turnstile_area(self, cyl_flag, n_joining = 100):
         """Compute the turnstile area by integrating the vector potential along the trajectory of the homo/hetero-clinics points.
-
-        Args:
-            n_f_max (int): Maximum number of forward iteration.
-            n_b_max (int): Maximum number of backward iteration.
-            n_transit (int): Number of iteration consider as transition before being close to the fixedpoints.
-        
-        Returns:
         """
 
         # Function for forward/backward integration for each clinic point
@@ -700,7 +695,7 @@ class Manifold(BaseSolver):
                     rz, 1, direction=direction, ret_jacobian=False, integrate_A=True
                 )
 
-                if n_tmp > n_transit and np.linalg.norm(
+                if n_tmp > 3 and np.linalg.norm(
                     rz_end - rfp
                 ) > np.linalg.norm(rz - rfp):
                     if direction == -1:
@@ -721,21 +716,25 @@ class Manifold(BaseSolver):
             return history, intA
 
         # Potential integration
+        n_fwd, n_bwd = self.onworking["find_clinic_configuration"].values()
         potential_integrations = []
         history = []
-        for clinic in self.onworking["clinics"]:
+        for i, clinic in enumerate(self.onworking["clinics"]):
             # Forward integration
             rz_forward = clinic[-2]
-            history_forward, intA_forward = integrate_direction(rz_forward, n_f_max, self.onworking["rfp_s"], 1)
+            history_forward, intA_forward = integrate_direction(rz_forward, n_fwd, self.onworking["rfp_s"], 1)
 
             # Backward integration
             # taking the point found from unstable manifold to go back to the fixedpoint
             rz_backward = clinic[-1]
-            history_backward, intA_backward = integrate_direction(rz_backward, n_b_max, self.onworking["rfp_u"], -1)
+            history_backward, intA_backward = integrate_direction(rz_backward, n_bwd, self.onworking["rfp_u"], -1)
 
             log.info(
                 f"Potential integration completed for homo/hetero-clinic point of order : {clinic[0]:.3e}"
             )
+
+            if i == 0:
+                n_bwd -= 1
 
             potential_integrations.append(
                 [np.array(intA_forward), np.array(intA_backward)]
@@ -758,23 +757,38 @@ class Manifold(BaseSolver):
             n_fwd = min(intA_h[0].size, intA_m[0].size)
             n_bwd = min(intA_h[1].size, intA_m[1].size)
 
-            # Area calculation
+            # Action integration
             intm = intA_m[0][:n_fwd].sum() - intA_m[1][:n_bwd].sum()
             inth = intA_h[0][:n_fwd].sum() - intA_h[1][:n_bwd].sum()
             areas[i] = intm - inth
 
-            # Error by difference
-            errf = np.abs(intA_m[0][-1] - intA_h[0][-1])
-            errb = np.abs(intA_m[1][-1] - intA_h[1][-1])
-            err_by_diff[i] = errf + errb
-
-            # Error by estimation
+            # Closure by joining integrals
             for j, n in enumerate([n_fwd, n_bwd]):
                 r1 = history[i][j][n-1]
                 r2 = history[(i+1)%len(potential_integrations)][j][n-1]
-                rmid = (r2 + r1)/2
-                Amid = self._problem.A([rmid[0], self._params['zeta'], rmid[1]])[0::2]
-                err_by_estim[i] += np.abs(np.dot(Amid, r2 - r1))
+                
+                # Create a segment between r2 and r1
+                gamma, dl = np.linspace(r1, r2, n_joining, retstep=True)  
+
+                # Evaluate A at the middle point between (x_i, x_{i+1})
+                mid_gamma = (gamma + dl/2)[:-1]
+                mid_gamma = np.vstack((mid_gamma[:,0], self._params['zeta']*np.ones(mid_gamma.shape[0]), mid_gamma[:,1])).T
+                
+                if cyl_flag:
+                    mid_A = np.array([self._problem.A(r)[0::2] for r in mid_gamma])
+                else:
+                    mid_A = np.empty((mid_gamma.shape[0], 2))
+                    for k, r in enumerate(mid_gamma):
+                        xyz = np.array([
+                            r[0] * np.cos(r[1]),
+                            r[0] * np.sin(r[1]),
+                            r[2]
+                        ])
+                        invJacobian = self._problem._inv_Jacobian(r[0], r[1], r[2])
+                        mid_A[k] = np.matmul(invJacobian, np.array([self._problem.A(xyz)]).T).T[0][::2]
+
+                # Discretize the A.dl integral and sum it
+                areas[i] += np.einsum('ij,ij->i', mid_A, np.ones((mid_A.shape[0], 1)) * dl).sum()
 
         self.onworking["areas"] = np.vstack((areas, err_by_diff, err_by_estim)).T
         self.onworking["potential_integrations"] = potential_integrations
@@ -799,10 +813,10 @@ class Manifold(BaseSolver):
             for j in range(nintersect):
                 try:
                     self._integrator.set_initial_value(t, ic)
+                    output = self._integrator.integrate(t + dt)
                 except:
                     log.error(f"Integration of point {ic} failed.")
                     break
-                output = self._integrator.integrate(t + dt)
 
                 t = t + dt
                 ic = output

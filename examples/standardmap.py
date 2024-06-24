@@ -40,7 +40,7 @@ for i in range(1, Ev.shape[0]):
     Ev[i,:,:] = evolved
 fig, ax = plt.subplots()
 for i in range(len(Ev[0,:,0])):
-    ax.scatter(Ev[:, i, 0], Ev[:, i, 1], s=0.1, alpha=1, zorder = 10, c='black')
+    ax.scatter(Ev[:, i, 0], Ev[:, i, 1], s=0.1, alpha=1, zorder = 10)
 # ax.axis('off')
 from scipy.optimize import root
 
