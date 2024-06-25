@@ -20,9 +20,6 @@
 ```{eval-rst}
 .. autoclass:: pyoculus.problems.CylindricalBfield
    :members:
-
-.. autoclass:: pyoculus.problems.IntegrationMap
-   :members:
 ```
 
 ### Additional maps
@@ -35,7 +32,7 @@ standard map, tokamap
 .. autoclass:: pyoculus.integrators.BaseIntegrator
    :members:
 
-.. autoclass:: pyoculus.problems.RKIntegrator
+.. autoclass:: pyoculus.integrators.RKIntegrator
    :members:
 ```
 
