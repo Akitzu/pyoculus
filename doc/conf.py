@@ -1,7 +1,3 @@
-import os
-import sys
-sys.path.insert(0, os.path.abspath(".."))
-
 # Configuration file for the Sphinx documentation builder.
 #
 # For the full list of built-in configuration values, see the documentation:
@@ -17,6 +13,10 @@ release = '0.3.1'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
+
+import os
+import sys
+sys.path.insert(0, os.path.abspath('..'))
 
 extensions = ['myst_parser', 'sphinx.ext.autodoc', 'sphinx.ext.napoleon']
 
