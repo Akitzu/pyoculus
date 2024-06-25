@@ -17,6 +17,7 @@ jobs:
         run: |
           pip install sphinx sphinx_rtd_theme myst_parser sphinxcontrib-napoleon
           pip install -r requirements.txt
+          pip install .
       - name: Sphinx build
         run: |
           sphinx-build doc _build
@@ -28,5 +29,3 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: _build/
           force_orphan: true
-      - name: Print Python path
-        run: python -c "import sys; print(sys.path)"

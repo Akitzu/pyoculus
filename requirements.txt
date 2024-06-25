@@ -1,1 +1,3 @@
-.
+
+# Pyoculus package dependencies
+numpy
