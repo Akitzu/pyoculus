@@ -5,8 +5,8 @@ from scipy.optimize import root
 import matplotlib.pyplot as plt
 import numpy as np
 
-import structlog
-log = structlog.get_logger()
+import logging
+log = logging.getLogger(__name__)
 
 
 class Manifold(BaseSolver):

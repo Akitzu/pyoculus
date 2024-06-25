@@ -1,3 +1,6 @@
 
 # Pyoculus package dependencies
 numpy
+simsopt
+scipy
+matplotlib
