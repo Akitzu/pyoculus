@@ -1,4 +1,3 @@
-from overrides import overrides
 from .cylindrical_bfield import CylindricalBfield
 from .cartesian_bfield import vec2cyl, mat2cyl
 from simsopt.field import MagneticField
@@ -16,24 +15,20 @@ class SimsoptBfieldProblem(CylindricalBfield):
         self._mf = magnetic_field
         super().__init__(phi0=phi0, R0=R0, Z0=Z0, Nfp=Nfp, **kwargs)
 
-    @overrides
     def B(self, coords, *args):
         coords = np.reshape(coords, (-1, 3))
         self._mf.set_points(coords)
         return vec2cyl(self._mf.B().flatten(), *coords.flatten())
 
-    @overrides
     def dBdX(self, coords, *args):
         B = self.B(coords)
         return B, mat2cyl(self._mf.dB_by_dX().reshape(3, 3), *coords)
 
-    @overrides
     def A(self, coords, *args):
         coords = np.reshape(coords, (-1, 3))
         self._mf.set_points(coords)
         return vec2cyl(self._mf.A().flatten(), *coords.flatten())
 
-    # @overrides
     # def B_many(self, x1arr, x2arr, x3arr, input1D=True, *args):
     #     if input1D:
     #         xyz = np.array([x1arr, x2arr, x3arr], dtype=np.float64).T
@@ -48,7 +43,6 @@ class SimsoptBfieldProblem(CylindricalBfield):
 
     #     return self._mf.B()
 
-    # @overrides
     # def dBdX_many(self, x1arr, x2arr, x3arr, input1D=True, *args):
     #     B = self.B_many(x1arr, x2arr, x3arr, input1D=input1D)
     #     return [B], self._mf.dB_by_dX()

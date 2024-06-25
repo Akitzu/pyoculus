@@ -3,7 +3,6 @@
 #  @author Zhisong Qu (zhisong.qu@anu.edu.au)
 #
 
-from overrides import overrides
 from .integration_map import IntegrationMap
 from .bfield_problem import BfieldProblem
 import numpy as np
@@ -21,17 +20,14 @@ class ToroidalBfield(IntegrationMap, BfieldProblem):
 
     ## BaseMap methods
 
-    @overrides
     def f(self, t, y0):
         self._integrator.set_rhs(self._ode_rhs)
         return self._integrate(t, y0)
 
-    @overrides
     def df(self, t, y0):
         self._integrator.set_rhs(self._ode_rhs_tangent)
         return self._integrate(t, y0)
 
-    @overrides
     def lagrangian(self, y0, t):
         self._integrator.set_rhs(self._ode_rhs_A)
         return self._integrate(t, y0)
