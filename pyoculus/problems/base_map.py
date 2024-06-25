@@ -1,8 +1,9 @@
+from abc import ABC, abstractmethod
 import numpy as np
 
-class BaseMap:
+class BaseMap(ABC):
     """
-    Defines a base class for a map object.
+    Defines an abstract base class for the map subclasses.
 
     A map object is a function that transforms a point in phase space to another point. The transformation can be either continuous or discrete. A continuous transformation allows the map to be applied for a continuous time (f^t where t is a real number), while a discrete transformation allows the map to be applied only for discrete times (f^t where t is an integer).
 
@@ -35,6 +36,7 @@ class BaseMap:
         self.is_continuous = continuous
         self.domain = domain
 
+    @abstractmethod
     def f(self, t, y0):
         """
         Applies the map 't' times to the initial point 'y0'.
@@ -45,6 +47,7 @@ class BaseMap:
         """
         raise NotImplementedError("A BaseMap object should have a mapping f method.")
 
+    @abstractmethod
     def df(self, t, y0):
         """
         Computes the Jacobian of the map at 'y0' after 't' applications.
@@ -57,6 +60,7 @@ class BaseMap:
             "A BaseMap object should have a jacobian mapping df method."
         )
 
+    @abstractmethod
     def lagrangian(self, y0, t=None):
         """
         Calculates the Lagrangian at a given point or the difference in Lagrangian between two points.
@@ -70,7 +74,8 @@ class BaseMap:
         """
         raise NotImplementedError("A BaseMap object should have a lagrangian method.")
     
-    def f_winding(self, t, y0, y1=None):
+    @abstractmethod
+    def f_winding(self, y0, y1=None):
         """
         Calculates how the point y0 winds around the point y1 after applying the map t times. This map should take two points in the domain and return a point into a space of same dimension where the last component is the winding number. 
 
@@ -81,6 +86,7 @@ class BaseMap:
         """
         raise NotImplementedError("A Continous BaseMap object should have a winding mapping f_winding method.")
     
+    @abstractmethod
     def df_winding(self, t, y0, y1=None):
         """
         Calculates the Jacobian of the winding of y0 around y1 after applying the map t times.

@@ -1,4 +1,3 @@
-from overrides import overrides
 from .cylindrical_bfield import CylindricalBfield
 import matplotlib.pyplot as plt
 from functools import partial, wraps
@@ -654,25 +653,22 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
     # BfieldProblem methods implementation
 
-    @overrides
     def B(self, coords, *args):
         """Total field function at the point rr. Where B = B_equilibrium + B_perturbation."""
         return np.array(self._B(coords))
 
-    @overrides
     def dBdX(self, coords, *args):
         """Gradient of the total field function at the point coords. Where (dBdX)^i_j = dB^i/dX^j with i the row index and j the column index of the matrix."""
         rr = np.array(coords)
         return [self.B(rr)], np.array(self._dBdX(coords))
 
-    @overrides
     def A(self, coords, *args):
         """Total vector potential function at the point rr."""
         return np.array(self._A(coords))
 
     # def B_many(self, r, phi, z, input1D=True):
     #     return np.array([self._B([r[i], phi[i], z[i]]) for i in range(len(r))])
-
+        
     # def dBdX_many(self, r, phi, z, input1D=True):
     #     return self.B_many(r, phi, z).flatten(), np.array(
     #         [self._dBdX([r[i], phi[i], z[i]]) for i in range(len(r))]

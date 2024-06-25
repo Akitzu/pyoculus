@@ -4,45 +4,18 @@
 #
 
 import numpy as np
+import matplotlib.pyplot as plt
 from .base_solver import BaseSolver
-from ..problems import BfieldProblem
+import logging
+
+logger = logging.getLogger(__name__)
 
 class PoincarePlot(BaseSolver):
     """
         Class that used to setup the Poincare plot.
     """
 
-    def __init__(
-        self, bfield_problem, zeta=0., nPpts=500, nPtrj=10, nthreads=1, **kwargs 
-    ):
-        """
-        Sets up the Poincare plot
-        
-        Args:
-            zeta (float, optional): The toroidal section (zeta) for the Poincare plot. Defaults to 0.
-            nPpts (int, optional): The number of iterations for the plot. Defaults to 500.
-            nPtrj (int, optional): The number of equidistant points in the s coordinates for the plot. Defaults to 10.
-            nthreads (int, optional): The number of threads to be used for computation. Defaults to 1.
-        """
-
-        if not isinstance(bfield_problem, BfieldProblem):
-            raise TypeError("bfied_problem should be a BfieldProblem.")
-
-        super().__init__(bfield_problem)
-
-        self.zeta = zeta
-        self.nPpts = nPpts
-        self.nPtrj = nPtrj
-        self.nthreads = nthreads
-    
-        self.iota_successful = False
-
-        # set up the result array
-        self.x = np.zeros(
-            [nPtrj + 1, nPpts + 1], dtype=np.float64
-        )
-
-    def compute(self, xs):
+    def compute(self, xs, nPpts=400, nthreads=1):
         """
         Computes the Poincare plot
         
@@ -50,89 +23,36 @@ class PoincarePlot(BaseSolver):
             class that contains the results
         """
 
-        self.successful = False
+        if xs.shape[1] != self._map.dimension:
+            raise ValueError("The initial points should have the correct dimension.")
+        for ii in range(self._map.dimension):
+            if xs[:, ii].any() < self._map.domain[ii][0] or xs[:, ii].any() > self._map.domain[ii][1]:
+                raise ValueError("The initial points should be in the domain of the map.")
 
-        swindow = self._end - self._begin
-        ds = swindow / float(self.nPtrj)
+        # Initialize the hits
+        hits = np.nan * np.ones((xs.shape[0], nPpts + 1, self._map.dimension), dtype=np.float64)
+        hits[:, 0, :] = xs
 
-        for ii in range(self.nPtrj + 1):
-            # find which s to start with
-            if self._is_cylindrical_problem:
-                if RZs is None:
-                    self.x[ii, 0] = self._begin + ds * float(ii)
-                    self.z[ii, 0] = self._params["Z"]
-                else:
-                    self.x[ii, 0] = RZs[ii, 0]
-                    self.z[ii, 0] = RZs[ii, 1]
-                
-                self.theta[ii, 0] = np.arctan2(
-                    (self.z[ii, 0] - self._problem._Z0),
-                    (self.x[ii, 0] - self._problem._R0),
-                )
-            else:
-                self.s[ii, 0] = self._begin + ds * float(ii)
-                # put in the initial conditions
-                self.theta[ii, 0] = self._params["theta"]
-
-            self.zeta[ii, 0] = self._params["zeta"]
-
-        if self.nthreads == 1:  # single thread, do it straight away
-
-            for ii in range(self._params["nPtrj"] + 1):
-
-                # set up the initial value
-                t0 = self.zeta[ii, 0]
-                if self._is_cylindrical_problem:
-                    icr = self.x[ii, 0]
-                    icz = self.z[ii, 0]
-                    ictheta = self.theta[ii, 0]
-                    ic = [icr, icz, self._problem._R0, self._problem._Z0, ictheta]
-                else:
-                    ic = [self.s[ii, 0], self.theta[ii, 0]]
-
-                # initialize the integrator
-                self._integrator.set_initial_value(t0, ic)
-
-                t = t0
-                dt = self.dt
-
-                for jj in range(1, self._params["nPpts"] + 1):
-                    
-                    # run the integrator
+        if nthreads == 1:  # single thread, do it straight away
+            for i, x in enumerate(xs):
+                current_x = x.copy()
+                for j in range(nPpts):
                     try:
-                        st = self._integrator.integrate(t + dt)
-                    except Exception:
-                        # integration failed, abort for this orbit
-                        print("Integration failed for s=", ic[0])
+                        current_x = self._map.f(1, current_x)
+                    except:
+                        logger.warning("The map failed to compute at point %s", current_x)
                         break
+                    hits[i, j + 1, :] = current_x
 
-                    # extract the result to s theta zeta
-                    if self._is_cylindrical_problem:
-                        self.x[ii,jj] = st[0]
-                        self.z[ii,jj] = st[1]
-                        self.theta[ii,jj] = st[4]
-                    else:
-                        self.s[ii, jj] = st[0]
-                        self.theta[ii, jj] = st[1]
-                    self.zeta[ii, jj] = t + dt
+        self._successful = True
+        self._hits = hits
 
-                    # advance in time
-                    t = t + dt
-
-        self.successful = True
-
-        pdata = PoincarePlot.OutputData()
-        pdata.x = self.x.copy()
-        pdata.z = self.z.copy()
-        pdata.theta = self.theta.copy()
-        pdata.zeta = self.zeta.copy()
-
-        return pdata
+        return hits
 
     def compute_iota(self):
         """! Compute the iota profile"""
 
-        if not self.successful:
+        if not self._successful:
             raise Exception("A successful call of compute() is needed")
 
         self.iota_successful = False
@@ -167,39 +87,11 @@ class PoincarePlot(BaseSolver):
         return 1/self.compute_iota()
 
     def plot(
-        self, plottype=None, xlabel=None, ylabel=None, xlim=None, ylim=None, **kwargs
+        self, xlabel=None, ylabel=None, xlim=None, ylim=None, **kwargs
     ):
-        import matplotlib.pyplot as plt
-
-        """! Generates the Poincare plot
-        @param plottype which variables to plot: 'RZ' or 'yx', by default using "poincare_plot_type" in problem
-        @param xlabel,ylabel what to put for the xlabel and ylabel, by default using "poincare_plot_xlabel" in problem
-        @param xlim, ylim the range of plotting, by default plotting the range of all data
-        @param **kwargs passed to the plotting routine "plot"
-        """
-
-        if not self.successful:
+        
+        if not self._successful:
             raise Exception("A successful call of compute() is needed")
-
-        # default setting
-        if plottype is None:
-            plottype = self._problem.poincare_plot_type
-        if xlabel is None:
-            xlabel = self._problem.poincare_plot_xlabel
-        if ylabel is None:
-            ylabel = self._problem.poincare_plot_ylabel
-
-        if plottype == "RZ":
-            xdata = self.x
-            ydata = self.z
-        elif plottype == "yx":
-            xdata = self.y
-            ydata = self.x
-        elif plottype == "st":
-            xdata = np.mod(self.theta, 2 * np.pi)
-            ydata = self.s
-        else:
-            raise ValueError("Choose the correct type for plottype")
 
         if plt.get_fignums():
             fig = plt.gcf()
@@ -222,14 +114,8 @@ class PoincarePlot(BaseSolver):
         #     kwargs.update({'c': 'gray'})
         # make plot depending on the 'range'
 
-        for ii in range(self._params["nPtrj"] + 1):
-            dots = ax.scatter(xdata[ii, :], ydata[ii, :], **kwargs)
-
-        # adjust figure properties
-        if plottype == "RZ":
-            ax.set_aspect("equal")
-        if plottype == "yx":
-            pass
+        for x_mapped in self._hits:
+            ax.scatter(x_mapped[:, 0], x_mapped[:, 1], **kwargs)
 
         ax.set_xlabel(xlabel, fontsize=20)
         ax.set_ylabel(ylabel, fontsize=20)

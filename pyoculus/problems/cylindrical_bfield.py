@@ -1,4 +1,3 @@
-from overrides import overrides
 from .integration_map import IntegrationMap
 from .bfield_problem import BfieldProblem
 from ..solvers.fixed_point import FixedPoint
@@ -44,26 +43,22 @@ class CylindricalBfield(IntegrationMap, BfieldProblem):
 
     ## BaseMap methods
 
-    @overrides
     def f(self, t, y0):
         self._integrator.set_rhs(self._rhs_RZ)
         return self._integrate(t, y0)
 
-    @overrides
     def df(self, t, y0):
         ic = np.array([*y0, 1., 0., 0., 1.])
         self._integrator.set_rhs(self._rhs_RZ_tangent)
         output = self._integrate(t, ic)
         return output[2:6].reshape(2, 2).T
 
-    @overrides
     def lagrangian(self, y0, t):
         ic = np.array([*y0, 0.])
         self._integrator.set_rhs(self._rhs_RZ_A)
         output = self._integrate(t, ic)
         return output[2]
 
-    @overrides
     def f_winding(self, t, y0, y1 = None):
         if y1 is None:
             y1 = np.array([self.R0, self.Z0])
@@ -77,7 +72,6 @@ class CylindricalBfield(IntegrationMap, BfieldProblem):
 
         return np.array([rho, theta1 - theta0])
     
-    @overrides
     def df_winding(self, t, y0, y1 = None):
         if y1 is None:
             y1 = np.array([self.R0, self.Z0])

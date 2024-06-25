@@ -15,7 +15,7 @@ import numpy as np
 # See __init__ for how to set up the integrator
 class RKIntegrator(BaseIntegrator):
     def __init__(self, **params):
-        """! Sets up the ODE solver
+        """Sets up the ODE solver
         @param params dict, the parameters used in the ODE solver
 
         <code>params['ode']</code> -- callable f: rhs=f(t,x,*args), must provide

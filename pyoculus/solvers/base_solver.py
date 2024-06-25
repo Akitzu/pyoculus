@@ -2,32 +2,32 @@
 #  @brief Contains base class for solvers
 #  @author Zhisong Qu (zhisong.qu@anu.edu.au)
 #
-
+from abc import ABC
 from pyoculus.problems import BaseMap
 
-class BaseSolver:
+class BaseSolver(ABC):
     """
-    Abstract class that used to setup all other solvers.
+    Abstract base class for solvers.
     """
 
     class OutputData:
         """
-        Class that stores the output data of the solver.
+        Class to hold the output data of the solver.
         """
         def __init__(self):
             pass
 
     def __init__(self, map: BaseMap):
         """
-        Sets up the solver.
+        Initializes the BaseSolver object.
         
         Args:
             map (BaseMap): The map to use for the solver.
         """
-        ## flagging if the computation is done and successful
-        self.successful = False
+        ## Flag to note if the computation was performed successfuly
+        self._successful = False
 
-        # check the map
+        # Check if the map is derived from BaseMap
         if not isinstance(map, BaseMap):
             raise ValueError("The problem is not a derived type of BaseMap class.")
 
@@ -38,4 +38,4 @@ class BaseSolver:
         """
         Returns a boolean indicating if the solver was successful.
         """
-        return self.successful
+        return self._successful

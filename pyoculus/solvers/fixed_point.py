@@ -4,24 +4,28 @@
 #
 
 from .base_solver import BaseSolver
-from ..problems import BaseMap
 import numpy as np
+import logging
 
-import structlog
 
-log = structlog.get_logger()
+logger = logging.getLogger(__name__)
 
 
 class FixedPoint(BaseSolver):
     """
-    Fixed point class to find points that satisfy f^t(x) = x.
+    Class to find fixed points of a map, i.e. points that satisfy :math:`f^t(x) = x`.
     """
 
     ## Findings fixed points methods
 
     def find(self, t, guess=None, niter=100, nrestart=0, tol=1e-10):
         """
-        Finds a fixed point of a map applied 't' times.
+        Finds a fixed point of a map applied 't' times. Once found, the fixed point has as attributes:
+        - coords: the coordinates of the fixed point
+        - jacobians: the Jacobians of the fixed point
+        - GreenesResidues: the Greene's Residue of the fixed point
+        - MeanResidues: the 'Average Residue' f as defined by Greene
+
         """
         if not self._map.is_continuous and not isinstance(t, int):
             raise ValueError(
@@ -40,11 +44,11 @@ class FixedPoint(BaseSolver):
             shape=(self.t + 1, self._map.dimension), dtype=np.float64
         )
         self.jacobians = np.zeros(
-            shape=(self.t+1, self._map.dimension, self._map.dimension),
+            shape=(self.t + 1, self._map.dimension, self._map.dimension),
             dtype=np.float64,
         )
-        self.GreenesResidues = np.zeros(self.t+1, dtype=np.float64)
-        self.MeanResidues = np.zeros(self.t+1, dtype=np.float64)
+        self.GreenesResidues = np.zeros(self.t + 1, dtype=np.float64)
+        self.MeanResidues = np.zeros(self.t + 1, dtype=np.float64)
 
         # set up the guess
         if len(guess) != self._map.dimension:
@@ -57,24 +61,24 @@ class FixedPoint(BaseSolver):
         for ii in range(nrestart + 1):
             try:  # run the solver, if failed, try a different random initial condition
                 x_fp, jac = self._newton_method(guess, niter, tol)
-                if self.successful:
+                if self._successful:
                     break
             except Exception as e:
-                log.info(f"Search {ii} - failed: {e}")
+                logger.info(f"Search {ii} - failed: {e}")
 
             if ii < nrestart:
-                log.info(f"Search {ii+1} starting from a random initial guesss!")
+                logger.info(f"Search {ii+1} starting from a random initial guesss!")
                 guess = self.random_initial_guess(guess0)
 
         # now we go and get all the fixed points by iterating the map
         if x_fp is not None:
-            log.info(f"Found fixed point at {x_fp}. Computing ...")
+            logger.info(f"Found fixed point at {x_fp}. Computing ...")
             self.coords[0] = x_fp
             self.jacobians[0] = jac
 
             for jj in range(0, self.t + 1):
                 if jj > 0:
-                    self.coords[jj] = self._map.f(1, self.coords[jj-1])
+                    self.coords[jj] = self._map.f(1, self.coords[jj - 1])
                     self.jacobians[jj] = self._map.df(self.t, self.coords[jj])
                 self.GreenesResidues[jj] = 0.25 * (2.0 - np.trace(self.jacobians[jj]))
                 # self.MeanResidues[jj] = np.power(
@@ -90,10 +94,10 @@ class FixedPoint(BaseSolver):
             # rdata.MeanResidues = self.MeanResidues.copy()
 
             # Set the successful flag
-            self.successful = True
+            self._successful = True
         else:
             rdata = None
-            log.info(f"Fixed point search unsuccessful for t={self.t}.")
+            logger.info(f"Fixed point search unsuccessful for t={self.t}.")
 
         return rdata
 
@@ -139,7 +143,7 @@ class FixedPoint(BaseSolver):
         self.history = []
         x_fp = None
 
-       # arrays that save the data
+        # arrays that save the data
         self.coords = np.zeros(
             shape=(self.qq + 1, self._map.dimension), dtype=np.float64
         )
@@ -161,13 +165,13 @@ class FixedPoint(BaseSolver):
         for ii in range(nrestart + 1):
             try:  # run the solver, if failed, try a different random initial condition
                 x_fp = self._newton_method_winding(guess, x_axis, niter, tol)
-                if self.successful:
+                if self._successful:
                     break
             except Exception as e:
-                log.info(f"Search {ii} - failed: {e}")
+                logger.info(f"Search {ii} - failed: {e}")
 
             if ii < nrestart:
-                log.info(f"Search {ii+1} starting from a random initial guesss!")
+                logger.info(f"Search {ii+1} starting from a random initial guesss!")
                 guess = self.random_initial_guess(guess0)
 
         # now we go and get all the fixed points by iterating the map
@@ -198,10 +202,10 @@ class FixedPoint(BaseSolver):
             rdata.MeanResidues = self.MeanResidues.copy()
 
             # Set the successful flag
-            self.successful = True
+            self._successful = True
         else:
             rdata = None
-            log.info(f"Fixed point search unsuccessful for pp/qq={self.pp}/{self.qq}.")
+            logger.info(f"Fixed point search unsuccessful for pp/qq={self.pp}/{self.qq}.")
 
         return rdata
 
@@ -215,7 +219,7 @@ class FixedPoint(BaseSolver):
                 low if low != -np.inf else -np.finfo(np.float64).max,
                 high if high != np.inf else np.finfo(np.float64).max,
             )
-            for (low, high) in domain   
+            for (low, high) in domain
         ]
 
         if mu is None:
@@ -233,12 +237,12 @@ class FixedPoint(BaseSolver):
         succeeded = False
 
         for ii in range(niter):
-            log.info(f"Newton {ii} - x : {x}")
+            logger.info(f"Newton {ii} - x : {x}")
             df = self._map.df(self.t, x)
             x_evolved = self._map.f(self.t, x)
 
             # Stop if the resolution is good enough
-            log.info(f"Newton {ii} - delta_x : {x_evolved-x}")
+            logger.info(f"Newton {ii} - delta_x : {x_evolved-x}")
             if np.linalg.norm(x_evolved - x) < tol:
                 succeeded = True
                 break
@@ -249,13 +253,13 @@ class FixedPoint(BaseSolver):
             x_new = x + step
 
             # Update the variables
-            log.info(f"Newton {ii} - step : {x_new-x}")
+            logger.info(f"Newton {ii} - step : {x_new-x}")
             x = x_new
 
             if any(
                 (xi < lwb) or (xi > upb) for xi, (lwb, upb) in zip(x, self._map.domain)
             ):
-                log.info(f"Newton {ii} - out of domain")
+                logger.info(f"Newton {ii} - out of domain")
                 return None
 
             self.history.append(x.copy())
@@ -273,13 +277,13 @@ class FixedPoint(BaseSolver):
         succeeded = False
 
         for ii in range(niter):
-            log.info(f"Newton {ii} - RZ : {x}")
+            logger.info(f"Newton {ii} - RZ : {x}")
 
             dW = self._map.df_winding(self.t, x)
             x_evolved, _, x_winding = self._map.f_winding(self.t, x)
 
             # Stop if the resolution is good enough
-            log.info(
+            logger.info(
                 f"Newton {ii} - [DeltaR, DeltaZ] : {x_evolved-x} - dtheta : {x_winding}"
             )
             if abs(x_winding[-1]) < tol:
@@ -291,13 +295,13 @@ class FixedPoint(BaseSolver):
             x_new = x + step
 
             # Update the variables
-            log.info(f"Newton {ii} - step: {x_new-x}")
+            logger.info(f"Newton {ii} - step: {x_new-x}")
             x = x_new
 
             if any(
                 (xi < lwb) or (xi > upb) for xi, lwb, upb in zip(x, self._map.domain)
             ):
-                log.info(f"Newton {ii} - out of domain")
+                logger.info(f"Newton {ii} - out of domain")
                 return None
 
             self.history.append(x.copy())
@@ -320,7 +324,7 @@ class FixedPoint(BaseSolver):
         """
         import matplotlib.pyplot as plt
 
-        if not self.successful:
+        if not self._successful:
             raise Exception("A successful call of compute() is needed")
 
         # default setting

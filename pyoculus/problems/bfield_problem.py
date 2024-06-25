@@ -2,9 +2,10 @@
 #  @brief containing a problem class with magnetic fields
 #  @author Zhisong Qu (zhisong.qu@anu.edu.au)
 #
+from abc import ABC, abstractmethod
+import numpy as np
 
-
-class BfieldProblem:
+class BfieldProblem(ABC):
     def __init__(self):
         """
         Initializes the BfieldProblem class.
@@ -12,6 +13,7 @@ class BfieldProblem:
         ## if the output magnetic field contains the jacobian factor or not
         self.has_jacobian = False
 
+    @abstractmethod
     def B(self, coords, *args):
         """
         Returns the contravariant magnetic fields at the given coordinates.
@@ -22,31 +24,35 @@ class BfieldProblem:
         """
         raise NotImplementedError("A problem class should implement member function B.")
 
+    @abstractmethod
     def dBdX(self, coords, *args):
         """
-        Returns the contravariant magnetic fields and their derivatives at the given coordinates.
+        Returns the contravariant components of the magnetic fields and their derivatives at the given coordinates.
 
         Args:
             coords (array): The coordinates at which to calculate the magnetic fields and their derivatives.
             *args: Additional parameters.
 
         Returns:
-            array: The contravariant magnetic fields
-            array: The derivatives of the contravariant magnetic fields
+            array: The contravariant components of the magnetic field
+            array: The contravariant components of the derivative of the magnetic fields
         """
         raise NotImplementedError(
             "A problem class should implement member function dBdX."
         )
 
+    @abstractmethod
     def A(self, coords, *args):
         """
-        Returns the contravariant vector potential at the given coordinates.
+        Returns the contravariant components of the vector potential at given coordinates.
 
         Args:
             coords (array): The coordinates at which to calculate the vector potential.
             *args: Additional parameters.
         """
         raise NotImplementedError("Vector potential is not implemented.")
+
+    # Many points implementation
 
     def B_many(self, x1arr, x2arr, x3arr, input1D=True, *args):
         """
@@ -57,7 +63,12 @@ class BfieldProblem:
             input1D (bool, optional): If False, create a meshgrid with x1arr, x2arr and x3arr. If True, treat them as a list of points.
             *args: Additional parameters.
         """
-        raise NotImplementedError("B_many is not implemented.")
+        if input1D:
+            xs = np.array([x1arr, x2arr, x3arr]).T
+        else:
+            xs = np.array(np.meshgrid(x1arr, x2arr, x3arr)).T.reshape(-1, 3)
+
+
 
     def dBdX_many(self, x1arr, x2arr, x3arr, input1D=True, *args):
         """
