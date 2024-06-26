@@ -1,25 +1,24 @@
-## @file base_integrator.py
-#  @brief Contains base class of ODE integrator
-#  @author Zhisong Qu (zhisong.qu@anu.edu.au)
-#
+################################################################################
+# base_integrator.py
+# Contains wrapper for the scipy.integrate.ode ODE solver class.
+# Authors:  Zhisong Qu (zhisong.qu@anu.edu.au),
+#           Ludovic Rais (ludovic.rais@epfl.ch)
+################################################################################
+
+
 from abc import ABC, abstractmethod
-## Class that used to setup the ODE integrator.
-#
-# This is an abstract class, should never be used as an instance.
-#
-# All integrators derived from BaseIntegrator should contain the following member functions
-#
-#   - set_initial_value -- Set up initial value for the ODE solver
-#   - integrate -- Solve the ODE until a given time
-#   .
-#
-# Optional:
-#   - copy -- make a copy of the integrator as a new instance
+
+
 class BaseIntegrator(ABC):
     """
     Abstract base class for ODE integrators.
 
     It can be a wrapper of any existing ODE solver, such as scipy.integrate.ode or scipy.integrate.solve_ivp, or a new solver implemented from scratch.
+
+    Attributes:
+        _params (dict): The parameters used in the ODE solver.
+        t: The current time.
+        x: The current coordinates.
     """
 
     def __init__(self, params):
