@@ -1,5 +1,5 @@
 from .base_map import BaseMap
-from pyoculus.integrators import BaseIntegrator, RKIntegrator
+from pyoculus.integrators import BaseIntegrator, ScipyODEIntegrator
 
 
 class IntegrationMap(BaseMap):
@@ -30,7 +30,7 @@ class IntegrationMap(BaseMap):
                 *args: Additional parameters for the ODE.
     """
 
-    def __init__(self, dim=2, domain=None, integrator=RKIntegrator, **kwargs):
+    def __init__(self, dim=2, domain=None, integrator=ScipyODEIntegrator, **kwargs):
         """
         Initializes the IntegrationMap object.
 

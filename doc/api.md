@@ -32,7 +32,7 @@ standard map, tokamap
 .. autoclass:: pyoculus.integrators.BaseIntegrator
    :members:
 
-.. autoclass:: pyoculus.integrators.RKIntegrator
+.. autoclass:: pyoculus.integrators.ScipyODEIntegrator
    :members:
 ```
 
