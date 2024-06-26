@@ -1,10 +1,13 @@
-################################################################################
-# base_integrator.py
-# Contains wrapper for the scipy.integrate.ode ODE solver class.
-# Authors:  Zhisong Qu (zhisong.qu@anu.edu.au),
-#           Ludovic Rais (ludovic.rais@epfl.ch)
-################################################################################
+"""
+base_integrator.py
+==================
 
+Contains the abstract base class for integrators.
+
+:authors:
+    - Zhisong Qu (zhisong.qu@anu.edu.au)
+    - Ludovic Rais (ludovic.rais@epfl.ch)
+"""
 
 from abc import ABC, abstractmethod
 

@@ -1,10 +1,13 @@
-################################################################################
-# scipyode_integrator.py
-# Contains wrapper for the scipy.integrate.ode ODE solver class.
-# Authors:  Zhisong Qu (zhisong.qu@anu.edu.au),
-#           Ludovic Rais (ludovic.rais@epfl.ch)
-################################################################################
+"""
+scipyode_integrator.py
+==================
 
+Contains wrapper for the scipy.integrate.ode ODE solver class.
+
+:authors: 
+    - Zhisong Qu (zhisong.qu@anu.edu.au)
+    - Ludovic Rais (ludovic.rais@epfl.ch)
+"""
 
 from .base_integrator import BaseIntegrator
 from scipy.integrate import ode
