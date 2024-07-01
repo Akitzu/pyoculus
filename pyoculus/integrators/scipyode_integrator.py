@@ -60,10 +60,11 @@ class ScipyODEIntegrator(BaseIntegrator):
             params["args"] = ()
         self.args = params["args"]
 
+        super().__init__(params)
+
         # set up the integrator
         self.set_rhs(params["ode"])
 
-        super().__init__(params)
 
     def set_initial_value(self, t, x):
         """
@@ -111,7 +112,7 @@ class ScipyODEIntegrator(BaseIntegrator):
         """
         self.rhs = rhs
         self.integrator = ode(self.rhs).set_integrator(
-            self._params["type"], rtol=self.rtol, nsteps=self.nsteps
+            self._params["type"], rtol=self._params["rtol"], nsteps=self._params["nsteps"]
         )
 
     def __copy__(self):
