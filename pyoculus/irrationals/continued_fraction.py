@@ -1,63 +1,66 @@
-## @file continued_fraction.py
-#  @brief Contains functions related to the continued fraction expansion
-#  @author Zhisong Qu (zhisong.qu@anu.edu.au)
-#
+"""
+continued_fraction.py
+==================
+
+Contains functions related to the continued fraction expansion. Reference in Ivan Niven, Irrational Numbers (Cambridge University Press, 2005).
+
+:authors:
+    - Zhisong Qu (zhisong.qu@anu.edu.au)
+    - Ludovic Rais (ludovic.rais@epfl.ch)
+"""
+
 import numpy as np
 
 
-def expandcf(irrational, n, thres_ai=1000):
-    """! Expand an (positive) irrational using the continued fraction expansion
-    @param irrational -- the positive irrational number to expand. an absolute will be taken if negative
-    @param n -- the number of terms
-    @param thres_ai=1000 -- terminate the expansion if some ai>thres_ai
-
-    @param an integer sequence contains the continued fraction expansion of irrational up to the nth term
+def expandcf(realnumber, n=100, thres=1e-12):
     """
+    Expands a positive real number in its continued fraction.
+    
+    Args:
+        realnumber (float): The positive real number to expand. An absolute value will be taken if negative.
+        n (int, optional): The maximum number of terms in the expansion. Default to 100.
+        thres (float, optional): The threshold to stop the expansion. Default to 1e-6.
 
-    ai = np.zeros(n, dtype=np.int)
+    Returns:
+        np.ndarray: A NumPy array containing the continued fraction expansion of the real number up to the `nth` term or until the threshold is met.
+    """
+    ais = np.zeros(n, dtype=np.int64)
+    residue = np.abs(realnumber)
 
-    residue = np.abs(irrational)
+    for i in range(n):
+        int_part = np.ceil(residue)
+        if np.abs(residue - int_part) > 1e-3:
+            int_part -= 1
+        
+        ais[i] = int_part
+        f = residue - int_part
 
-    for ii in range(n):
-
-        ai[ii] = np.floor(residue).astype(np.int)
-        nterms = ii + 1
-
-        if ai[ii] > thres_ai:
-            # ai is beyond threshold, the expansion has terminated
-            ai[ii] = 0
-            nterms = ii
+        if f < thres:
             break
+        residue = 1.0 / f
 
-        residue = residue - ai[ii]
-
-        if np.abs(residue) < 1 / float(thres_ai):
-            # residue is too small, the expansion has terminated
-            break
-
-        residue = 1.0 / residue
-
-    ai = ai[0:nterms]
-
-    return ai
+    return ais[:i+1]
 
 
 def fromcf(ai):
-    """! Obtain the fraction pp/qq of the continued fraction ai
-    @param ai an integer array contains ai for the continued fraction expansion
-    @returns (pp, qq), the fraction (pp/qq)
+    """
+    Obtains the fraction :math:`\\iota/2\\pi=n/m` of the continued fraction with coefficients :math:`[a_0, a_1, ..., a_m]`.
+
+    Args:
+        ai (list of int): An integer list containing ai for the continued fraction expansion.
+
+    Returns:
+        tuple: A tuple :math:`(n, m)`, representing the fraction.
     """
 
-    numer = ai[-1]
-    denom = 1
+    # Use the relation of the Gaussian bracket to get the fraction
+    h, k = np.zeros(len(ai) + 2), np.zeros(len(ai) + 2)
+    
+    h[0], h[1] = 0, 1
+    k[0], k[1] = 1, 0
 
-    for jj in range(len(ai) - 1):
-        tmpi = denom
-        denom = numer
-        numer = tmpi
-        numer = numer + ai[-jj - 2] * denom
+    for i, a in enumerate(ai):
+        h[i + 2] = a * h[i + 1] + h[i]
+        k[i + 2] = a * k[i + 1] + k[i]
 
-    pp = int(numer)
-    qq = int(denom)
-
-    return (pp, qq)
+    return int(h[-1]), int(k[-1])
