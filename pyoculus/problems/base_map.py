@@ -1,3 +1,13 @@
+"""
+base_map.py
+==================
+
+Contains the abstract base class for maps.
+
+:authors:
+    - Ludovic Rais (ludovic.rais@epfl.ch)
+"""
+
 from abc import ABC, abstractmethod
 import numpy as np
 

@@ -1,18 +1,26 @@
-from .integration_map import IntegrationMap
+from .base_map import BaseMap
+from .integrated_problem import IntegratedProblem
 from .bfield_problem import BfieldProblem
 from ..solvers.fixed_point import FixedPoint
 import numpy as np
 
 
-class CylindricalBfield(IntegrationMap, BfieldProblem):
+class CylindricalBfield(IntegratedProblem, BfieldProblem):
     """
-    Class that sets up a Map given by following the a magnetic field in cylindrical system :math:`(R, \\varphi, Z)`.
+    Cylindrical magnetic field problem.
+    """
+    pass
+
+
+class CylindricalBfieldMap(BaseMap, CylindricalBfield):
+    """
+    Class that sets up a Map given by following the a magnetic field in cylindrical system :math:`(R, \\phi, Z)`.
 
     Attributes:
         phi0 (float): The cylindrical angle from which to start following the field.
         R0 (float): The major radius of the magnetic axis in the phi0 plane.
         Z0 (float): The vertical position of the magnetic axis in the phi0 plane.
-        Nfp (int): The number of field periods, default is 1. Gives the periodicity of the magnetic field (T = 2*pi/Nfp).
+        Nfp (int): The number of field periods, default is 1. Gives the periodicity of the magnetic field (:math:`T = 2*\\pi/n_\\text{fp}`).
     """
 
     def __init__(self, phi0=0., R0=None, Z0=None, Nfp=1, finderargs=dict(), **kwargs):
@@ -72,39 +80,39 @@ class CylindricalBfield(IntegrationMap, BfieldProblem):
 
         return np.array([rho, theta1 - theta0])
     
-    def df_winding(self, t, y0, y1 = None):
-        if y1 is None:
-            y1 = np.array([self.R0, self.Z0])
+    # def df_winding(self, t, y0, y1 = None):
+    #     if y1 is None:
+    #         y1 = np.array([self.R0, self.Z0])
 
-        theta0 = np.arctan2(y0[1] - y1[1], y0[0] - y1[0])
-        self._integrator.set_rhs(self._ode_rhs_tangent)
-        ic = np.array([*y0, *y1, theta0, 1., 0., 0., 1.])
-        output = self._integrate(t, ic)
+    #     theta0 = np.arctan2(y0[1] - y1[1], y0[0] - y1[0])
+    #     self._integrator.set_rhs(self._ode_rhs_tangent)
+    #     ic = np.array([*y0, *y1, theta0, 1., 0., 0., 1.])
+    #     output = self._integrate(t, ic)
 
-        theta1 = np.arctan2(output[1] - output[3], output[0] - output[2])
-        rho = np.sqrt((output[0] - output[2])**2 + (output[1] - output[3])**2)
+    #     theta1 = np.arctan2(output[1] - output[3], output[0] - output[2])
+    #     rho = np.sqrt((output[0] - output[2])**2 + (output[1] - output[3])**2)
         
-        dG = np.array([
-                [output[5], output[7]],
-                [output[6], output[8]]
-            ], dtype=np.float64)
+    #     dG = np.array([
+    #             [output[5], output[7]],
+    #             [output[6], output[8]]
+    #         ], dtype=np.float64)
 
-        # dH = dH(G(R,Z))
-        deltaRZ = RZ_evolved - RZ_Axis
-        dH = np.array([
-                np.array([deltaRZ[0], deltaRZ[1]], dtype=np.float64) / np.sqrt(deltaRZ[0]**2 + deltaRZ[1]**2),
-                np.array([-deltaRZ[1], deltaRZ[0]], dtype=np.float64) / (deltaRZ[0]**2 + deltaRZ[1]**2)
-        ], dtype=np.float64)
+    #     # dH = dH(G(R,Z))
+    #     deltaRZ = RZ_evolved - RZ_Axis
+    #     dH = np.array([
+    #             np.array([deltaRZ[0], deltaRZ[1]], dtype=np.float64) / np.sqrt(deltaRZ[0]**2 + deltaRZ[1]**2),
+    #             np.array([-deltaRZ[1], deltaRZ[0]], dtype=np.float64) / (deltaRZ[0]**2 + deltaRZ[1]**2)
+    #     ], dtype=np.float64)
 
-        # dP = dH(R,Z)
-        deltaRZ = RZ - RZ_Axis
-        dP = np.array([
-            np.array([deltaRZ[0], deltaRZ[1]], dtype=np.float64) / np.sqrt(deltaRZ[0]**2 + deltaRZ[1]**2),
-            np.array([-deltaRZ[1], deltaRZ[0]], dtype=np.float64) / (deltaRZ[0]**2 + deltaRZ[1]**2)
-        ], dtype=np.float64)
+    #     # dP = dH(R,Z)
+    #     deltaRZ = RZ - RZ_Axis
+    #     dP = np.array([
+    #         np.array([deltaRZ[0], deltaRZ[1]], dtype=np.float64) / np.sqrt(deltaRZ[0]**2 + deltaRZ[1]**2),
+    #         np.array([-deltaRZ[1], deltaRZ[0]], dtype=np.float64) / (deltaRZ[0]**2 + deltaRZ[1]**2)
+    #     ], dtype=np.float64)
                 
-        # Jacobian of the map F = H(G(R,Z)) - H(R,Z)
-        return dH @ dG - dP
+    #     # Jacobian of the map F = H(G(R,Z)) - H(R,Z)
+    #     return dH @ dG - dP
 
     ## Integration methods
 

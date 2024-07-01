@@ -1,7 +1,14 @@
-## @file bfield_problem.py
-#  @brief containing a problem class with magnetic fields
-#  @author Zhisong Qu (zhisong.qu@anu.edu.au)
-#
+"""
+bfield_problem.py
+=================
+
+This module contains a problem class for magnetic fields.
+
+:authors:
+    - Zhisong Qu (zhisong.qu@anu.edu.au)
+    - Ludovic Rais (ludovic.rais@epfl.ch)
+"""
+
 from abc import ABC, abstractmethod
 import numpy as np
 
@@ -67,7 +74,8 @@ class BfieldProblem(ABC):
             xs = np.array([x1arr, x2arr, x3arr]).T
         else:
             xs = np.array(np.meshgrid(x1arr, x2arr, x3arr)).T.reshape(-1, 3)
-
+        
+        return np.array([self.B(x, *args) for x in xs])
 
 
     def dBdX_many(self, x1arr, x2arr, x3arr, input1D=True, *args):
