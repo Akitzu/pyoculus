@@ -4,3 +4,4 @@ numpy
 simsopt
 scipy
 matplotlib
+jax
