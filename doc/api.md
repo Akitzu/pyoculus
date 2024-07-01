@@ -6,7 +6,7 @@
 .. autoclass:: pyoculus.problems.BaseMap
    :members:
 
-.. autoclass:: pyoculus.problems.IntegrationMap
+.. autoclass:: pyoculus.problems.IntegratedProblem
    :members:
 ```
 
@@ -37,3 +37,8 @@ standard map, tokamap
 ```
 
 ## Solvers
+
+```{eval-rst}
+.. autofunction:: pyoculus.irrationals.expandcf
+.. autofunction:: pyoculus.irrationals.fromcf
+```

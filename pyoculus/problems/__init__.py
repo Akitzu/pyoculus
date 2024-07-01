@@ -1,4 +1,5 @@
 from .base_map import *
+from .integrated_problem import *
 from .bfield_problem import *
 
 # from .spec_problem import *
