@@ -1,6 +1,6 @@
 import numpy as np
 import unittest
-from pyoculus.integrators.scipyode_integrator import ScipyODEIntegrator
+from pyoculus.integrators import ScipyODEIntegrator
 
 class TestODEIntegrator(unittest.TestCase):
     def test_exponential_growth(self):

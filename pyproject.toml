@@ -1,3 +1,7 @@
 [build-system]
 requires = ["setuptools", "wheel", "oldest_supported_numpy"]
 build-backend = "setuptools.build_meta"
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]
