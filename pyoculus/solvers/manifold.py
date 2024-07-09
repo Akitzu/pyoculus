@@ -1,4 +1,4 @@
-from ..problems.bfield_problem import BfieldProblem
+from ..problems.magnetic_field import MagneticField
 from .base_solver import BaseSolver
 from .fixed_point import FixedPoint
 from scipy.optimize import root
@@ -39,7 +39,7 @@ class Manifold(BaseSolver):
         self.stable = {"+": None, "-": None}
 
         # Check that the bfield is a correct BfieldProblem instance
-        if not isinstance(bfield, BfieldProblem):
+        if not isinstance(bfield, MagneticField):
             raise AssertionError("Bfield must be an instance of BfieldProblem class")
 
         # Integrator and BaseSolver initialization

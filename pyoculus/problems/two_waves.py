@@ -1,52 +1,57 @@
-## @file two_waves.py
-#  @brief the perturbed slab problem
-#  @author Zhisong Qu (zhisong.qu@anu.edu.au)
+"""
+two_waves.py
+==================
 
-from .toroidal_bfield import ToroidalBfield
+Perturbed slab model described in S.R. Hudson, Phys. Plasmas 11, 677 (2004).
+
+:authors:
+    - Zhisong Qu (zhisong.qu@anu.edu.au)
+    - Ludovic Rais (ludovic.rais@epfl.ch)
+"""
+
+from .toroidal_bfield import ToroidalBfieldSection
 import numpy as np
 
 
-##
-# A very simple (but still hard) problem for testing the tools and methods
-#
-# Details in
-# S.R. Hudson, Phys. Plasmas 11, 677 (2004).
-#
-# The magnetic field is given by
-# \f[
-#    \mathbf{B} = \nabla s \times \nabla \theta - \nabla \chi(s, \theta, \zeta) \times \nabla \zeta
-# \f]
-#
-# The Hamiltonian of the magnetic field is given by
-# \f[ \chi(s, \theta,\zeta) = \frac{s^2}{2} - k \left[ \frac{1}{2} \cos (2\theta - \zeta) + \frac{1}{3} \cos(3\theta - 2\zeta) \right] \f]
-#
-# The magnetic fields are given by
-#
-#  \f[ B^s = - k \left[ \sin (2\theta - \zeta) + \sin(3\theta - 2\zeta)\right], \quad B^\theta = s , \quad B^\zeta = 1
-# \f]
-#
-# To use the class:
-#
-#     ps = TwoWaves(k=0.002)
-#
 class TwoWaves(ToroidalBfield):
+    """
+        A very simple (but still hard) system described in `S.R. Hudson, Phys. Plasmas 11, 677 (2004) <https://doi.org/10.1063/1.1640379>`_.
+
+        The model mimics the behavior of magnetic fields in a two-wave system. The magnetic field is defined as:
+            
+        .. math::
+            \\mathbf{B} = \\nabla \\rho \\times \\nabla \\theta + \\nabla\\phi\\times \\nabla\\chi(\\rho, \\theta, \\phi)
+        
+        The Hamiltonian :math:`\\chi` associated to the magnetic field is:
+
+        .. math::
+            \\chi(\\rho, \\theta, \\phi) = \\frac{\\rho^2}{2} - k \\left[ \\frac{1}{2} \\cos (2\\theta - \\phi) + \\frac{1}{3} \\cos(3\\theta - 2\\phi) \\right]
+
+        The components of the magnetic fields are thus given by:
+
+        .. math::
+            B^\\rho = - k \\left[ \\sin (2\\theta - \\phi) + \\sin(3\\theta - 2\\phi)\\right], \\quad B^\\theta = \\rho , \\quad B^\\phi = 1
+
+        And using the :math:`\\phi` variable as a time variable of the Hamiltonian system gives for the derivatives of :math:`\\rho, \\theta`:
+
+        .. math::
+            \\dot{\\rho} = \\frac{B^\\rho}{B^\\phi} \\quad  \\dot{\\theta} = \\frac{B^\\theta}{B^\\phi}
+
+        Attributes:
+            k (float): Parameter giving the strength of the perturbation.
+    """
+
     def __init__(self, k=0.002):
-        """! Set up the problem
-        @param k the value used in the Hamiltonian
+        """
+        Set up the problem
+        
+        Arguments:
+            k (float): Parameter giving the strength of the perturbation.
         """
         super().__init__()
         self.k = k
         self.Nfp = 1
         self.has_jacobian = True
-
-        ## the problem size, 2 for 1.5D/2D Hamiltonian system
-        self.problem_size = 2
-        ## by default plotting the yx plane
-        self.poincare_plot_type = "yx"
-        ## by default x axis has label q
-        self.poincare_plot_xlabel = "q"
-        ## by default y axis has label p
-        self.poincare_plot_ylabel = "p"
 
     def set_k(self, k):
         """! Set the value of k

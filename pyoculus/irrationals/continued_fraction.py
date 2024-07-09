@@ -44,7 +44,7 @@ def expandcf(realnumber, n=100, thres=1e-12):
 
 def fromcf(ai):
     """
-    Obtains the fraction :math:`\\iota/2\\pi=n/m` of the continued fraction with coefficients :math:`[a_0, a_1, ..., a_m]`.
+    Obtains the fraction :math:`n/m` from the coefficients :math:`[a_0, a_1, ..., a_m]` of the continued fraction.
 
     Args:
         ai (list of int): An integer list containing ai for the continued fraction expansion.

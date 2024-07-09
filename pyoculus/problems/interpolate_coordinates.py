@@ -4,27 +4,28 @@
 #
 
 import numpy as np
-from scipy.special.orthogonal import jacobi
+from scipy.special import jacobi
 
 nax = np.newaxis
 
 
 class SurfacesToroidal:
-    """! Toroidal surfaces object
-    Define surfaces \f$s(\vartheta, \zeta) \f$ and the angle transformations \f$ \theta (\vartheta, \zeta) \f$.
-    \f$s, \vartheta\f$ are written in terms of Fourier harmonics
-    \f[
-        s(\vartheta, \zeta) = \sum_{m=0}^{\text{mpol}}\sum_{n=-\text{ntor}}^{\text{ntor}}
-        s_{c,m,n} \cos(m \vartheta - n \text{N} \zeta) + s_{s,m,n} \sin(m \vartheta - n \text{N} \zeta),
-    \f]
-    where \f$N = \text{Nfp}\f$.
-    \f[
-        \theta(\vartheta, \zeta) = \vartheta + \sum_{m=0}^{\text{mpol}}\sum_{n=-\text{ntor}}^{\text{ntor}}
-        \theta_{c,m,n} \cos(m \vartheta - n \text{N} \zeta) + \theta_{s,m,n} \sin(m \vartheta - n \text{N} \zeta).
-    \f]
-    If stellarator symmetry is assumed, then \f$s\f$ will only have cosine components and \f$\theta \f$ will only have sine components.
+    """
+    Toroidal Surface respresented as a Fourier Harmonic Serie.
+    
+    Define surfaces :math:`s(\\vartheta, \\zeta)` and the angle transformations :math:`\\theta (\\vartheta, \\zeta)` written in terms of Fourier harmonics.
+    
+    ..math::
 
-    Each surface is assigned a new radial label \f$\rho_i\f$.
+        s(\\vartheta, \\zeta) &= \sum_{m=0}^{m_\\text{pol}}\sum_{n=-n_\\text{tor}}^{n_\\text{tor}}
+        s_{c,m,n} \\cos(m \\vartheta - n n_\\text{fp} \\zeta) + s_{s,m,n} \\sin(m \\vartheta - n n_\\text{fp} \\zeta),
+        \\theta(\\vartheta, \\zeta) = \\vartheta + \\sum_{m=0}^{m_\\text{pol}}\\sum_{n=-n_\\text{tor}}^{n_\\text{tor}}
+        \\theta_{c,m,n} \\cos(m \\vartheta - n n_\\text{fp} \\zeta) + \theta_{s,m,n} \\sin(m \\vartheta - n n_\\text{fp} \\zeta).
+    
+    If stellarator symmetry is assumed, then :math:`s` will only have cosine components and :math:`\\theta` will only have sine components.
+
+    Each surface is assigned a radial label :math:`\\rho`. 
+
     Now a new set of coordinates \f$(\rho, \vartheta, \zeta)\f$ will be constructed
     given the relationship \f$s(\rho, \vartheta, \zeta), \theta(\rho, \vartheta, \zeta)\f$.
     If \f$\rho\f$ is not on one of the known surfaces, an interpolation will be performed on all the Fourier harmonics radially using the method of the user's choice.
@@ -590,7 +591,7 @@ class SurfacesToroidal:
             * self.Nfp
         )
 
-    def write_surfaces_to_file(self, filename="data.npz"):
+    def write_surfaces_to_file(self, filename=None):
         """! Save the surfaces into a numpy array on disk
         @param filename  the filename to save to
         """

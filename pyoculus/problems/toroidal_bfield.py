@@ -3,12 +3,12 @@
 #  @author Zhisong Qu (zhisong.qu@anu.edu.au)
 #
 
-from .integrated_problem import IntegratedProblem
-from .bfield_problem import BfieldProblem
+from .integrated_map import IntegratedProblem
+from .magnetic_field import BfieldProblem
 import numpy as np
 
 
-class ToroidalBfieldMap(IntegratedProblem, BfieldProblem):
+class ToroidalBfield(IntegratedProblem, BfieldProblem):
     """
     Class that sets up a Map given by following the a magnetic field in toroidal system :math:`(s, \\theta, \\zeta)`.
     """

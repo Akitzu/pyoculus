@@ -63,7 +63,6 @@ class BaseMap(ABC):
             "A BaseMap object should have a jacobian mapping df method."
         )
 
-    @abstractmethod
     def lagrangian(self, y0, t=None):
         """      
         Calculates the Lagrangian at a given point or the difference in Lagrangian between two points. The Lagrangian is as defined in the paper by Meiss (https://doi.org/10.1063/1.4915831).
@@ -79,7 +78,7 @@ class BaseMap(ABC):
     
     def winding(self, t, y0, y1=None):
         """
-        Calculates how the point :math:`y_0` winds around the point :math:`y_1` after applying the map :math:`t` times. This map should take two points in the domain and return a point into a space of same dimension where the last component is the winding number. 
+        Calculates how much the point :math:`y_0` winds around the point :math:`y_1` after applying the map :math:`t` times.
 
         Args:
             t (float or int): The number of times the map is applied.

@@ -1,8 +1,8 @@
 """
-bfield_problem.py
+magnetic_field.py
 =================
 
-This module contains a problem class for magnetic fields.
+This module contains the abstract class for magnetic fields.
 
 :authors:
     - Zhisong Qu (zhisong.qu@anu.edu.au)
@@ -12,13 +12,13 @@ This module contains a problem class for magnetic fields.
 from abc import ABC, abstractmethod
 import numpy as np
 
-class BfieldProblem(ABC):
-    def __init__(self):
-        """
-        Initializes the BfieldProblem class.
-        """
-        ## if the output magnetic field contains the jacobian factor or not
-        self.has_jacobian = False
+class MagneticField(ABC):
+    # def __init__(self):
+    #     """
+    #     Initializes the MagneticField class.
+    #     """
+    #     ## if the output magnetic field contains the jacobian factor or not
+    #     # self.has_jacobian = False
 
     @abstractmethod
     def B(self, coords, *args):

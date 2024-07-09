@@ -388,8 +388,8 @@ class QFM(BaseSolver):
     def action_gradient(self, xx, pp, qq, a, qN, Nfft):
         """! Computes the action gradient, being used in root finding
         @param xx  the packed degrees of freedom. It should contain rcn, tsn, rsn, tcn, nv.
-        @param pp  the poloidal periodicity of the island, should be an integer
-        @param qq  the toroidal periodicity of the island, should be an integer
+        @param n  the poloidal periodicity of the island, should be an integer
+        @param m  the toroidal periodicity of the island, should be an integer
         @param a   the target area
         @returns ff  the equtions to find zeros, see below.
         Construct the Fourier transform of \f$B^\vartheta_i / B^\zeta_i\f$ and \f$B^\rho_i / B^\zeta_i + \bar \nu / (J B^\zeta_i)\f$,

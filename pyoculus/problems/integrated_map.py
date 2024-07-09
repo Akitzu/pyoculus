@@ -1,7 +1,7 @@
-from pyoculus.integrators import BaseIntegrator, ScipyODEIntegrator
-from abc import ABC
+from ..integrators import BaseIntegrator, ScipyODEIntegrator
+from .base_map import BaseMap
 
-class IntegratedProblem(ABC):
+class IntegratedMap(BaseMap):
     """
     Defines the base class for a continous map that needs to be integrated.
 
@@ -18,7 +18,8 @@ class IntegratedProblem(ABC):
         Initializes the IntegratedMap object.
 
         Args:
-            integrator (BaseIntegrator): The integrator used to integrate the map, default is RKIntegrator.
+            integrator (BaseIntegrator): The integrator used to integrate the map. 
+                Default is ScipyODEIntegrator.
             **kwargs: Additional parameters to be passed to the integrator.
         """
         super().__init__(dim, True, domain)
