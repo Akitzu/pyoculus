@@ -7,8 +7,8 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'Pyoculus'
-copyright = '2024, Zhisong Qu'
-author = 'Zhisong Qu'
+copyright = '2024, Zhisong Qu, Ludovic Rais'
+author = 'Zhisong Qu, Ludovic Rais'
 release = '0.3.1'
 
 # -- General configuration ---------------------------------------------------
