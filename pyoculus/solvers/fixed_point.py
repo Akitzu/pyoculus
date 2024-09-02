@@ -27,7 +27,7 @@ class FixedPoint(BaseSolver):
         - MeanResidues: the 'Average Residue' f as defined by Greene
 
         """
-        if not self._map.is_continuous and not isinstance(t, int):
+        if self._map.is_discrete and not isinstance(t, int):
             raise ValueError(
                 "The iteration number should be an integer for a discrete map."
             )
@@ -73,25 +73,7 @@ class FixedPoint(BaseSolver):
         # now we go and get all the fixed points by iterating the map
         if x_fp is not None:
             logger.info(f"Found fixed point at {x_fp}. Computing ...")
-            self.coords[0] = x_fp
-            self.jacobians[0] = jac
-
-            for jj in range(0, self.t + 1):
-                if jj > 0:
-                    self.coords[jj] = self._map.f(1, self.coords[jj - 1])
-                    self.jacobians[jj] = self._map.df(self.t, self.coords[jj])
-                self.GreenesResidues[jj] = 0.25 * (2.0 - np.trace(self.jacobians[jj]))
-                # self.MeanResidues[jj] = np.power(
-                #     np.abs(self.GreenesResidues[jj]) / 0.25, 1 / float(self.qq)
-                # )
-
-            rdata = FixedPoint.OutputData()
-            rdata.coords = self.coords.copy()
-            rdata.jacobians = self.jacobians.copy()
-
-            # Greene's Residue
-            rdata.GreenesResidues = self.GreenesResidues.copy()
-            # rdata.MeanResidues = self.MeanResidues.copy()
+            rdata = self.record_data(x_fp)
 
             # Set the successful flag
             self._successful = True
@@ -119,11 +101,6 @@ class FixedPoint(BaseSolver):
             MeanResidues (array): the 'Average Residue' f as defined by Greene
         """
 
-        if not self._map.is_continuous:
-            raise ValueError(
-                "The map needs to be continuous to find a fixed point with a winding number."
-            )
-
         if not isinstance(pp, int) or not isinstance(qq, int):
             raise ValueError("pp and qq should be integers")
 
@@ -134,8 +111,7 @@ class FixedPoint(BaseSolver):
             pp = -int(np.abs(pp))
             qq = int(np.abs(qq))
 
-        gcd = np.gcd(pp, qq)
-        self.t = qq // gcd
+        self.t = qq
 
         self.pp = pp
         self.qq = qq
@@ -176,30 +152,8 @@ class FixedPoint(BaseSolver):
 
         # now we go and get all the fixed points by iterating the map
         if x_fp is not None:
-            self.coords[0] = x_fp
-            self.jacobians[0] = self._map.df(1, x_fp)
-
-            steps = 1 if self._map.is_continuous else self.pp
-            for jj in range(0, self.qq + 1, steps):
-                if self._map.is_continuous:
-                    self.coords[jj] = self._map.f(jj / self.pp * self.t, x_fp)
-                else:
-                    self.coords[jj] = self._map.f(jj * self.t, x_fp)
-                self.jacobians[jj] = self._map.df(jj * self.t, self.coords[jj])
-
-            for jj in range(0, self.qq + 1, steps):
-                self.GreenesResidues[jj] = 0.25 * (2.0 - np.trace(self.jacobians[jj]))
-                self.MeanResidues[jj] = np.power(
-                    np.abs(self.GreenesResidues[jj]) / 0.25, 1 / float(self.qq)
-                )
-
-            rdata = FixedPoint.OutputData()
-            rdata.coords = self.coords.copy()
-            rdata.jacobians = self.jacobians.copy()
-
-            # Greene's Residue
-            rdata.GreenesResidues = self.GreenesResidues.copy()
-            rdata.MeanResidues = self.MeanResidues.copy()
+            logger.info(f"Found fixed point at {x_fp}. Computing ...")
+            rdata = self.record_data(x_fp, True)
 
             # Set the successful flag
             self._successful = True
@@ -229,6 +183,31 @@ class FixedPoint(BaseSolver):
 
         return np.random.multivariate_normal(mu, sigma)
 
+    def record_data(self, x_fp, is_winding=False):
+        self.coords[0] = x_fp
+
+        for jj in range(0, self.t + 1):
+            if jj > 0:
+                self.coords[jj] = self._map.f(1, self.coords[jj - 1])
+            
+            self.jacobians[jj] = self._map.df(self.t, self.coords[jj])
+            self.GreenesResidues[jj] = 0.25 * (2.0 - np.trace(self.jacobians[jj]))
+            if is_winding:
+                self.MeanResidues[jj] = np.power(
+                    np.abs(self.GreenesResidues[jj]) / 0.25, 1 / float(self.qq)
+                )
+
+        rdata = FixedPoint.OutputData()
+        rdata.coords = self.coords.copy()
+        rdata.jacobians = self.jacobians.copy()
+
+        # Greene's Residue
+        rdata.GreenesResidues = self.GreenesResidues.copy()
+        if is_winding:
+            rdata.MeanResidues = self.MeanResidues.copy()
+
+        return rdata
+
     ## Newton's methods
 
     def _newton_method(self, guess, niter, tol):
@@ -250,11 +229,54 @@ class FixedPoint(BaseSolver):
             # Newton's step
             delta_x = x_evolved - x
             step = np.linalg.solve(df - np.eye(self._map.dimension), -1 * delta_x)
-            x_new = x + step
+            x_new = self._map.check_domain(x + step)
 
             # Update the variables
             logger.info(f"Newton {ii} - step : {x_new-x}")
             x = x_new
+
+            if not self._map.in_domain(x):
+                logger.info(f"Newton {ii} - out of domain")
+                return None
+
+            self.history.append(x.copy())
+
+        if succeeded:
+            return x, df
+        else:
+            return None, None
+
+    def _newton_method_winding(self, guess, x_axis, niter, tol):
+        x = np.array(guess, dtype=np.float64)
+        x_axis = np.array(x_axis, dtype=np.float64)
+
+        self.history.append(x.copy())
+        succeeded = False
+
+        for ii in range(niter):
+            logger.info(f"Newton {ii} - x : {x}")
+
+            dW = self._map.dwinding(self.t, x)
+            x_winding = self._map.check_domain(self._map.winding(self.t, x))
+
+            logger.info(
+                f"Newton {ii} - x_winding : {x_winding}"
+            )
+
+            # Stop if the resolution is good enough
+            delta_x = x_winding - x
+            if abs(delta_x[-1]) < tol:
+                succeeded = True
+                break
+
+            # Newton's step
+            step = np.linalg.solve(dW - np.eye(self._map.dimension), -1 * delta_x)
+            x_new = self._map.check_domain(x + step)
+
+            # Update the variables
+            logger.info(f"Newton {ii} - step: {x_new-x}")
+            x = x_new
+            logger.info(f"Newton {ii} - x_new: {x_new}")
 
             if any(
                 (xi < lwb) or (xi > upb) for xi, (lwb, upb) in zip(x, self._map.domain)
@@ -265,118 +287,23 @@ class FixedPoint(BaseSolver):
             self.history.append(x.copy())
 
         if succeeded:
-            return x, df
-        else:
-            return None
-
-    def _newton_method_winding(self, guess, x_axis, niter, tol):
-        x = np.array(guess, dtype=np.float64)
-        x_axis = np.array(x_axis, dtype=np.float64)
-
-        self.history.append(x.copy())
-        succeeded = False
-
-        for ii in range(niter):
-            logger.info(f"Newton {ii} - RZ : {x}")
-
-            dW = self._map.df_winding(self.t, x)
-            x_evolved, _, x_winding = self._map.f_winding(self.t, x)
-
-            # Stop if the resolution is good enough
-            logger.info(
-                f"Newton {ii} - [DeltaR, DeltaZ] : {x_evolved-x} - dtheta : {x_winding}"
-            )
-            if abs(x_winding[-1]) < tol:
-                succeeded = True
-                break
-
-            # Newton's step
-            step = np.linalg.solve(dW, -1 * x_winding)
-            x_new = x + step
-
-            # Update the variables
-            logger.info(f"Newton {ii} - step: {x_new-x}")
-            x = x_new
-
-            if any(
-                (xi < lwb) or (xi > upb) for xi, lwb, upb in zip(x, self._map.domain)
-            ):
-                logger.info(f"Newton {ii} - out of domain")
-                return None
-
-            self.history.append(x.copy())
-
-        if succeeded:
             return x
         else:
-            return None
+            return None, None
 
     # Plotting method
 
     def plot(
-        self, plottype=None, xlabel=None, ylabel=None, xlim=None, ylim=None, **kwargs
+        self, ax, **kwargs
     ):
-        """! Generates the plot for fixed points
-        @param plottype which variables to plot: 'RZ' or 'yx', by default using "poincare_plot_type" in problem
-        @param xlabel,ylabel what to put for the xlabel and ylabel, by default using "poincare_plot_xlabel" in problem
-        @param xlim, ylim the range of plotting, by default plotting the range of all data
-        @param **kwargs passed to the plotting routine "plot"
         """
-        import matplotlib.pyplot as plt
+        Plot the fixed point with caracteristics of 
+        """
 
-        if not self._successful:
-            raise Exception("A successful call of compute() is needed")
+        pass
 
-        # default setting
-        if plottype is None:
-            plottype = self._problem.poincare_plot_type
-        if xlabel is None:
-            xlabel = self._problem.poincare_plot_xlabel
-        if ylabel is None:
-            ylabel = self._problem.poincare_plot_ylabel
-
-        if plottype == "RZ":
-            xdata = self.x
-            ydata = self.z
-        elif plottype == "yx":
-            xdata = self.y
-            ydata = self.x
-        elif plottype == "st":
-            xdata = np.mod(self.theta, 2 * np.pi)
-            ydata = self.s
-        else:
-            raise ValueError("Choose the correct type for plottype")
-
-        if plt.get_fignums():
-            fig = plt.gcf()
-            ax = plt.gca()
-            newfig = False
-        else:
-            fig, ax = plt.subplots()
-            newfig = True
-
-        # set default plotting parameters
-        # use x
-        if kwargs.get("marker") is None:
-            kwargs.update({"marker": "x"})
-        # use gray color
-        if kwargs.get("c") is None:
-            kwargs.update({"c": "black"})
-
-        xs = ax.plot(xdata, ydata, linestyle="None", **kwargs)
-
-        if not newfig:
-            if plottype == "RZ":
-                plt.axis("equal")
-            if plottype == "yx":
-                pass
-
-            plt.xlabel(xlabel, fontsize=20)
-            plt.ylabel(ylabel, fontsize=20)
-            plt.xticks(fontsize=16)
-            plt.yticks(fontsize=16)
-
-            if xlim is not None:
-                plt.xlim(xlim)
-            if ylim is not None:
-                plt.ylim(ylim)
+    def plot_history(self, **kwargs):
+        
+        if self._successful:
+            pass
+        

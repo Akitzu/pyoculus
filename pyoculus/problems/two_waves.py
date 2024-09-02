@@ -9,7 +9,7 @@ Perturbed slab model described in S.R. Hudson, Phys. Plasmas 11, 677 (2004).
     - Ludovic Rais (ludovic.rais@epfl.ch)
 """
 
-from .toroidal_bfield import ToroidalBfieldSection
+from .toroidal_bfield import ToroidalBfield
 import numpy as np
 
 
@@ -49,15 +49,16 @@ class TwoWaves(ToroidalBfield):
             k (float): Parameter giving the strength of the perturbation.
         """
         super().__init__()
-        self.k = k
+        self._k = k
         self.Nfp = 1
         self.has_jacobian = True
 
-    def set_k(self, k):
-        """! Set the value of k
-        @param k the value used in the Hamiltonian
+    @property
+    def k(self):
         """
-        self.k = k
+        Parameter giving the strength of the perturbation.
+        """
+        return self._k
 
     def B(self, coords, *args):
         """! Returns magnetic fields
@@ -65,6 +66,8 @@ class TwoWaves(ToroidalBfield):
         @param *args extra parameters
         @returns the contravariant magnetic fields
         """
+
+        # q = theta, p = rho, t = phi
         q = coords[1]
         p = coords[0]
         t = coords[2]
@@ -100,6 +103,9 @@ class TwoWaves(ToroidalBfield):
         Bu = np.array([dpdt, dqdt, dtdt], dtype=np.float64)
 
         return Bu, dBu
+
+    def A(self, coords, *args):
+        pass
 
     def convert_coords(self, incoords):
         """! Convert coordinates for Poincare plots

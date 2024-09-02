@@ -13,37 +13,14 @@ class FluxSurfaceGR(BaseSolver):
     def __init__(
         self, problem, params=dict(), integrator=None, integrator_params=dict()
     ):
-        """! Set up the class of the flux surface point finder using Greene's method
-        @param problem must inherit pyoculus.problems.BaseProblem, the problem to solve
-        @param params dict, the parameters for the solver
-        @param integrator the integrator to use, must inherit \pyoculus.integrators.BaseIntegrator, if set to None by default using RKIntegrator
-        @param integrator_params dict, the parmaters passed to the integrator
-
-        These parameters will be passed to the fixed point finder
-
-        <code> params['niter']=100 </code> -- the maximum number of Newton iterations
-        <code> params['theta']=None </code> -- if we look for fixed point on some symmetry line
-                                =None : theta is also a free variable to look for
-                                =somenumber : only look for theta with this number
-        <code> params['zeta']=0.0 </code> -- the toroidal plane we are after
-        <code> params['nrestart']=1 </code> -- if search failed, the number of time to restart (randomly within the domain)
         """
-
-        if "niter" not in params.keys():
-            params["niter"] = 100
+        Set up the class of the flux surface point finder using Greene's method
+        """
 
         if "theta" not in params.keys():
             raise ValueError(
                 "We only support located fixed points for a fixed theta at the moment"
             )
-
-        if "zeta" not in params.keys():
-            params["zeta"] = 0.0
-
-        if "nrestart" not in params.keys():
-            params["nrestart"] = 1
-
-        integrator_params["ode"] = problem.f_tangent
 
         super().__init__(
             problem=problem,
@@ -52,35 +29,32 @@ class FluxSurfaceGR(BaseSolver):
             integrator_params=integrator_params,
         )
 
-        self.Nfp = problem.Nfp
-
     def compute(
         self,
         iota,
         n_expand=10,
         nstart=5,
-        sbegin=-1.0,
-        send=1.0,
         sguess=0.0,
         fixed_point_left=None,
         fixed_point_right=None,
         tol=None,
     ):
-        """! Look for the flux surface with a irrational rotation number
-        @param iota the irrational! rotation number of the flux surface
-        @param fixed_point_left a sucessfully found FixPoint to mark the left bound of the flux surface,
+        """
+        Look for the flux surface with a given rotation number using Greene's residue method.
+
+        Args:
+            iota: the irrational! rotation number of the flux surface
+            fixed_point_left: a sucessfully found FixPoint to mark the left bound of the flux surface,
                                 its rotation number needs to be in the convergent sequence of iota
-        @param fixed_point_right a sucessfully found FixPoint to mark the right bound of the flux surface,
+            fixed_point_right a sucessfully found FixPoint to mark the right bound of the flux surface,
                                 its rotation number needs to be in the convergent sequence of iota and next to fixed_point_left
-        @param n_expand=10 the number of terms in the continued fraction expansion of iota, used to approximate the flux surface
+            n_expand=10 the number of terms in the continued fraction expansion of iota, used to approximate the flux surface
 
         @returns  a class that contains the results
             `fdata.MackayResidue` -- the Mackay Residue of the fixed points
             `fdata.fixed_points` -- all the fixed point located
             `fdata.rmnc`, fdata.rmns`, `fdata.zmnc`, `fdata.zmns` -- the Fourier harmonics
         """
-
-        # check if the user specified fixed points are legal
 
         # iota will be divided by Nfp
         iota = iota / self.Nfp
