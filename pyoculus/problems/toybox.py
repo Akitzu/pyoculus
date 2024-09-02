@@ -474,7 +474,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         "circular-current-loop": A_circularcurrentloop,
     }
 
-    def __init__(self, R, Z, sf, shear, perturbations_args=list(), **kwargs):
+    def __init__(self, R, Z, sf, shear, perturbations_args=list()):
         """
         Args:
             R (float): Major radius of the magnetic axis of the equilibrium field
@@ -510,10 +510,10 @@ class AnalyticCylindricalBfield(CylindricalBfield):
                 pertdic.update({"Z": Z})
 
         self.perturbations_args = perturbations_args
-        self._initialize_perturbations(find_axis=False)
+        self._initialize_perturbations()
 
-        # Call the CylindricalBfield constructor with (R,Z) of the axis
-        super().__init__(phi0=0., R0=R, Z0=Z, Nfp=1, **kwargs)
+        # Call the CylindricalBfield constructor
+        super().__init__(Nfp=1)
 
     @classmethod
     def without_axis(
@@ -545,33 +545,33 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         """Set the amplitude of the perturbation at index to value"""
 
         self.perturbations_args[index]["amplitude"] = value
-        self._initialize_perturbations(index, find_axis=find_axis)
+        self._initialize_perturbations(index)
 
     def set_perturbation(self, index, perturbation_args, find_axis=True):
         """Set the perturbation at index to be defined by perturbation_args"""
 
         self.perturbations_args[index] = perturbation_args
-        self.perturbations_args[index].update({"R": self.R0, "Z": self.Z0})
-        self._initialize_perturbations(index, find_axis=find_axis)
+        # self.perturbations_args[index].update({"R": self.R0, "Z": self.Z0})
+        self._initialize_perturbations(index)
 
-    def add_perturbation(self, perturbation_args, find_axis=True):
+    def add_perturbation(self, perturbation_args):
         """Add a new perturbation defined by perturbation_args"""
 
         self.perturbations_args.append(perturbation_args)
         self._perturbations.append(None)
-        self.perturbations_args[-1].update({"R": self.R0, "Z": self.Z0})
+        # self.perturbations_args[-1].update({"R": self.R0, "Z": self.Z0})
         self._initialize_perturbations(
-            len(self.perturbations_args) - 1, find_axis=find_axis
+            len(self.perturbations_args) - 1
         )
 
-    def remove_perturbation(self, index=-1, find_axis=True):
+    def remove_perturbation(self, index=-1):
         """Remove the perturbation at index or the last one if no index is given."""
 
         self.perturbations_args.pop(index)
         self._perturbations.pop(index)
-        self._initialize_perturbations(find_axis=find_axis)
+        self._initialize_perturbations()
 
-    def _initialize_perturbations(self, index=None, find_axis=True):
+    def _initialize_perturbations(self, index=None):
         """Initialize the perturbations functions and the gradient. Also updates the total field and its gradient."""
 
         if index is not None:
@@ -629,10 +629,6 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         self._dBdX = jit(
             lambda rr: self.dBdX_equilibrium(rr) + self.dBdX_perturbation(rr)
         )
-
-        # Find the axis
-        if find_axis:
-            self.find_axis(guess=[self.R0, self.Z0])
 
     @property
     def perturbations(self):
