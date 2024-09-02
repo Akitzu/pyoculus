@@ -13,7 +13,7 @@ class IntegratedMap(BaseMap):
         - `ode_rhs_tangent`: Calculates the right-hand side (RHS) of the ODE including the differential of the dependent variables.
     """
 
-    def __init__(self, dim=2, domain=None, integrator=ScipyODEIntegrator, **kwargs):
+    def __init__(self, dim=2, domain=None, periodicity=None, integrator=ScipyODEIntegrator, **kwargs):
         """
         Initializes the IntegratedMap object.
 
@@ -22,7 +22,7 @@ class IntegratedMap(BaseMap):
                 Default is ScipyODEIntegrator.
             **kwargs: Additional parameters to be passed to the integrator.
         """
-        super().__init__(dim, True, domain)
+        super().__init__(dim, True, domain, periodicity)
 
         # Check if the integrator is a derived type of BaseIntegrator
         if not issubclass(integrator, BaseIntegrator):

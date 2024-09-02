@@ -23,7 +23,7 @@ class BaseMap(ABC):
         domain (list of tuples, optional): The domain of the map. Each tuple should contain the lower and upper bounds for each dimension. If None, the domain is assumed to be :math:`(-\\infty, \\infty)` for each dimension.
     """
 
-    def __init__(self, dim=2, is_discrete=False, domain=None):
+    def __init__(self, dim=2, is_discrete=False, domain=None, periodicity=None):
         """
         Initializes BaseMap object.
 
@@ -34,10 +34,13 @@ class BaseMap(ABC):
         """
         if domain is None:
             domain = [(-np.inf, np.inf)]*dim
+        if periodicity is None:
+            periodicity = np.zeros(dim)
 
         self.dimension = dim
         self.is_discrete = is_discrete
         self.domain = domain
+        self.periodicity = periodicity
 
     @abstractmethod
     def f(self, t, y0):
@@ -85,7 +88,7 @@ class BaseMap(ABC):
             y0 (array): The initial point in the phase space.
             y1 (array): The point around which :math:`y_0` winds. If None, the origin should be used.
         """
-        raise NotImplementedError("A Continous BaseMap object may have a winding mapping f_winding method.")
+        raise NotImplementedError("A BaseMap object may have a winding mapping f_winding method.")
     
     def dwinding(self, t, y0, y1=None):
         """
@@ -96,4 +99,27 @@ class BaseMap(ABC):
             y0 (array): The initial point in the phase space.
             y1 (array): The point around which :math:`y_0` winds. If None, the origin should be used.
         """
-        raise NotImplementedError("A Continous BaseMap object may have a jacobian winding mapping df_winding method.")
+        raise NotImplementedError("A BaseMap object may have a jacobian winding mapping df_winding method.")
+    
+    # Domain related methods
+
+    def check_domain(self, x):
+        """
+        
+
+        """
+
+        for i, (low, high) in enumerate(self.domain):
+            if self.periodicity[i] == 1:
+                x[i] = low + x[i] % (high - low)
+        return x
+
+    def in_domain(self, x):
+        """
+        
+
+        """
+        for i, (low, high) in enumerate(self.domain):
+            if not low <= x[i] <= high and self.periodicity[i] == 0:
+                return False
+        return True

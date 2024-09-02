@@ -13,54 +13,65 @@ class CylindricalBfield(MagneticField):
     def __init__(self, Nfp=1):
         """
         Initializes the CylindricalBfield object.
+        
+        Args:
+            Nfp (int): The number of field periods. Default is 1. This parameter defines the periodicity of the magnetic field (:math:`T = 2*\\pi/n_\\text{fp}`).
         """
         self.Nfp = Nfp
 
 
-class CylindricalBfieldSection(IntegratedMap, CylindricalBfield):
+class CylindricalBfieldSection(IntegratedMap):
     """
     Map given by following the a magnetic field in cylindrical system :math:`(R, \\phi, Z)` and recording the intersections with symmetry planes :math:`\\phi = \\phi_0, \\phi_0 + T, ...`.
 
     Attributes:
+        mf (CylindricalBfield): The magnetic field to follow.
         phi0 (float): The cylindrical angle from which to start the field line tracing.
         R0 (float): The major radius of the magnetic axis in the :math:`\\phi_0` plane.
         Z0 (float): The vertical position of the magnetic axis in the :math:`\\phi_0` plane.
-        Nfp (int): The number of field periods, default is 1. Gives the periodicity of the magnetic field (:math:`T = 2*\\pi/n_\\text{fp}`).
     """
 
-    def __init__(self, phi0=0.0, R0=None, Z0=None, Nfp=1, domain=None, finderargs=dict(), **kwargs):
+    def __init__(self, cylindricalbfield : CylindricalBfield, phi0=0.0, R0=None, Z0=None, domain=None, finderargs=dict(), **kwargs):
         """
         Initializes the CylindricalBfieldSection object.
 
         This constructor calls the CylindricalBfield and IntegrationMap constructor. If `R0` or `Z0` is not provided, the magnetic axis will be found using a FixedPoint solver.
 
         Args:
+            cylindricalbfield (CylindricalBfield): The magnetic field to follow.
             phi0 (float): The cylindrical angle from which to start the field line tracing.
             R0 (float, optional): The major radius of the magnetic axis in the :math:`\\phi_0` plane. If None, the magnetic axis will be found.
             Z0 (float, optional): The vertical position of the magnetic axis in the :math:`\\phi_0` plane. If None, the magnetic axis will be found.
-            Nfp (int, optional): The number of field periods. Default is 1. This parameter defines the periodicity of the magnetic field (:math:`T = 2*\\pi/n_\\text{fp}`).
             domain (list of tuples, optional): The domain of the map. Each tuple should contain the lower and upper bounds for each dimension. If None, the domain is assumed to be :math:`(0, \\infty)` for the first dimension and :math:`(-\\infty, \\infty)` for the second dimension.
             finderargs (dict, optional): Additional arguments to pass to the FixedPoint solver.
             **kwargs: Additional parameters to be passed to the integrator.
         """
+        if not isinstance(cylindricalbfield, CylindricalBfield):
+            raise ValueError("The magnetic field should be an instance of CylindricalBfield.")
+        else:
+            self._mf = cylindricalbfield
+        
         if domain is None:
             domain = [(0, np.inf), (-np.inf, np.inf)]
 
-        CylindricalBfield.__init__(Nfp=Nfp)
-        IntegratedMap.__init__(dim=2, domain=domain, **kwargs)
+        super().__init__(dim=2, domain=domain, ode = self._ode_rhs_tangent, **kwargs)
 
         self.phi0 = phi0
-        self.Nfp = Nfp
 
+        # Allow to cache the result of the field line tracing
+        self.cache_f = {'args': None, 'output': None}
+        self.cache_w = {'args': None, 'output': None}
+
+        # Find the magnetic axis if not provided
         if R0 is None or Z0 is None:
             self.find_axis(**finderargs)
         else:
             self.R0 = R0
             self.Z0 = Z0
 
-        # Allow to cache the result of the field line tracing
-        self.cache_f = {'args': None, 'output': None}
-        self.cache_w = {'args': None, 'output': None}
+    @classmethod
+    def without_axis(self, cylindricalbfield : CylindricalBfield, phi0=0.0, domain=None, finderargs=dict(), **kwargs):
+        return CylindricalBfieldSection(cylindricalbfield, phi0, None, None, domain, finderargs, **kwargs)
 
     def find_axis(self, guess=None, **kwargs):
         """
@@ -85,18 +96,23 @@ class CylindricalBfieldSection(IntegratedMap, CylindricalBfield):
         """
         Trace the field line for a number of periods.
         """
-        if self.cache_w['args'] == (t, y0):
-            return self.cache_w['output']
+        # if self.cache_f['args'] == (t, y0):
+        #     return self.cache_f['return']
+
         self._integrator.set_rhs(self._rhs_RZ)
+        
         return self._integrate(t, y0)
 
     def df(self, t, y0):
         """
         Compute the Jacobian of the field line map for a number of periods.
         """
+        # if self.cache_w["args"] is not None and self.cache_w["args"][:2] == (t, y0):
+        #     return self.cache_w["dG"]
         ic = np.array([*y0, 1.0, 0.0, 0.0, 1.0])
         self._integrator.set_rhs(self._rhs_RZ_tangent)
         output = self._integrate(t, ic)
+        self.cache_f = {"args": [t, y0], "return": output[:2], "output": output}
         return output[2:6].reshape(2, 2).T
 
     def lagrangian(self, y0, t):
@@ -110,51 +126,72 @@ class CylindricalBfieldSection(IntegratedMap, CylindricalBfield):
 
     def winding(self, t, y0, y1=None):
         """
-        Calculates the winding number of the field line between two starting points.
+        Calculates the winding number of the field line starting at :math:`y_0` around the one starting at :math:`y_1`. By going into the poloidal coordinates centered around the position of the field line given by :math:`y_0` and integrating the angle change along the trajectory.
 
         Args:
             t (float): The number of periods to integrate.
             y0 (array): The starting point of the field line.
             y1 (array, optional): The ending point of the field line. If not provided, the magnetic axis is used.
+        
+        Returns:
+            np.ndarray: The radius difference between initial and final point and winding number between the two field lines.
         """
         if y1 is None:
             y1 = np.array([self.R0, self.Z0])
+        
+        # if self.cache_w['args'] == (t, y0, y1):
+        #     return self.cache_w['return']
 
         theta0 = np.arctan2(y0[1] - y1[1], y0[0] - y1[0])
+        rho0 = np.sqrt((y0[0] - y1[0]) ** 2 + (y0[1] - y1[1]) ** 2)
+
         self._integrator.set_rhs(self._ode_rhs)
         ic = np.array([*y0, *y1, theta0])
         output = self._integrate(t, ic)
-        theta1 = np.arctan2(output[1] - output[3], output[0] - output[2])
-        # rho = np.sqrt((output[0] - output[2]) ** 2 + (output[1] - output[3]) ** 2)
+        
+        theta1 = output[4]
+        rho1 = np.sqrt((output[0] - output[2]) ** 2 + (output[1] - output[3]) ** 2)
 
-        return theta1 - theta0
+        return np.array([rho1 - rho0, theta1 - theta0])
 
     def dwinding(self, t, y0, y1 = None):
+        """
+        Calculates the Jacobian of the winding number 
+        
+        """
         if y1 is None:
             y1 = np.array([self.R0, self.Z0])
-
+        
+        # Set the initial position in the phi0 plane in polar coordinates
         theta0 = np.arctan2(y0[1] - y1[1], y0[0] - y1[0])
+        rho0 = np.sqrt((y0[0] - y1[0]) ** 2 + (y0[1] - y1[1]) ** 2)
+
+        # Integrate until the final time
         self._integrator.set_rhs(self._ode_rhs_tangent)
         ic = np.array([*y0, *y1, theta0, 1., 0., 0., 1.])
         output = self._integrate(t, ic)
-        theta1 = np.arctan2(output[1] - output[3], output[0] - output[2])
-        
-        self.cache_w = {'args': (t, y0, y1), 'output': output}
-        # rho = np.sqrt((output[0] - output[2])**2 + (output[1] - output[3])**2)
 
+        # Retrieve the final position in the phi0 plane in polar coordinates
+        theta1 = np.arctan2(output[1] - output[3], output[0] - output[2])
+        rho1 = np.sqrt((output[0] - output[2]) ** 2 + (output[1] - output[3]) ** 2)
+
+        # Jacobian of the map in R, Z coordinates
         dG = np.array([
                 [output[5], output[7]],
                 [output[6], output[8]]
             ], dtype=np.float64)
+        
+        # Cache the result
+        self.cache_w = {'args': (t, y0, y1), 'return': np.array([rho1 - rho0, theta1 - theta0]), "dG": dG, "output": output}
 
-        # dH = dH(G(R,Z))
+        # Jacobian of the change of coordinates from R, Z to polar at end point : dH = dH(G(R,Z)) 
         deltaRZ = output[:2] - y1
         dH = np.array([
                 np.array([deltaRZ[0], deltaRZ[1]], dtype=np.float64) / np.sqrt(deltaRZ[0]**2 + deltaRZ[1]**2),
                 np.array([-deltaRZ[1], deltaRZ[0]], dtype=np.float64) / (deltaRZ[0]**2 + deltaRZ[1]**2)
         ], dtype=np.float64)
 
-        # dP = dH(R,Z)
+        # Jacobian of the change of coordinates from R, Z to polar at starting point, dP = dH(R,Z)
         deltaRZ = y0 - y1
         dP = np.array([
             np.array([deltaRZ[0], deltaRZ[1]], dtype=np.float64) / np.sqrt(deltaRZ[0]**2 + deltaRZ[1]**2),
@@ -170,7 +207,7 @@ class CylindricalBfieldSection(IntegratedMap, CylindricalBfield):
         """
         Integrates the ODE for a number of periods.
         """
-        dphi = t * 2 * np.pi / self.Nfp
+        dphi = t * 2 * np.pi / self._mf.Nfp
         y = np.array(y0)
         self._integrator.set_initial_value(self.phi0, y)
         return self._integrator.integrate(self.phi0 + dphi)
@@ -215,7 +252,7 @@ class CylindricalBfieldSection(IntegratedMap, CylindricalBfield):
         """
         RphiZ = np.array([RZ[0], phi, RZ[1]])
 
-        Bfield = self.B(RphiZ, *args)
+        Bfield = self._mf.B(RphiZ, *args)
 
         # R, Z evolution given by following the field
         # dR/dphi = B^R / B^phi and dZ/dphi = B^Z / B^phi
@@ -257,7 +294,7 @@ class CylindricalBfieldSection(IntegratedMap, CylindricalBfield):
 
         rphiz = np.array([R, phi, Z])
 
-        Bfield, dBdRphiZ = self.dBdX(rphiz, *args)
+        Bfield, dBdRphiZ = self._mf.dBdX(rphiz, *args)
         # Bfield is tansformed from [array] into array
         Bfield = np.array(Bfield[0], dtype=np.float64)
         dBdRphiZ = np.array(dBdRphiZ, dtype=np.float64)
@@ -301,7 +338,7 @@ class CylindricalBfieldSection(IntegratedMap, CylindricalBfield):
 
         # magnetic potential at the current point
         RphiZ = np.array([y[0], phi, y[1]])
-        A = self.A(RphiZ, *args)
+        A = self._mf.A(RphiZ, *args)
 
         # Integral of A, step
         dl = np.array([dRdphi, 1, dZdphi])

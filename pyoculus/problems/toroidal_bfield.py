@@ -3,34 +3,67 @@
 #  @author Zhisong Qu (zhisong.qu@anu.edu.au)
 #
 
-from .integrated_map import IntegratedProblem
-from .magnetic_field import BfieldProblem
+from .integrated_map import IntegratedMap
+from .magnetic_field import MagneticField
 import numpy as np
 
+class ToroidalBfield(MagneticField):
+    """
+    Class that sets up a magnetic field in toroidal system :math:`(s, \\theta, \\zeta)`.
+    """
+    def __init__(self, Nfp=1):
+        """
+        Initializes the ToroidalBfield class.
+        
+        Args:
+            Nfp (int): The number of field periods. Default is 1. This parameter defines the periodicity of the magnetic field (:math:`T = 2*\\pi/n_\\text{fp}`).
+        """
+        self.Nfp = Nfp
 
-class ToroidalBfield(IntegratedProblem, BfieldProblem):
+class ToroidalBfieldSection(IntegratedMap):
     """
     Class that sets up a Map given by following the a magnetic field in toroidal system :math:`(s, \\theta, \\zeta)`.
     """
 
-    def __init__(self, phi0=0., Nfp=1, **kwargs):
-        super().__init__(dim=2, **kwargs)
+    def __init__(self, toroidalbfield : ToroidalBfield, phi0=0., **kwargs):
+
+        if not isinstance(toroidalbfield, ToroidalBfield):
+            raise ValueError("The input should be a ToroidalBfield object.")
+        else:
+            self._mf = toroidalbfield
+
+        domain = [(0, np.inf), (0, 2*np.pi)]
+        periodicity = [0, 1]
+
+        super().__init__(dim=2, domain=domain, periodicity=periodicity, ode = self._ode_rhs_tangent, **kwargs)
+
         self.phi0 = phi0
-        self.Nfp = Nfp
 
     ## BaseMap methods
 
     def f(self, t, y0):
-        self._integrator.set_rhs(self._ode_rhs)
-        return self._integrate(t, y0)
+        """
+        
+        Returns: 
+            
+        """
+        return self.check_domain(self.winding(t, y0))
 
     def df(self, t, y0):
+        ic = np.array([*y0, 1.0, 0.0, 0.0, 1.0])
         self._integrator.set_rhs(self._ode_rhs_tangent)
-        return self._integrate(t, y0)
+        return self._integrate(t, ic)[2:6].reshape([2, 2]).T
 
     def lagrangian(self, y0, t):
         self._integrator.set_rhs(self._ode_rhs_A)
         return self._integrate(t, y0)
+
+    def winding(self, t, y0, y1=None):
+        self._integrator.set_rhs(self._ode_rhs)
+        return self._integrate(t, y0)
+    
+    def dwinding(self, t, y0, y1=None):
+        return self.df(t, y0)
 
     ## Integration methods
 
@@ -38,7 +71,7 @@ class ToroidalBfield(IntegratedProblem, BfieldProblem):
         """
         Integrates the ODE for a number of periods.
         """
-        dphi = t * 2 * np.pi / self.Nfp
+        dphi = t * 2 * np.pi / self._mf.Nfp
         y = np.array(y0)
         self._integrator.set_initial_value(self.phi0, y)
         return self._integrator.integrate(self.phi0 + dphi)
@@ -56,7 +89,7 @@ class ToroidalBfield(IntegratedProblem, BfieldProblem):
             array: The RHS of the ODE.
         """
         stz = np.array([st[0], st[1], phi])
-        B = self.B(stz, *args)
+        B = self._mf.B(stz, *args)
         return np.array([B[0] / B[2], B[1] / B[2]])
 
     def _ode_rhs_tangent(self, phi, y, *args):
@@ -72,7 +105,7 @@ class ToroidalBfield(IntegratedProblem, BfieldProblem):
             array: The RHS of the ODE.
         """
         stz = np.array([y[0], y[1], phi])
-        Bu, dBu = self.dBdX(stz, *args)
+        Bu, dBu = self._mf.dBdX(stz, *args)
 
         deltax = np.reshape(y[2:], [2, 2])
         gBzeta = Bu[2]
