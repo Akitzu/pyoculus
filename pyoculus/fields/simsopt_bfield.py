@@ -1,4 +1,4 @@
-from .cylindrical_bfield import CylindricalBfield, CylindricalBfieldMap
+from .cylindrical_bfield import CylindricalBfield
 from .cartesian_bfield import vec2cyl, mat2cyl
 from simsopt.field import MagneticField
 import numpy as np

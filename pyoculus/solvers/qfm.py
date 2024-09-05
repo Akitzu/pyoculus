@@ -1,63 +1,40 @@
-## @file qfm.py: class for generating the (weighted) Quadratic Flux Minimising (QFM) surfaces
-#  @brief class for generating the QFMs
-#  @author Zhisong Qu (zhisong.qu@anu.edu.au)
-#
+# class for generating the (weighted) Quadratic Flux Minimising (QFM) surfaces
 
 from inspect import ismemberdescriptor
 from matplotlib.pyplot import axis
 from scipy.special.orthogonal import jacobi
-from .base_solver import BaseSolver
 from pyoculus.problems import ToroidalBfield
 import numpy as np
 
 nax = np.newaxis
 
 
-class QFM(BaseSolver):
+class QFM:
     def __init__(
         self,
-        problem: ToroidalBfield,
-        params=dict(),
-        integrator=None,
-        integrator_params=dict(),
+        bfield: ToroidalBfield,
+        pqMpol=8,
+        pqNtor=4,
+        nfft_multiplier=2,
+        stell_sym=True,
+        ntheta=100,
     ):
-        """! Set up the class of the fixed point finder
-        @param problem must inherit pyoculus.problems.ToroidalBfield, the problem to solve
-        @param params dict, the parameters for the solver
-        @param integrator the integrator to use, must inherit \pyoculus.integrators.BaseIntegrator, if set to None by default using RKIntegrator (not used here)
-        @param integrator_params dict, the parmaters passed to the integrator (not used here)
+        """
+        Set up the QFM solver
 
-        <code> params['pqMpol']=8 </code> -- Fourier resolution multiplier for poloidal direction
-        <code> params['pqNtor']=4 </code> -- Fourier resolution multiplier for toroidal direction
-        <code> params['nfft_multiplier']=4 </code> -- the extended (multiplier) resolution for FFT
-        <code> params['stellar_sym']=True </code> -- stellarator symmetry
+        Args:
+            bfield (ToroidalBfield): the toroidal bfield object
+            pqMpol (int): the Fourier resolution multiplier for poloidal direction
+            pqNtor (int): the Fourier resolution multiplier for toroidal direction
+            nfft_multiplier (int): the extended (multiplier) resolution for FFT
+            stell_sym (bool): stellarator symmetry
         """
 
-        if "ntheta" not in params.keys():
-            params["ntheta"] = 100
-
-        if "nfft_multiplier" not in params.keys():
-            params["nfft_multiplier"] = 2
-
-        if "pqNtor" not in params.keys():
-            params["pqNtor"] = 4
-
-        if "pqMpol" not in params.keys():
-            params["pqMpol"] = 8
-
-        if "stellar_sym" not in params.keys():
-            params["stellar_sym"] = True
-
-        self._MM = params["nfft_multiplier"] * 2
-        self.nfft_multiplier = params["nfft_multiplier"]
-        self._pqNtor = params["pqNtor"]
-        self._pqMpol = params["pqMpol"]
-        self.Nfp = problem.Nfp
-        self.sym = params["stellar_sym"]
-
-        integrator_params["ode"] = problem.f
-
-        super().__init__(problem, params, integrator, integrator_params)
+        self._MM = nfft_multiplier * 2
+        self.nfft_multiplier = nfft_multiplier
+        self._pqNtor = pqNtor
+        self._pqMpol = pqMpol
+        self.sym = stell_sym
 
     def construct_qfms(
         self,

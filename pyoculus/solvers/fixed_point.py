@@ -10,7 +10,7 @@ Contains the class for finding fixed points of a map.
 """
 
 from .base_solver import BaseSolver
-import pyoculus.problems as problems
+import pyoculus.maps as maps
 from ..utils.plot import create_canvas
 from scipy.optimize import root
 import numpy as np
@@ -162,9 +162,9 @@ class FixedPoint(BaseSolver):
 
         # Setup the x_axis if not provided
         if x_axis is None:
-            if isinstance(self._map, problems.ToroidalBfieldSection):
+            if isinstance(self._map, maps.ToroidalBfieldSection):
                 x_axis = np.array([0., 0.])
-            elif isinstance(self._map, problems.CylindricalBfieldSection):
+            elif isinstance(self._map, maps.CylindricalBfieldSection):
                 x_axis = np.array([self._map.R0, self._map.Z0])
             else:
                 logger.warning("No x_axis provided, using the zero vector.")
@@ -406,7 +406,7 @@ class FixedPoint(BaseSolver):
         """
         This will be rapidly depraciated.
         """
-        if not isinstance(self._map, problems.ToroidalBfieldSection):
+        if not isinstance(self._map, maps.ToroidalBfieldSection):
             raise ValueError("This method is only implemented for ToroidalBfieldSection")
 
         x = np.array([guess[0], theta], dtype=np.float64)

@@ -3,7 +3,7 @@
 #  @author Zhisong Qu (zhisong.qu@anu.edu.au)
 #
 from .toroidal_bfield import ToroidalBfield
-from .interpolate_coordinates import SurfacesToroidal
+from ..geo.interpolate_coordinates import SurfacesToroidal
 import numpy as np
 
 

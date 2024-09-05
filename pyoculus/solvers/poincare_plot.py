@@ -12,7 +12,7 @@ Contains the class for generating the Poincare Plot and computing the winding nu
 import numpy as np
 import matplotlib.pyplot as plt
 from .base_solver import BaseSolver
-import pyoculus.problems as problems
+import pyoculus.maps as maps
 import concurrent.futures
 import logging
 import sys
@@ -36,7 +36,7 @@ class PoincarePlot(BaseSolver):
         Initialize the Poincare plot.
 
         Args:
-            map (problems.base_map): The map to use for the computation. Should be 2D.
+            map (maps.base_map): The map to use for the computation. Should be 2D.
             xs (np.ndarray): The initial points, shape (npoints, dimension).
             points_type (str): The type of points generation. Default is "custom" for custom points.
         """
@@ -73,7 +73,7 @@ class PoincarePlot(BaseSolver):
         Creates a Poincare plot with points linearly spaced between x0 and x1.
 
         Args:
-            map (problems.base_map): The map to use for the computation.
+            map (maps.base_map): The map to use for the computation.
             x0 (np.array): The starting point.
             x1 (np.array): The ending point.
             npts (int): The number of points.
@@ -92,7 +92,7 @@ class PoincarePlot(BaseSolver):
         Can be used either to join the points passed as arguments when connected is True. Or, when connected is False, the points are taken to be the two by two extremities of eich segment.
         
         Args:
-            map (problems.base_map): The map to use for the computation.
+            map (maps.base_map): The map to use for the computation.
             xns (np.ndarray): The points defining the extremities of the segments.
             neps (list): The number of points per segment. The length of the list should be equal to : the number of segments minus one if connected is True, twice the number of segments otherwise.
             connected (bool): If True, then the segments are connected to each other. Default is True.
@@ -132,7 +132,7 @@ class PoincarePlot(BaseSolver):
         Create a Poincare plot with horizontal points.
 
         Args:
-            map (problems.base_map): The map to use for the computation.
+            map (maps.base_map): The map to use for the computation.
             radius (float): The radius of the horizontal points.
             npts (int): The number of horizontal points.
 
@@ -140,10 +140,10 @@ class PoincarePlot(BaseSolver):
             PoincarePlot: The PoincarePlot object.
         """
 
-        if isinstance(map, problems.CylindricalBfieldSection):
+        if isinstance(map, maps.CylindricalBfieldSection):
             opoint = np.array([map.R0, map.Z0])
             xs = np.linspace(opoint + np.array([1e-8, 0]), opoint + np.array([radius, 0]), npts)
-        elif isinstance(map, problems.ToroidalBfieldSection):
+        elif isinstance(map, maps.ToroidalBfieldSection):
             xs = np.linspace(np.array([1e-8, 0]), np.array([radius, 0]), npts)
         else:
             raise ValueError("The map is not supported for horizontal points generation.")
@@ -250,7 +250,7 @@ class PoincarePlot(BaseSolver):
         if not self._successful or not self._iota_computed:
             self.compute(**kwargs, compute_iota=True)
 
-        if isinstance(self._map, problems.CylindricalBfieldSection) or isinstance(self._map, problems.ToroidalBfieldSection):
+        if isinstance(self._map, maps.CylindricalBfieldSection) or isinstance(self._map, maps.ToroidalBfieldSection):
             rho = self._windings[:, :, 0]
             theta = np.cumsum(self._windings[:, :, 1], axis=1)
             self.iota = np.zeros(rho.shape[0], dtype=np.float64)
@@ -433,7 +433,7 @@ class PoincarePlot(BaseSolver):
         """
         np.save(filename, self._hits)
 
-    def load(self, map : problems.base_map):
+    def load(self, map : maps.base_map):
         """
         """
         

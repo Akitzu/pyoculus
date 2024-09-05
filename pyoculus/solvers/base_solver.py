@@ -10,7 +10,7 @@ Contains the abstract base class for solvers.
 """
 
 from abc import ABC
-from pyoculus.problems import BaseMap
+import pyoculus.maps as maps
 
 
 class BaseSolver(ABC):
@@ -26,7 +26,7 @@ class BaseSolver(ABC):
         def __init__(self):
             pass
 
-    def __init__(self, map: BaseMap):
+    def __init__(self, map: maps.BaseMap):
         """
         Initializes the BaseSolver object.
 
@@ -37,7 +37,7 @@ class BaseSolver(ABC):
         self._successful = False
 
         # Check if the map is derived from BaseMap
-        if not isinstance(map, BaseMap):
+        if not isinstance(map, maps.BaseMap):
             raise ValueError("The problem is not a derived type of BaseMap class.")
 
         self._map = map
