@@ -1,9 +1,18 @@
-## @file fixed_point.py
-#  @brief class for finding fixed points
-#  @author Zhisong Qu (zhisong.qu@anu.edu.au)
-#
+"""
+fixed_point.py
+==================
+
+Contains the class for finding fixed points of a map.
+
+:authors:
+    - Zhisong Qu (zhisong.qu@anu.edu.au)
+    - Ludovic Rais (ludovic.rais@epfl.ch)
+"""
 
 from .base_solver import BaseSolver
+import pyoculus.problems as problems
+from ..utils.plot import create_canvas
+from scipy.optimize import root
 import numpy as np
 import logging
 
@@ -16,63 +25,110 @@ class FixedPoint(BaseSolver):
     Class to find fixed points of a map, i.e. points that satisfy :math:`f^t(x) = x`.
     """
 
+    def __init__(self, map):
+        # if constraints is None:
+        #     constraints = np.NaN * np.ones(map.dimension)
+        # elif len(constraints) != map.dimension:
+        #     raise ValueError("The constraints should have the same dimension as the map domain.")
+        # elif all([c is not np.NaN for c in constraints]):
+        #     raise ValueError("Their must be at least one unconstrained dimension.")
+        # self._constraints = constraints
+    
+        self._found_by_iota = False
+        super().__init__(map)
+
+    ## Properties
+
+    @property
+    def iotaslash(self):
+        if not self.successful:
+            raise ValueError("Fixed point not found.")
+        elif not self._found_by_iota:
+            raise ValueError("Fixed point not found with winding number.")
+        else:
+            return self._n / self._m
+        
+    @property
+    def n(self):
+        if not self.successful:
+            raise ValueError("Fixed point not found.")
+        elif not self._found_by_iota:
+            raise ValueError("Fixed point not found with winding number.")
+        else:
+            return self._n
+    
+    @property
+    def m(self):
+        if not self.successful:
+            raise ValueError("Fixed point not found.")
+        elif not self._found_by_iota:
+            raise ValueError("Fixed point not found with winding number.")
+        else:
+            return self._m
+
     ## Findings fixed points methods
 
-    def find(self, t, guess=None, niter=100, nrestart=0, tol=1e-10):
+    def find(self, t, guess=None, nrestart=0, method="newton", **kwargs):
         """
-        Finds a fixed point of a map applied 't' times. Once found, the fixed point has as attributes:
-        - coords: the coordinates of the fixed point
-        - jacobians: the Jacobians of the fixed point
-        - GreenesResidues: the Greene's Residue of the fixed point
-        - MeanResidues: the 'Average Residue' f as defined by Greene
+        Tries to find a fixed point of the map applied :math:`t` times.
 
+        Args:
+            t: the number of iterations of the map
+            guess: the initial guess of the fixed point
+            nrestarts: the maximum number of restart with different random initial conditions
+            method: the method to use to find the fixed point, default is 'newton'
+            **kwargs: additional arguments for the method
+
+        Returns:
+            FixedPoint.OutputData: the output data of the fixed point search
+                - coords: the coordinates of the fixed point
+                - jacobians: the Jacobians of the fixed point
+                - GreenesResidues: the Greene's Residue of the fixed point
         """
+
+        # Check the iteration number is correct
         if self._map.is_discrete and not isinstance(t, int):
-            raise ValueError(
-                "The iteration number should be an integer for a discrete map."
-            )
+            raise ValueError("The iteration number should be an integer for a discrete map.")
 
-        if guess is None:
-            guess = self.random_initial_guess()
-
+        # Setup the search
         self.t = t
         self.history = []
         x_fp = None
 
-        # arrays that save the data
-        self.coords = np.zeros(
-            shape=(self.t + 1, self._map.dimension), dtype=np.float64
-        )
-        self.jacobians = np.zeros(
-            shape=(self.t + 1, self._map.dimension, self._map.dimension),
-            dtype=np.float64,
-        )
-        self.GreenesResidues = np.zeros(self.t + 1, dtype=np.float64)
-        self.MeanResidues = np.zeros(self.t + 1, dtype=np.float64)
+        # Check the guess is correct
+        if guess is None:
+            guess = self.random_initial_guess()
+        elif len(guess) != self._map.dimension:
+            raise ValueError("The guess should have the same dimension as the map domain.")
+        elif not self._map.in_domain(guess):
+            raise ValueError("The guess is not in the domain of the map.")
 
-        # set up the guess
-        if len(guess) != self._map.dimension:
-            raise ValueError(
-                "The guess should have the same dimension as the map domain."
-            )
+        # Setup and check the method
+        if method == "newton":
+            method_fun = self._newton_method
+        elif method == "sicpy.root":
+            method_fun = self._scipy_root
+        else:
+            raise ValueError(f"Method {method} is not implemented.")
+        self._method = method
 
-        # run the Newton's method
+        # run the solver, if failed, try a different random initial condition
         guess0 = guess.copy()
-        for ii in range(nrestart + 1):
-            try:  # run the solver, if failed, try a different random initial condition
-                x_fp, jac = self._newton_method(guess, niter, tol)
-                if self._successful:
-                    break
+        for i in range(nrestart + 1):
+            try:
+                x_fp = method_fun(guess, **kwargs)
             except Exception as e:
-                logger.info(f"Search {ii} - failed: {e}")
+                logger.info(f"Search {i} - failed: {e}")
 
-            if ii < nrestart:
-                logger.info(f"Search {ii+1} starting from a random initial guesss!")
+            if x_fp is not None:
+                break
+            elif i < nrestart:
+                logger.info(f"Search {i+1} starting from a random initial guesss.")
                 guess = self.random_initial_guess(guess0)
 
         # now we go and get all the fixed points by iterating the map
         if x_fp is not None:
-            logger.info(f"Found fixed point at {x_fp}. Computing ...")
+            logger.info(f"Found fixed point at {x_fp}. Computing additional data...")
             rdata = self.record_data(x_fp)
 
             # Set the successful flag
@@ -83,89 +139,109 @@ class FixedPoint(BaseSolver):
 
         return rdata
 
-    def find_with_iota(self, pp, qq, guess, x_axis, niter=100, nrestart=0, tol=1e-10):
+    def find_with_iota(self, n, m, guess, x_axis=None, nrestart=0, method="newton", **kwargs):
         """
-        Computes the fixed point of a continuous map with winding number iota = q^-1 = pp/qq around x_axis.
+        Tries to find the fixed point of a map with winding number :math:`\\iota/2\\pi = q^{-1} = n/m` around x_axis.s
 
         Args:
+            n (int): the numerator of the winding number
+            m (int): the denominator of the winding number
             guess (array): the initial guess of the fixed point
             x_axis (array): the point around which the winding number is calculated
-            niter (int): the maximum number of iterations
-            nrestarts (int): the maximum number of restart with different initial conditions
-            tol (float): the tolerance of the fixed point
+            nrestarts (int): the maximum number of restart with different random initial conditions
+            method (str): the method to use to find the fixed point, default is 'newton'
+            **kwargs: additional arguments for the method        
 
         Returns:
-            coords (array): the fixed point in the coordinates of the problem
-            jac (array): the Jacobian the fixed point
-            GreenesResidues (array): the Greene's Residue of the fixed point
-            MeanResidues (array): the 'Average Residue' f as defined by Greene
+            FixedPoint.OutputData: the output data of the fixed point search
+                - coords: the coordinates of the fixed point
+                - jacobians: the Jacobians of the fixed point
+                - GreenesResidues: the Greene's Residue of the fixed point
+                - MeanResidues: --
         """
 
-        if not isinstance(pp, int) or not isinstance(qq, int):
-            raise ValueError("pp and qq should be integers")
+        # Setup the x_axis if not provided
+        if x_axis is None:
+            if isinstance(self._map, problems.ToroidalBfieldSection):
+                x_axis = np.array([0., 0.])
+            elif isinstance(self._map, problems.CylindricalBfieldSection):
+                x_axis = np.array([self._map.R0, self._map.Z0])
+            else:
+                logger.warning("No x_axis provided, using the zero vector.")
+                x_axis = np.zeros(self._map.dimension)
+        elif len(x_axis) != self._map.dimension:
+            raise ValueError("The x_axis should have the same dimension as the map domain.")
+        elif not self._map.in_domain(x_axis):
+            raise ValueError("The x_axis is not in the domain of the map.")
 
-        if pp * qq >= 0:
-            pp = int(np.abs(pp))
-            qq = int(np.abs(qq))
-        else:
-            pp = -int(np.abs(pp))
-            qq = int(np.abs(qq))
+        # Setup of the poloidal m and toroidal mode numbers
+        if not isinstance(n, int) or not isinstance(m, int):
+            raise ValueError("n and m should be integers")
 
-        self.t = qq
+        n = np.sign(n*m)*np.abs(n)
+        m = int(np.abs(m))
+        self._n = n
+        self._m = m
 
-        self.pp = pp
-        self.qq = qq
-
+        # Setup the search
+        self.t = m
         self.history = []
         x_fp = None
 
-        # arrays that save the data
-        self.coords = np.zeros(
-            shape=(self.qq + 1, self._map.dimension), dtype=np.float64
-        )
-        self.jacobians = np.zeros(
-            shape=(self.qq + 1, self._map.dimension, self._map.dimension),
-            dtype=np.float64,
-        )
-        self.GreenesResidues = np.zeros(self.qq + 1, dtype=np.float64)
-        self.MeanResidues = np.zeros(self.qq + 1, dtype=np.float64)
+        # Check the guess is right
+        if guess is None:
+            guess = self.random_initial_guess()
+        elif len(guess) != self._map.dimension:
+            raise ValueError("The guess should have the same dimension as the map domain.")
+        elif not self._map.in_domain(guess):
+            raise ValueError("The guess is not in the domain of the map.")
 
-        # set up the guess
-        if len(guess) != self._map.dimension:
-            raise ValueError(
-                "The guess should have the same dimension as the map domain."
-            )
+        # Setup and check the method
+        if method == "newton":
+            method_fun = self._newton_method_winding
+        elif method == "1D":
+            method_fun = self._newton_method_1D
+        else:
+            raise ValueError(f"Method {method} is not implemented.")
+        self._method = method
 
-        # run the Newton's method
+        # run the solver, if failed, try a different random initial condition
         guess0 = guess.copy()
-        for ii in range(nrestart + 1):
-            try:  # run the solver, if failed, try a different random initial condition
-                x_fp = self._newton_method_winding(guess, x_axis, niter, tol)
-                if self._successful:
-                    break
+        for i in range(nrestart + 1):
+            try:
+                x_fp = method_fun(guess, x_axis, **kwargs)
             except Exception as e:
-                logger.info(f"Search {ii} - failed: {e}")
+                logger.info(f"Search {i} - failed: {e}")
 
-            if ii < nrestart:
-                logger.info(f"Search {ii+1} starting from a random initial guesss!")
+            if x_fp is not None:
+                break
+            elif i < nrestart:
+                logger.info(f"Search {i+1} starting from a random initial guesss.")
                 guess = self.random_initial_guess(guess0)
 
         # now we go and get all the fixed points by iterating the map
         if x_fp is not None:
-            logger.info(f"Found fixed point at {x_fp}. Computing ...")
-            rdata = self.record_data(x_fp, True)
+            logger.info(f"Found fixed point at {x_fp}. Computing additionnal data...")
+            self._found_by_iota = True
+            rdata = self.record_data(x_fp)
 
             # Set the successful flag
             self._successful = True
         else:
+            logger.info(f"Fixed point search unsuccessful for iotaslash=n/m={n}/{m}.")
             rdata = None
-            logger.info(f"Fixed point search unsuccessful for pp/qq={self.pp}/{self.qq}.")
 
         return rdata
 
+    ## Utils methods
+
     def random_initial_guess(self, mu=None, sigma=None):
         """
-        Returns a random initial guess for the fixed point inside the map domain.
+        Returns a random initial point in the domain of the map using a Gaussian distribution.
+
+        Args:
+            mu (float): the mean of the Gaussian distribution
+            sigma (np.array): the covariance matrix of the Gaussian distribution
         """
         domain = self._map.domain
         domain = [
@@ -183,45 +259,72 @@ class FixedPoint(BaseSolver):
 
         return np.random.multivariate_normal(mu, sigma)
 
-    def record_data(self, x_fp, is_winding=False):
+    def record_data(self, x_fp):
+        """
+        Record some additional data about the fixed point, such as the Jacobian, the Greene's Residue, and the Mean Residue for each iteration of the map.
+
+        Args:
+            x_fp (array): Fixed point coordinates
+            is_winding (bool)
+        """
+
+        # Initialize the data arrays
+        self.coords = np.zeros(
+            shape=(self.t + 1, self._map.dimension), dtype=np.float64
+        )
+        self.jacobians = np.zeros(
+            shape=(self.t + 1, self._map.dimension, self._map.dimension),
+            dtype=np.float64,
+        )
+        self.GreenesResidues = np.zeros(self.t + 1, dtype=np.float64)
+        if self._found_by_iota:
+            self.MeanResidues = np.zeros(self.t + 1, dtype=np.float64)
+        
+        # Initial condition
         self.coords[0] = x_fp
 
-        for jj in range(0, self.t + 1):
-            if jj > 0:
-                self.coords[jj] = self._map.f(1, self.coords[jj - 1])
+        # Compute the rest of the data
+        for i in range(0, self.t + 1):
+            if i > 0:
+                self.coords[i] = self._map.f(1, self.coords[i - 1])
             
-            self.jacobians[jj] = self._map.df(self.t, self.coords[jj])
-            self.GreenesResidues[jj] = 0.25 * (2.0 - np.trace(self.jacobians[jj]))
-            if is_winding:
-                self.MeanResidues[jj] = np.power(
-                    np.abs(self.GreenesResidues[jj]) / 0.25, 1 / float(self.qq)
+            self.jacobians[i] = self._map.df(self.t, self.coords[i])
+            self.GreenesResidues[i] = 0.25 * (2.0 - np.trace(self.jacobians[i]))
+            if self._found_by_iota:
+                self.MeanResidues[i] = np.power(
+                    np.abs(self.GreenesResidues[i]) / 0.25, 1 / float(self._m)
                 )
 
+        # Create an output
         rdata = FixedPoint.OutputData()
         rdata.coords = self.coords.copy()
         rdata.jacobians = self.jacobians.copy()
-
-        # Greene's Residue
         rdata.GreenesResidues = self.GreenesResidues.copy()
-        if is_winding:
+        if self._found_by_iota:
             rdata.MeanResidues = self.MeanResidues.copy()
 
         return rdata
 
-    ## Newton's methods
+    """
+    Solver methods.
 
-    def _newton_method(self, guess, niter, tol):
+    They are private methods that are used to solve the fixed point problem. They should either return the coordinates of the fixed point if the search was successful or None if the search was not. 
+    
+    They can be of two types depending whether they need to be used with the winding number or not.
+    """
+
+    def _newton_method(self, guess, niter=100, tol=1e-10):
         x = np.array(guess, dtype=np.float64)
         self.history.append(x.copy())
         succeeded = False
 
-        for ii in range(niter):
-            logger.info(f"Newton {ii} - x : {x}")
+        for i in range(niter):
+            logger.info(f"Newton {i} - x : {x}")
             df = self._map.df(self.t, x)
             x_evolved = self._map.f(self.t, x)
 
             # Stop if the resolution is good enough
-            logger.info(f"Newton {ii} - delta_x : {x_evolved-x}")
+            logger.info(f"Newton {i} - delta_x : {x_evolved-x}")
             if np.linalg.norm(x_evolved - x) < tol:
                 succeeded = True
                 break
@@ -232,35 +335,45 @@ class FixedPoint(BaseSolver):
             x_new = self._map.check_domain(x + step)
 
             # Update the variables
-            logger.info(f"Newton {ii} - step : {x_new-x}")
+            logger.info(f"Newton {i} - step : {x_new-x}")
             x = x_new
 
             if not self._map.in_domain(x):
-                logger.info(f"Newton {ii} - out of domain")
+                logger.info(f"Newton {i} - out of domain")
                 return None
 
             self.history.append(x.copy())
 
         if succeeded:
-            return x, df
+            return x
         else:
-            return None, None
+            return None
 
-    def _newton_method_winding(self, guess, x_axis, niter, tol):
+    def _scipy_root(self, guess, **kwargs):
+        """
+        Wrapper around the scipy root method to find the fixed point. For more details, see the scipy documentation.
+        """
+
+        def fun(x):
+            self._map.f(self.t, x) - x
+
+        return root(fun, guess, **kwargs).x
+
+    def _newton_method_winding(self, guess, x_axis, niter=100, tol=1e-10):
         x = np.array(guess, dtype=np.float64)
         x_axis = np.array(x_axis, dtype=np.float64)
 
         self.history.append(x.copy())
         succeeded = False
 
-        for ii in range(niter):
-            logger.info(f"Newton {ii} - x : {x}")
+        for i in range(niter):
+            logger.info(f"Newton {i} - x : {x}")
 
             dW = self._map.dwinding(self.t, x)
-            x_winding = self._map.check_domain(self._map.winding(self.t, x))
+            x_winding = self._map.winding(self.t, x)
 
             logger.info(
-                f"Newton {ii} - x_winding : {x_winding}"
+                f"Newton {i} - x_winding : {x_winding}"
             )
 
             # Stop if the resolution is good enough
@@ -274,14 +387,12 @@ class FixedPoint(BaseSolver):
             x_new = self._map.check_domain(x + step)
 
             # Update the variables
-            logger.info(f"Newton {ii} - step: {x_new-x}")
+            logger.info(f"Newton {i} - step: {x_new-x}")
             x = x_new
-            logger.info(f"Newton {ii} - x_new: {x_new}")
+            logger.info(f"Newton {i} - x_new: {x_new}")
 
-            if any(
-                (xi < lwb) or (xi > upb) for xi, (lwb, upb) in zip(x, self._map.domain)
-            ):
-                logger.info(f"Newton {ii} - out of domain")
+            if not self._map.in_domain(x):
+                logger.info(f"Newton {i} - out of domain")
                 return None
 
             self.history.append(x.copy())
@@ -289,21 +400,94 @@ class FixedPoint(BaseSolver):
         if succeeded:
             return x
         else:
-            return None, None
+            return None
 
-    # Plotting method
+    def _newton_method_1D(self, guess, x_axis, theta=0, niter=100, tol=1e-10):
+        """
+        This will be rapidly depraciated.
+        """
+        if not isinstance(self._map, problems.ToroidalBfieldSection):
+            raise ValueError("This method is only implemented for ToroidalBfieldSection")
+
+        x = np.array([guess[0], theta], dtype=np.float64)
+        x_axis = np.array(x_axis, dtype=np.float64)
+
+        self.history.append(x.copy())
+        succeeded = False
+
+        for i in range(niter):
+            logger.info(f"Newton {i} - x : {x}")
+
+            dW = self._map.dwinding(self.t, x)
+            x_winding = self._map.winding(self.t, x)
+
+            logger.info(
+                f"Newton {i} - x_winding : {x_winding}"
+            )
+
+            # Stop if the resolution is good enough
+            delta_x = x_winding - x - np.array([0., self._n*2*np.pi/self._map._mf.Nfp])
+            if abs(delta_x[-1]) < tol:
+                succeeded = True
+                break
+
+            # Newton's step
+            step = np.array([- delta_x[-1] / dW[1,0], 0.]) 
+            x_new = x + step
+
+            # Update the variables
+            logger.info(f"Newton {i} - step: {x_new-x}")
+            x = x_new
+            logger.info(f"Newton {i} - x_new: {x_new}")
+
+            if not self._map.in_domain(x):
+                logger.info(f"Newton {i} - out of domain")
+                return None
+
+            self.history.append(x.copy())
+
+        if succeeded:
+            return x
+        else:
+            return None
+
+    # Plotting methods
 
     def plot(
-        self, ax, **kwargs
+        self, plot_all = True, **kwargs
     ):
         """
         Plot the fixed point with caracteristics of 
         """
 
-        pass
+        if not self.successful:
+            raise Exception("A successful call of compute() is needed")
+        elif self._map.dimension != 2:
+            raise ValueError("I can only plot 2D fixed points.")
+
+        fig, ax, kwargs = create_canvas(**kwargs)
+
+        if kwargs.get("marker", None) is None:
+            if self.GreenesResidues[0] > 1:
+                # Alternating hyperbolic fixed point
+                kwargs["marker"] = "s"
+            elif self.GreenesResidues[0] < 0:
+                # Hyperbolic fixed point
+                kwargs["marker"] = "X"
+            elif self.GreenesResidues[0] < 1:
+                # Elliptic fixed point
+                kwargs["marker"] = "o"
+        
+        if plot_all:
+            ax.scatter(self.coords[:, 0], self.coords[:, 1], **kwargs)
+        else:
+            ax.scatter(self.coords[0, 0], self.coords[0, 1], **kwargs)
+
+        return fig, ax
+
 
     def plot_history(self, **kwargs):
-        
-        if self._successful:
-            pass
-        
+        """
+        Plot the history of the fixed point search.
+        """
+        pass   
