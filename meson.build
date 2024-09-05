@@ -63,15 +63,48 @@ py3.extension_module('pyoculus_spec_fortran_module',
                     install: true, 
                     fortran_args: f90flags)
 
-py3.install_sources(
-           'pyoculus/__init__.py',
-           'pyoculus/fields/*.py',
-           'pyoculus/geo/*.py',
-           'pyoculus/integrators/*.py',
-           'pyoculus/maps/*.py',
-           'pyoculus/solvers/*.py',
-           'pyoculus/toybox/*.py',
-           'pyoculus/utils/*.py',
-           subdir: 'pyoculus' 
-)
+py_files = distribute_files([
+  'pyoculus/__init__.py',
+  'pyoculus/fields/cartesian_bfield.py',
+  'pyoculus/fields/cylindrical_bfield.py',
+  'pyoculus/fields/cylindrical_bfield_analytic.py',
+  'pyoculus/fields/m3dc1_bfield.py',
+  'pyoculus/fields/magnetic_field.py',
+  'pyoculus/fields/qfm_bfield.py',
+  'pyoculus/fields/simsopt_bfield.py',
+  'pyoculus/fields/spec_bfield.py',
+  'pyoculus/fields/toroidal_bfield.py',
+  'pyoculus/fields/two_waves.py',
+  'pyoculus/fields/__init__.py',
+  'pyoculus/geo/interpolate_coordinates.py',
+  'pyoculus/geo/__init__.py',
+  'pyoculus/integrators/base_integrator.py',
+  'pyoculus/integrators/scipyode_integrator.py',
+  'pyoculus/integrators/sdc_integrator.py',
+  'pyoculus/integrators/__init__.py',
+  'pyoculus/maps/base_map.py',
+  'pyoculus/maps/cylindrical_bfield_section.py',
+  'pyoculus/maps/integrated_map.py',
+  'pyoculus/maps/SPECfortran
+  'pyoculus/maps/spec_pjh.py',
+  'pyoculus/maps/spec_problem.py',
+  'pyoculus/maps/toroidal_bfield_section.py',
+  'pyoculus/maps/__init__.py',
+  'pyoculus/solvers/base_solver.py',
+  'pyoculus/solvers/fixed_point.py',
+  'pyoculus/solvers/flux_surface_gr.py',
+  'pyoculus/solvers/lyapunov_exponent.py',
+  'pyoculus/solvers/manifold.py',
+  'pyoculus/solvers/poincare_plot.py',
+  'pyoculus/solvers/qfm.py',
+  'pyoculus/solvers/__init__.py',
+  'pyoculus/toybox/cylindrical_toybox.py',
+  'pyoculus/toybox/__init__.py',
+  'pyoculus/utils/continued_fraction.py',
+  'pyoculus/utils/plot.py',
+  'pyoculus/utils/__init__.py',
+  subdir: 'pyoculus'
+])
+
+py3.install_sources(py_files)
 
