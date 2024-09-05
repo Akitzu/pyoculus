@@ -42,8 +42,8 @@ class ScipyODEIntegrator(BaseIntegrator):
                 - nsteps (int, optional): Maximum number of integration steps. Defaults to 10000.
         """
 
-        if "ode" not in params.keys():
-            raise ValueError("ODE function not provided")
+        # if "ode" not in params.keys():
+        #     raise ValueError("ODE function not provided")
 
         # check if the ode is provided. If not, raise an error
         if "type" not in params.keys():

@@ -6,7 +6,8 @@ except ImportError:
 
 __version__ = metadata.version('pyoculus')
 
+# from . import maps
 from . import problems
 from . import integrators
-from . import irrationals
+from . import utils
 from . import solvers
