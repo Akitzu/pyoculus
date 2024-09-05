@@ -1,3 +1,5 @@
+from .magnetic_field import MagneticField
+
 # Cartesian magnetic fields
 # from .cartesian_bfield import CartesianBfield
 
