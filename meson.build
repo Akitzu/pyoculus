@@ -85,7 +85,6 @@ py3.install_sources(
   'pyoculus/maps/base_map.py',
   'pyoculus/maps/cylindrical_bfield_section.py',
   'pyoculus/maps/integrated_map.py',
-  'pyoculus/maps/SPECfortran
   'pyoculus/maps/spec_pjh.py',
   'pyoculus/maps/spec_problem.py',
   'pyoculus/maps/toroidal_bfield_section.py',
