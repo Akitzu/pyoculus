@@ -63,7 +63,7 @@ py3.extension_module('pyoculus_spec_fortran_module',
                     install: true, 
                     fortran_args: f90flags)
 
-py_files = distribute_files([
+py3.install_sources(
   'pyoculus/__init__.py',
   'pyoculus/fields/cartesian_bfield.py',
   'pyoculus/fields/cylindrical_bfield.py',
@@ -104,7 +104,5 @@ py_files = distribute_files([
   'pyoculus/utils/plot.py',
   'pyoculus/utils/__init__.py',
   subdir: 'pyoculus'
-])
-
-py3.install_sources(py_files)
+)
 
