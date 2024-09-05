@@ -123,3 +123,13 @@ class BaseMap(ABC):
             if not low <= x[i] <= high and self.periodicity[i] == 0:
                 return False
         return True
+    
+    # def distance(self, x, y):
+    #     sum_xy_sq = 0
+    #     for i, (low, high) in enumerate(self.domain):
+    #         if self.periodicity[i] == 1:
+    #             a = min
+    #             db = 
+    #         else:
+    #             sum_xy_sq += (x[i] - y[i])**2
+    #     return np.sqrt(sum_xy_sq)

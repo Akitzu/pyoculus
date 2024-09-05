@@ -42,7 +42,8 @@ class BaseSolver(ABC):
 
         self._map = map
 
-    def is_successful(self):
+    @property
+    def successful(self):
         """
         Returns a boolean indicating if the solver was successful.
         """
