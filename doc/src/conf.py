@@ -9,7 +9,7 @@
 project = 'Pyoculus'
 copyright = '2024, Zhisong Qu, Ludovic Rais'
 author = 'Zhisong Qu, Ludovic Rais'
-release = '0.3.1'
+release = '1.0.0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
