@@ -106,7 +106,7 @@ class FixedPoint(BaseSolver):
         # Setup and check the method
         if method == "newton":
             method_fun = self._newton_method
-        elif method == "sicpy.root":
+        elif method == "scipy.root":
             method_fun = self._scipy_root
         else:
             raise ValueError(f"Method {method} is not implemented.")
@@ -355,7 +355,7 @@ class FixedPoint(BaseSolver):
         """
 
         def fun(x):
-            self._map.f(self.t, x) - x
+            return self._map.f(self.t, x) - x
 
         return root(fun, guess, **kwargs).x
 
