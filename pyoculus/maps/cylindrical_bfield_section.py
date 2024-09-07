@@ -282,8 +282,8 @@ class CylindricalBfieldSection(IntegratedMap):
         rphiz = np.array([R, phi, Z])
 
         Bfield, dBdRphiZ = self._mf.dBdX(rphiz, *args)
-        # Bfield is tansformed from [array] into array
-        Bfield = np.array(Bfield[0], dtype=np.float64)
+
+        Bfield = np.array(Bfield, dtype=np.float64)
         dBdRphiZ = np.array(dBdRphiZ, dtype=np.float64)
 
         # R, Z evolution as in _rhs_RZ

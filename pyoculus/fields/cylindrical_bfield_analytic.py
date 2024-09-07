@@ -234,7 +234,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
     def dBdX(self, coords, *args):
         """Gradient of the total field function at the point coords. Where (dBdX)^i_j = dB^i/dX^j with i the row index and j the column index of the matrix."""
         rr = np.array(coords)
-        return [self.B(rr)], np.array(self._dBdX(coords))
+        return self.B(rr), np.array(self._dBdX(coords))
 
     def A(self, coords, *args):
         """Total vector potential function at the point rr."""
@@ -251,7 +251,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
     def divB(self, rr):
         """Divergence of the total field function at the point rr."""
         b, dbdx = self.dBdX(rr)
-        return dbdx[0, 0] + b[0][0] / rr[0] + dbdx[1, 1] / rr[0] ** 2 + dbdx[2, 2]
+        return dbdx[0, 0] + b[0] / rr[0] + dbdx[1, 1] / rr[0] ** 2 + dbdx[2, 2]
 
     ## Additional plotting functions
 
