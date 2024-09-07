@@ -1,33 +1,29 @@
-from ..problems.bfield_problem import BfieldProblem
+import pyoculus.maps as maps
 from .base_solver import BaseSolver
 from .fixed_point import FixedPoint
+from ..utils.plot import create_canvas
 from scipy.optimize import root, minimize
 
 # from functools import total_ordering
 import matplotlib.pyplot as plt
 import numpy as np
 
-import structlog
-
-log = structlog.get_logger()
+import logging
+logger = logging.getLogger(__name__)
 
 
 class Manifold(BaseSolver):
     def __init__(
         self,
-        bfield,
-        fixedpoint_1,
-        fixedpoint_2=None,
-        params=dict(),
-        integrator=None,
-        integrator_params=dict(),
+        map : maps.base_map,
+        fixedpoint_1 : FixedPoint,
+        fixedpoint_2 : FixedPoint = None
     ):
-        """! Set up the manifold solver
-        @param fixedpoint, computed fixed point
-        @param bfield, instance of the BfieldProblem class
+        """
+        
         """
 
-        # Check that the fixed points are correct FixedPoint instance
+        # Check that the fixed points are correct FixedPoint instances
         if not isinstance(fixedpoint_1, FixedPoint):
             raise TypeError("Fixed point must be an instance of FixedPoint class")
         if not fixedpoint_1.successful:
@@ -37,10 +33,11 @@ class Manifold(BaseSolver):
 
         if isinstance(fixedpoint_2, FixedPoint):
             if not fixedpoint_2.successful:
-                raise TypeError(
+                raise ValueError(
                     "Need a successful fixed point to compute the manifold"
                 )
 
+        self._is_self_intersection = False
         if fixedpoint_2 is not None:
             self.fixedpoint_1 = fixedpoint_1
             self.fixedpoint_2 = fixedpoint_2
@@ -57,24 +54,17 @@ class Manifold(BaseSolver):
             self.outer['clinics'] = []
             self.inner['clinics'] = []
         else:
-            self.fixedpoint = fixedpoint_1
-            # Initialize the dictionnary
+            self._is_self_intersection = True
+            self.fixedpoint_1 = fixedpoint_1
+            self.fixedpoint_2 = fixedpoint_1
 
-        # Check that the bfield is a correct BfieldProblem instance
-        if not isinstance(bfield, BfieldProblem):
-            raise TypeError("Bfield must be an instance of BfieldProblem class")
+            # Same as for outer/inner but in the case of self intersection
+            self.records = dict()
+            self.records['lfs'] = {"stable": None, "unstable": None}
+            self.records['clinics'] = []
 
-        # Integrator and BaseSolver initialization
-        integrator_params["ode"] = bfield.f_RZ
-        default_params = {"zeta": 0}
-        default_params.update(params)
-
-        super().__init__(
-            problem=bfield,
-            params=default_params,
-            integrator=integrator,
-            integrator_params=integrator_params,
-        )
+        # Initialize the BaseSolver
+        super().__init__(map)
 
     @staticmethod
     def eig(jacobian):
@@ -105,14 +95,14 @@ class Manifold(BaseSolver):
             fp_1, fp_2 = self.fixedpoint_2, self.fixedpoint_1
 
         # Choose the fixed points and their directions
-        rfp_1 = np.array([fp_1.x[0], fp_1.z[0]])
+        rfp_1 = fp_1.coords[0]
         p1_lambda_s, p1_vector_s, p1_lambda_u, p1_vector_u = self.eig(
-            fp_1.jacobian
+            fp_1.jacobians[0]
         )
 
-        rfp_2 = np.array([fp_2.x[0], fp_2.z[0]])
+        rfp_2 = fp_2.coords[0]
         p2_lambda_s, p2_vector_s, p2_lambda_u, p2_vector_u = self.eig(
-            fp_2.jacobian
+            fp_2.jacobians[0]
         )
 
         # Inner difrection
@@ -139,11 +129,9 @@ class Manifold(BaseSolver):
             signs[0][1] * p1_vector_u,
         )
         
-    def show_directions(self, ax=None):
-        if ax is None:
-            fig, ax = plt.subplots()
-        else:
-            fig = ax.get_figure()
+    def show_directions(self, **kwargs):
+
+        fig, ax, kwargs = create_canvas(**kwargs)
         
         # Plot the fixed points
         ax.scatter(*self.inner['rfp_s'], color='blue')
@@ -184,7 +172,8 @@ class Manifold(BaseSolver):
     ### Computation of the manifolds
 
     def start_config(self, epsilon, rfp, eigenvalue, eigenvector, neps=10, direction=1):
-        """Compute a starting configuration for the manifold drawing. It takes a point in the linear regime
+        """
+        Compute a starting configuration for the manifold drawing. It takes a point in the linear regime
         and devide the interval from the point to its evolution after one nfp into neps points. The interval
         is computed geometrically.
 
@@ -231,13 +220,13 @@ class Manifold(BaseSolver):
         minobj = minimize(find_eps, eps_guess, bounds=[(0, 1)], tol=1e-12)
 
         if not minobj.success:
-            log.warning(
+            logger.warning(
                 "Search for minimum of the linear error failed, using the guess for epsilon."
             )
             return eps_guess
         else:
             esp_root = minobj.x[0]
-            log.info(
+            logger.info(
                 f"Search for minimum of the linear error succeeded, epsilon = {esp_root:.5e}"
             )
             return esp_root
@@ -279,7 +268,7 @@ class Manifold(BaseSolver):
             directions = [self.outer]
         else:
             raise ValueError("Invalid directions")
-        log.info(f"Computing manifold for directions [inner/outer/both]: {options['directions']}")
+        logger.info(f"Computing manifold for directions [inner/outer/both]: {options['directions']}")
 
         # Computation
         for dik in directions:
@@ -290,9 +279,9 @@ class Manifold(BaseSolver):
             # Setup the epsilon (eps_s, eps_u) of stable and unstable directions
             if epsilon is not None:
                 if options["eps_s"] is not None:
-                    log.warning("Both eps_s and epsilon are given, ignoring the eps_s.")
+                    logger.warning("Both eps_s and epsilon are given, ignoring the eps_s.")
                 if options["eps_u"] is not None:
-                    log.warning("Both eps_u and epsilon are given, ignoring the eps_u.")
+                    logger.warning("Both eps_u and epsilon are given, ignoring the eps_u.")
                 options["eps_s"] = epsilon
                 options["eps_u"] = epsilon
             if options["eps_s"] is None:
@@ -308,20 +297,20 @@ class Manifold(BaseSolver):
             RZs = self.start_config(
                 options["eps_u"], rfp_u, lambda_u, vector_u, options["neps"]
             )
-            log.info("Computing unstable manifold...")
+            logger.info("Computing unstable manifold...")
             dik["lfs"]["unstable"] = self.integrate(RZs, nintersect=options["nintersect"])
 
             # Compute the stable starting configuration and the manifold
             RZs = self.start_config(
                 options["eps_s"], rfp_s, lambda_s, vector_s, options["neps"], -1
             )
-            log.info("Computing stable manifold...")
+            logger.info("Computing stable manifold...")
             dik["lfs"]["stable"] = self.integrate(
                 RZs, nintersect=options["nintersect"], direction=-1
             )
 
 
-    def plot(self, ax=None, directions="isiuosou", color=None, end=None, **kwargs):
+    def plot(self, directions="isiuosou", color=None, end=None, **kwargs):
         default = {
             "markersize": 2,
             "fmt": "-o",
@@ -330,10 +319,7 @@ class Manifold(BaseSolver):
         default.update({key: value for key, value in kwargs.items() if key in default})
         plotkwargs = {key: value for key, value in kwargs.items() if key not in default}
 
-        if ax is None:
-            fig, ax = plt.subplots()
-        else:
-            fig = ax.get_figure()
+        fig, ax, kwargs = create_canvas(**kwargs)
 
         dirdict = {
             "is": self.inner["lfs"]["stable"],
@@ -346,7 +332,7 @@ class Manifold(BaseSolver):
             if dir in directions:
                 out = dirdict[dir]
                 if out is None:
-                    log.warning(f"Manifold {dir} not computed.")
+                    logger.warning(f"Manifold {dir} not computed.")
                 else:
                     # plotting each starting point trajectory as order
                     # for yr, yz in zip(out[::2], out[1::2]):
@@ -389,7 +375,7 @@ class Manifold(BaseSolver):
         for _ in range(max_iterations):
             if fund[0] <= norm < fund[1]:
                 return norm
-            log.debug(f"norm = {norm}")
+            logger.debug(f"norm = {norm}")
             r_ev = self.integrate_single(r_ev, 1, -1, ret_jacobian=False)
             norm = np.linalg.norm(r_ev - rfp_u)
 
@@ -438,7 +424,7 @@ class Manifold(BaseSolver):
             stable_evol = not stable_evol
 
             norm = np.linalg.norm(r_u - r_s)
-            # log.debug(f"{np.dot(first_dir, r_u - r_s)} / {last_norm} / {norm}")
+            # logger.debug(f"{np.dot(first_dir, r_u - r_s)} / {last_norm} / {norm}")
             if np.sign(np.dot(first_dir, r_u - r_s)) < 0:  # and last_norm < norm:
                 success = True
             last_norm = norm
@@ -499,9 +485,9 @@ class Manifold(BaseSolver):
             n_s, n_u = defaults["n_s"], defaults["n_u"]
 
         # Logging the search initial configuration
-        log.debug(f"Guess - {guess_eps_s}, {guess_eps_u}")
-        log.debug(f"Bounds - {defaults['bounds']}")
-        log.debug(f"n_s, n_u - {n_s}, {n_u}")
+        logger.debug(f"Guess - {guess_eps_s}, {guess_eps_u}")
+        logger.debug(f"Bounds - {defaults['bounds']}")
+        logger.debug(f"n_s, n_u - {n_s}, {n_u}")
 
         self.onworking["history"] = []
 
@@ -517,7 +503,7 @@ class Manifold(BaseSolver):
                 else:    
                     r_s_evolved = self.integrate_single(r_s, n_s, -1, ret_jacobian=False)
             except Exception as e:
-                log.error(f"Error in stable manifold integration : {e}")
+                logger.error(f"Error in stable manifold integration : {e}")
                 raise e
                 # breakpoint()
 
@@ -527,7 +513,7 @@ class Manifold(BaseSolver):
                 else:    
                     r_u_evolved = self.integrate_single(r_u, n_u, 1, ret_jacobian=False)
             except Exception as e:
-                log.error(f"Error in unstable manifold integration : {e}")
+                logger.error(f"Error in unstable manifold integration : {e}")
                 raise e
                 # breakpoint()
 
@@ -547,14 +533,14 @@ class Manifold(BaseSolver):
 
         def residual(logeps, n_s, n_u):
             eps_s, eps_u = np.exp(logeps)
-            log.debug(f'Inside : {eps_s, eps_u}')
+            logger.debug(f'Inside : {eps_s, eps_u}')
             # if not defaults['bounds'][0][0] <= eps_s <= defaults['bounds'][0][1] or not defaults['bounds'][1][0] <= eps_u <= defaults['bounds'][1][1]:
             #     dist_s = min(abs(eps_s - defaults['bounds'][0][0]), abs(eps_s - defaults['bounds'][0][1]))
             #     dist_u = min(abs(eps_u - defaults['bounds'][1][0]), abs(eps_u - defaults['bounds'][1][1]))
             #     coef = 1+10**(np.log(dist_s+dist_u)/np.log(defaults['bounds'][0][1]+defaults['bounds'][1][1]))
             #     # ret = coef*evolution([min(max(eps_s, defaults['bounds'][0][0]), defaults['bounds'][0][1]), min(max(eps_u, defaults['bounds'][1][0]), defaults['bounds'][1][1])], n_s, n_u)[2]
             #     ret = (np.array([dist_s, dist_u])/defaults['bounds'][0][0])**2
-            #     log.debug(f"Outside : {eps_s, eps_u} - {ret[:3]}")
+            #     logger.debug(f"Outside : {eps_s, eps_u} - {ret[:3]}")
             #     return ret
             # else:
             ret = evolution([eps_s, eps_u], n_s, n_u)
@@ -563,9 +549,9 @@ class Manifold(BaseSolver):
             if defaults['root']['jac']:
                 ret[3][:, 0] *= eps_s
                 ret[3][:, 1] *= eps_u
-                log.debug(f"Returns - {ret[:3]}")
+                logger.debug(f"Returns - {ret[:3]}")
             else:
-                log.debug(f"Returns - {ret}")
+                logger.debug(f"Returns - {ret}")
                 
             if defaults['root']['jac']:
                 return ret[2], ret[3]
@@ -579,8 +565,8 @@ class Manifold(BaseSolver):
             **defaults["root"],
         )
 
-        log.info(f"Root finding status : {r.message}")
-        log.debug(f"Root finding object : {r}")
+        logger.info(f"Root finding status : {r.message}")
+        logger.debug(f"Root finding object : {r}")
 
         if not r.success:
             raise ValueError("Homoclinic search not successful.")
@@ -591,7 +577,7 @@ class Manifold(BaseSolver):
         # if self.error_linear_regime(eps_u, self.rfp_u, self.vector_u) > 1e-4:
         #     raise ValueError("Homoclinic point unstable epsilon does not lie linear regime.")
 
-        log.info(
+        logger.info(
             f"Eps_s : {eps_s:.3e}, Eps_u : {eps_u:.3e} gives a difference in endpoint [R,Z] : {r.fun}"
         )
 
@@ -607,7 +593,7 @@ class Manifold(BaseSolver):
         if not np.any([np.isclose(order, other[0], rtol=1e-2) for other in self.onworking["clinics"]]):
             self.onworking["clinics"].append((order, eps_s, eps_u, r_s_ev, r_u_ev))
         else:
-            log.warning("Clinic already recorded, skipping...")
+            logger.warning("Clinic already recorded, skipping...")
 
         return eps_s, eps_u
 
@@ -634,7 +620,7 @@ class Manifold(BaseSolver):
                 bounds_0[0][1] * np.power(self.onworking["lambda_s"], i / n_points),
                 bounds_0[1][0] * np.power(self.onworking["lambda_u"], i / n_points),
             ]
-            log.info(f"Initial guess: {guess_i}")
+            logger.info(f"Initial guess: {guess_i}")
 
             n_s = self.onworking["find_clinic_configuration"]["n_s"] + m
             n_u = self.onworking["find_clinic_configuration"]["n_u"] - m - 1
@@ -643,7 +629,7 @@ class Manifold(BaseSolver):
             )
         
         if len(self.onworking["clinics"]) != n_points:
-            log.warning("Number of clinic points is not the expected one.")
+            logger.warning("Number of clinic points is not the expected one.")
 
         self.order()
 
@@ -677,8 +663,8 @@ class Manifold(BaseSolver):
 
     ### Calculating Island/Turnstile Flux
 
-    def resonance_area(self):
-        pass
+    # def resonance_area(self):
+    #     pass
 
     def turnstile_area(self, cyl_flag, n_joining = 100):
         """Compute the turnstile area by integrating the vector potential along the trajectory of the homo/hetero-clinics points.
@@ -702,8 +688,8 @@ class Manifold(BaseSolver):
                         direction_str = "Backward"
                     else:
                         direction_str = "Forward"
-                    log.info(f"{direction_str} integration goes beyond stable saddle point.")
-                    log.debug(
+                    logger.info(f"{direction_str} integration goes beyond stable saddle point.")
+                    logger.debug(
                         f"rfp: {rfp}, rz_end: {rz_end}, rz: {rz}"
                     )
                     break
@@ -729,7 +715,7 @@ class Manifold(BaseSolver):
             rz_backward = clinic[-1]
             history_backward, intA_backward = integrate_direction(rz_backward, n_bwd, self.onworking["rfp_u"], -1)
 
-            log.info(
+            logger.info(
                 f"Potential integration completed for homo/hetero-clinic point of order : {clinic[0]:.3e}"
             )
 
@@ -798,33 +784,30 @@ class Manifold(BaseSolver):
 
     ### Integration methods
 
-    def integrate(self, RZstart, nintersect, direction=1):
-        RZstart = np.atleast_2d(RZstart)
-        rz_path = np.zeros((2 * RZstart.shape[0], nintersect + 1))
-        rz_path[:, 0] = RZstart.flatten()
+    def integrate(self, x_many, nintersect, direction=1):
+        """
+        
+        """
+        
+        x_many = np.atleast_2d(x_many)
+        
+        x_path = np.zeros((self._map.dimension * x_many.shape[0], nintersect + 1))
+        x_path[:, 0] = x_many.flatten()
 
-        t0 = self._params["zeta"]
-        dt = self.fixedpoint_1.qq * direction * 2 * np.pi / self._problem.Nfp
+        t = self.fixedpoint_1.m * direction
 
-        for i, rz in enumerate(RZstart):
-            t = t0
-            ic = rz
-
+        for i, x in enumerate(x_many):
             for j in range(nintersect):
                 try:
-                    self._integrator.set_initial_value(t, ic)
-                    output = self._integrator.integrate(t + dt)
+                    x_new = self._map.f(t, x)
                 except:
-                    log.error(f"Integration of point {ic} failed.")
+                    logger.error(f"Integration of point {x} failed.")
                     break
+                
+                x_path[2 * i : 2 * i + self._map.dimension, j + 1] = x_new
+                x = x_new
 
-                t = t + dt
-                ic = output
-
-                rz_path[2 * i, j + 1] = output[0]
-                rz_path[2 * i + 1, j + 1] = output[1]
-
-        return rz_path
+        return x_path
 
     def integrate_single(
         self,

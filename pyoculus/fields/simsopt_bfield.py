@@ -1,37 +1,144 @@
 from .cylindrical_bfield import CylindricalBfield
-from .cartesian_bfield import vec2cyl, mat2cyl
-from simsopt.field import MagneticField
+import pyoculus.utils.cyl_cart_transform as cct
+from simsopt.field import MagneticField, InterpolatedField, BiotSavart
+from simsopt.geo import SurfaceXYZFourier, SurfaceClassifier
+from typing import Union
 import numpy as np
 
 
-class SimsoptBfield(CylindricalBfield):
+class SimsoptBfieldProblem(CylindricalBfield):
     """
-    Class to set up a Simsopt magnetic field.
+    
     """
-    def __init__(self, magnetic_field: MagneticField):
-        if not isinstance(magnetic_field, MagneticField):
-            raise ValueError("The magnetic_field must be an instance of MagneticField.")
-        self._mf = magnetic_field
+    
+    def __init__(self, Nfp : int, mf : MagneticField, interpolate: Union[bool, InterpolatedField] = False, **kwargs):
+        
+        super().__init__(Nfp)
 
-    def B(self, coords, *args):
-        coords = np.reshape(coords, (-1, 3))
-        self._mf.set_points(coords)
-        return vec2cyl(self._mf.B().flatten(), *coords.flatten())
+        if not isinstance(mf, MagneticField):
+            raise ValueError("mf must be a MagneticField object")
 
-    def dBdX(self, coords, *args):
-        B = self.B(coords)
-        return B, mat2cyl(self._mf.dB_by_dX().reshape(3, 3), *coords)
+        self._mf = mf
+        self._interpolating = False
 
-    def A(self, coords, *args):
-        coords = np.reshape(coords, (-1, 3))
-        self._mf.set_points(coords)
-        return vec2cyl(self._mf.A().flatten(), *coords.flatten())
+        if interpolate:
+            self._interpolating = True
+            if isinstance(interpolate, InterpolatedField):
+                self._mf_B = interpolate
+            else:
+                surf = kwargs.get('surf', None)
+                if surf is None:
+                    surf = surf_from_coils(mf.coils, **kwargs)
 
-class SimsoptBfieldMap(CylindricalBfieldMap, SimsoptBfield):
-    """
-    Class to set up a Simsopt magnetic field poincare section map.
-    """
+                p = kwargs.get('p', 2)
+                h = kwargs.get('h', 0.03)
+                self.surfclassifier = SurfaceClassifier(surf, h=h, p=p)
 
-    def __init__(self, magnetic_field: MagneticField, phi0=0., R0=None, Z0=None, Nfp=1, **kwargs):
-        CylindricalBfield.__init__(self, phi0=phi0, R0=R0, Z0=Z0, Nfp=Nfp, **kwargs)
-        SimsoptBfield.__init__(self, magnetic_field)
+                deltah = kwargs.get('deltah', 0.05)
+                def skip(rs, phis, zs):
+                    rphiz = np.asarray([rs, phis, zs]).T.copy()
+                    dists = self.surfclassifier.evaluate_rphiz(rphiz)
+                    skip = list((dists < -deltah).flatten())
+                    return skip
+
+                n = kwargs.get('n', 20)
+                rs = np.linalg.norm(surf.gamma()[:, :, 0:2], axis=2)
+                zs = surf.gamma()[:, :, 2]
+                rrange = (np.min(rs), np.max(rs), n)
+                phirange = (0, 2 * np.pi / Nfp, n * 2)
+                zrange = (0, np.max(zs), n // 2)
+
+                degree = kwargs.get('degree', 3)
+                stellsym = kwargs.get('stellsym', True)
+                skyping = kwargs.get('skyping', skip)
+                
+                self._mf_B = InterpolatedField(
+                    mf,
+                    degree,
+                    rrange,
+                    phirange,
+                    zrange,
+                    True,
+                    nfp=Nfp,
+                    stellsym=stellsym,
+                    skip=skyping,
+                )
+        else:
+            self.interpolating = False
+            self._mf_B = mf
+
+    @classmethod
+    def from_coils(cls, coils, Nfp, **kwargs):
+        mf = BiotSavart(coils)
+        return cls(Nfp, mf, **kwargs)
+
+    # Methods of the MagneticField class
+
+    def B(self, rphiz):
+        xyz = cct.xyz(*rphiz)
+        xyz = np.reshape(xyz, (-1, 3))
+        self._mf_B.set_points(xyz)
+        B_cart = self._mf_B.B().flatten()
+        return cct.vec_cart2cyl(B_cart, *rphiz).flatten()
+
+    def dBdX(self, xyz):
+        xyz = np.reshape(xyz, (-1, 3))
+        self._mf.set_points(xyz)
+        
+        return [self._mf.B().flatten()], self._mf.dB_by_dX().reshape(3, 3)
+
+    def B_many(self, x1arr, x2arr, x3arr, input1D=True):
+        if input1D:
+            xyz = np.array([x1arr, x2arr, x3arr], dtype=np.float64).T
+        else:
+            xyz = np.meshgrid(x1arr, x2arr, x3arr)
+            xyz = np.array(
+                [xyz[0].flatten(), xyz[1].flatten(), xyz[2].flatten()], dtype=np.float64
+            ).T
+
+        xyz = np.ascontiguousarray(xyz, dtype=np.float64)
+        self._mf_B.set_points(xyz)
+
+        return self._mf_B.B()
+
+    def dBdX_many(self, x1arr, x2arr, x3arr, input1D=True):
+        B = self.B_many(x1arr, x2arr, x3arr, input1D=input1D)
+        return [B], self._mf.dB_by_dX()
+    
+    def A(self, xyz):
+        xyz = np.reshape(xyz, (-1, 3))
+        self._mf.set_points(xyz)
+        return self._mf.A().flatten()
+
+
+def surf_from_coils(coils, **kwargs):
+    print(kwargs)
+    mpol = kwargs.get('mpol', 3)
+    ntor = kwargs.get('ntor', 3)
+    stellsym = kwargs.get('stellsym', False)
+    nfp = kwargs.get('nfp', 1)
+
+    ncoils = kwargs.get('ncoils', None)
+    
+    nphi, ntheta = len(coils), len(coils[0].curve.gamma())
+    qpts_theta = np.linspace(0, 1, ntheta, endpoint=False)
+    qpts_phi = np.linspace(0, 1, nphi, endpoint=False)
+
+    surf = SurfaceXYZFourier(
+        mpol=mpol,
+        ntor=ntor,
+        stellsym=stellsym,
+        nfp=nfp,
+        quadpoints_phi=qpts_phi,
+        quadpoints_theta=qpts_theta
+    )
+    centroids = np.array([np.mean(coil.curve.gamma(), axis=0) for coil in coils])
+
+    phis = np.arctan2(centroids[:, 1], centroids[:, 0])
+    indices = np.argsort(phis)
+    gamma_curves = [coils[i].curve.gamma() for i in indices]
+    if ncoils is not None:
+        gamma_curves = np.stack([gamma if (i // ncoils) % 2 != 0 else gamma[::-1] for i, gamma in enumerate(gamma_curves)])
+    surf.least_squares_fit(gamma_curves)
+
+    return surf

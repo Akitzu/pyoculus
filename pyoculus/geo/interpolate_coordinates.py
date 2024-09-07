@@ -4,7 +4,8 @@
 #
 
 import numpy as np
-from scipy.special import jacobi
+import matplotlib.pyplot as plt
+from ..utils.plot import create_canvas
 
 nax = np.newaxis
 
@@ -527,7 +528,7 @@ class SurfacesToroidal:
         @param **kwargs all other parameters going into plt.plot
         """
 
-        import matplotlib.pyplot as plt
+        fig, ax, kwargs = create_canvas(**kwargs)
 
         nsurf = self.scn.shape[0]
         vartheta = np.linspace(0, 2 * np.pi, npoints)
@@ -551,7 +552,8 @@ class SurfacesToroidal:
                 s += np.sum(ssn * sinalpha, axis=(-1, -2))
                 t += np.sum(tcn * cosalpha, axis=(-1, -2))
 
-            plt.plot(t, s, "k", **kwargs)
+            # ax.plot(t, s, "k", **kwargs)
+            ax.plot(s, t, "k", **kwargs)
 
     def read_surfaces_from_file(self, filename="data.npz", Nfp=None):
         """! Read the surfaces into a numpy array on disk

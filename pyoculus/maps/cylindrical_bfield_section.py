@@ -46,11 +46,11 @@ class CylindricalBfieldSection(IntegratedMap):
         self.cache_w = {'args': None, 'output': None}
 
         # Find the magnetic axis if not provided
+        self.R0 = R0
+        self.Z0 = Z0
+
         if R0 is None or Z0 is None:
             self.find_axis(**finderargs)
-        else:
-            self.R0 = R0
-            self.Z0 = Z0
 
     @classmethod
     def without_axis(self, cylindricalbfield : CylindricalBfield, phi0=0.0, domain=None, finderargs=dict(), **kwargs):
@@ -67,8 +67,12 @@ class CylindricalBfieldSection(IntegratedMap):
             **kwargs: Arbitrary keyword arguments passed directly to the FixedPoint solver's `find` method. This can be used to specify solver options such as tolerance levels, maximum iterations, etc.
         """
         axisfinder = solvers.FixedPoint(self)
+
+        if guess is None and self.R0 is not None and self.Z0 is not None:         
+            guess = [self.R0, self.Z0]
+
         axisfinder.find(1, guess, **kwargs)
-        if axisfinder.is_successful():
+        if axisfinder.successful:
             self.R0, self.Z0 = axisfinder.coords[0]
         else:
             raise ValueError("The magnetic axis could not be found.")

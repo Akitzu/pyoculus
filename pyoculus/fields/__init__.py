@@ -12,5 +12,5 @@ from .two_waves import TwoWaves
 # Cylindrical magnetic fields
 from .cylindrical_bfield import CylindricalBfield
 from .cylindrical_bfield_analytic import AnalyticCylindricalBfield
-# from .m3dc1_bfield import M3DC1Bfield
 # from .simsopt_bfield import SimsoptBfield
+# from .m3dc1_bfield import M3DC1Bfield
