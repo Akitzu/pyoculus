@@ -65,7 +65,6 @@ py3.extension_module('pyoculus_spec_fortran_module',
 
 py3.install_sources(
   'pyoculus/__init__.py',
-  'pyoculus/fields/cartesian_bfield.py',
   'pyoculus/fields/cylindrical_bfield.py',
   'pyoculus/fields/cylindrical_bfield_analytic.py',
   'pyoculus/fields/m3dc1_bfield.py',
@@ -101,6 +100,7 @@ py3.install_sources(
   'pyoculus/toybox/__init__.py',
   'pyoculus/utils/continued_fraction.py',
   'pyoculus/utils/plot.py',
+  'pyoculus/utils/cyl_cart_transform.py',
   'pyoculus/utils/__init__.py',
   subdir: 'pyoculus'
 )
