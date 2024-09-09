@@ -376,7 +376,7 @@ class Manifold(BaseSolver):
             if fund[0] <= norm < fund[1]:
                 return norm
             logger.debug(f"norm = {norm}")
-            r_ev = self.integrate_single(r_ev, 1, -1, ret_jacobian=False)
+            r_ev = self._map.f(-1*self.fixedpoint_1.m, r_ev)
             norm = np.linalg.norm(r_ev - rfp_u)
 
         raise ValueError(
@@ -390,24 +390,51 @@ class Manifold(BaseSolver):
         ]
 
 
-    def find_bounds(self, guess_eps_s, guess_eps_u):
-        """Find the bounds on the unstable and stable manifolds"""
-        r_s = self.onworking["rfp_s"] + guess_eps_s * self.onworking["vector_s"]
-        r_u = self.onworking["rfp_u"] + guess_eps_u * self.onworking["vector_u"]
-        r_s_evolved = self.integrate_single(r_s, 1, -1, ret_jacobian=False)
-        r_u_evolved = self.integrate_single(r_u, 1, 1, ret_jacobian=False)
+    def _fundamental_segment(self, eps_s : float, eps_u : float):
+        """
+        Calculate the fundamental segment on the unstable and stable manifolds.
+
+        Args:
+            eps_s (float): Initial :math:`\\varepsilon_s` along the stable manifold direction.
+            eps_u (float): Initial :math:`\\varepsilon_u` along the unstable manifold direction.
+
+        Returns:
+            tuple: A tuple containing two tuples:
+                - (eps_s, upperbound_s): The initial :math:`\\varepsilon_s` and the computed upper bound 
+                for the stable manifold.
+                - (eps_u, upperbound_u): The initial guess and the computed upper bound 
+                for the unstable manifold.
+        """
+
+        r_s = self.onworking["rfp_s"] + eps_s * self.onworking["vector_s"]
+        r_u = self.onworking["rfp_u"] + eps_u * self.onworking["vector_u"]
+
+        r_s_evolved = self._map.f(-1*self.fixedpoint_1.m, r_s)
+        r_u_evolved = self._map.f(1*self.fixedpoint_1.m, r_u)
 
         upperbound_s = np.linalg.norm(r_s_evolved - self.onworking["rfp_s"])
         upperbound_u = np.linalg.norm(r_u_evolved - self.onworking["rfp_u"])
 
-        bounds = ((guess_eps_s, upperbound_s), (guess_eps_u, upperbound_u))
+        bounds = ((eps_s, upperbound_s), (eps_u, upperbound_u))
         return bounds
 
-    def find_N(self, guess_eps_s=1e-3, guess_eps_u=1e-3):
-        """Finding the number of times the map needs to be applied for the stable and unstable points to cross."""
+    def find_N(self, eps_s : float = 1e-3, eps_u : float = 1e-3):
+        """
+        Find the number of times the map needs to be applied for the stable and unstable points to cross.
 
-        r_s = self.onworking["rfp_s"] + guess_eps_s * self.onworking["vector_s"]
-        r_u = self.onworking["rfp_u"] + guess_eps_u * self.onworking["vector_u"]
+        This method evolves the initial stable :math:`x_s = x^\\star + \\varepsilon_s\\textbf{e}_s` and unstable :math:`x_u = x^\\star + \\varepsilon_u\\textbf{e}_u` points until they cross. They are alternatively evolved once and when the initial direction is reversed, the number of iterations is returned.
+
+        Args:
+            eps_s (float, optional): Initial :math:`\\varepsilon_s` along the stable manifold direction. Defaults to 1e-3.
+            eps_u (float, optional): Initial :math:`\\varepsilon_u` along the unstable manifold direction. Defaults to 1e-3.
+
+        Returns:
+            tuple: A tuple containing two integers:
+                - n_s (int): Number of iterations for the stable manifold.
+                - n_u (int): Number of iterations for the unstable manifold.
+        """
+        r_s = self.onworking["rfp_s"] + eps_s * self.onworking["vector_s"]
+        r_u = self.onworking["rfp_u"] + eps_u * self.onworking["vector_u"]
 
         first_dir = r_u - r_s
         last_norm = np.linalg.norm(first_dir)
@@ -416,10 +443,10 @@ class Manifold(BaseSolver):
         success, stable_evol = False, True
         while not success:
             if stable_evol:
-                r_s = self.integrate_single(r_s, 1, -1, ret_jacobian=False)
+                r_s = self._map.f(-1*self.fixedpoint_1.m, r_s)
                 n_s += 1
             else:
-                r_u = self.integrate_single(r_u, 1, 1, ret_jacobian=False)
+                r_u = self._map.f(1*self.fixedpoint_1.m, r_u)
                 n_u += 1
             stable_evol = not stable_evol
 
@@ -429,10 +456,9 @@ class Manifold(BaseSolver):
                 success = True
             last_norm = norm
 
-        if not success:
-            raise ValueError("Could not find N")
-        else:
-            return n_s, n_u
+        # if not success:
+        #     raise ValueError("Could not find N")
+        return n_s, n_u
 
     def find_clinic_single(self, guess_eps_s=None, guess_eps_u=None, **kwargs):
         """Find the homo/hetero-clinic points (intersection of the stable and unstable manifold)."""
@@ -472,7 +498,7 @@ class Manifold(BaseSolver):
 
         # Find the bounds of the search domain : lower bound epsilons are map to upper bound epsilons after one iteration
         if defaults["bounds"] is None:
-            defaults["bounds"] = self.find_bounds(eps_s_lb, eps_u_lb)
+            defaults["bounds"] = self._fundamental_segment(eps_s_lb, eps_u_lb)
         if guess_eps_s is None:
             guess_eps_s = (defaults["bounds"][0][1] - defaults["bounds"][0][0]) / 2
         if guess_eps_u is None:
@@ -499,9 +525,8 @@ class Manifold(BaseSolver):
 
             try:
                 if defaults['root']['jac']:
-                    r_s_evolved, jac_s = self.integrate_single(r_s, n_s, -1)
-                else:    
-                    r_s_evolved = self.integrate_single(r_s, n_s, -1, ret_jacobian=False)
+                    jac_s = self._map.df(-1*n_s*self.fixedpoint_1.m, r_s)
+                r_s_evolved = self._map.f(-1*n_s*self.fixedpoint_1.m, r_s)
             except Exception as e:
                 logger.error(f"Error in stable manifold integration : {e}")
                 raise e
@@ -509,9 +534,8 @@ class Manifold(BaseSolver):
 
             try:
                 if defaults['root']['jac']:
-                    r_u_evolved, jac_u = self.integrate_single(r_u, n_u, 1)
-                else:    
-                    r_u_evolved = self.integrate_single(r_u, n_u, 1, ret_jacobian=False)
+                    jac_u = self._map.df(n_u*self.fixedpoint_1.m, r_u)
+                r_u_evolved = self._map.f(n_u*self.fixedpoint_1.m, r_u)
             except Exception as e:
                 logger.error(f"Error in unstable manifold integration : {e}")
                 raise e
@@ -584,7 +608,7 @@ class Manifold(BaseSolver):
         # Recording the homo/hetero-clinic point
         r_s_ev, r_u_ev = evolution([eps_s, eps_u], n_s, n_u)[:2]
         if not self.onworking["clinics"]:
-            self.onworking["fundamental_segment"] = self.find_bounds(eps_s, eps_u)
+            self.onworking["fundamental_segment"] = self._fundamental_segment(eps_s, eps_u)
             order = eps_u
             self.onworking["find_clinic_configuration"] = {"n_s": n_s, "n_u": n_u}
         else:
@@ -633,33 +657,23 @@ class Manifold(BaseSolver):
 
         self.order()
 
-    # def plot_clinics(self, ax=None, directions="both", **kwargs):
-    #     marker = ["P", "o", "s", "p", "P", "*", "X", "D", "d", "^", "v", "<", ">"]
+    def plot_clinics(self, **kwargs):
+        marker = ["P", "o", "s", "p", "P", "*", "X", "D", "d", "^", "v", "<", ">"]
+
+        fig, ax, kwargs = create_canvas(**kwargs)
         
-    #     for i, clinic in enumerate(self.clinics):
-    #         eps_s_i, eps_u_i = clinic[1:3]
+        for i, clinic in enumerate(self.onworking["clinics"]):
+            eps_s, eps_u = clinic[1:3]
+            n_s, n_u = self.onworking["find_clinic_configuration"].values()
+            rfp_s, rfp_u = self.onworking["rfp_s"], self.onworking["rfp_u"]
+            vec_s, vec_u = self.onworking["vector_s"], self.onworking["vector_u"]
 
-    #         n_u = 8
-    #         # hs_i = mp.integrate(mp.rfp_s + eps_s_i * mp.vector_s, n_s, -1)
-    #         hu_i = self.integrate(self.rfp_u + eps_u_i * self.vector_u, n_u, 1)
-    #         # ax.scatter(hs_i[0,:], hs_i[1,:], marker=marker[i], color="purple", zorder=10)
-    #         ax.scatter(hu_i[0,:], hu_i[1,:], marker=marker[i], color="royalblue", edgecolor='cyan', zorder=10)
+            hs_i = self.integrate(rfp_s + eps_s * vec_s, n_s, -1)
+            hu_i = self.integrate(rfp_u + eps_u * vec_u, n_u, 1)
+            ax.scatter(hs_i[0,:], hs_i[1,:], marker=marker[i], color="royalblue", edgecolor='cyan', zorder=10)
+            ax.scatter(hu_i[0,:], hu_i[1,:], marker=marker[i], color="royalblue", edgecolor='cyan', zorder=10)
 
-    # def clinic_bijection(self, guess_eps_s, guess_eps_u, **kwargs):
-    #     defaults = {"tol": 1e-10, "n_s": None, "n_u": None}
-    #     defaults.update(
-    #         {key: value for key, value in kwargs.items() if key in defaults}
-    #     )
-
-    #     # Find the first homo/hetero-clinic point
-    #     eps_s_1, eps_u_1 = self.find_homoclinic(guess_eps_s, guess_eps_u, **defaults)
-
-    #     bounds_1 = self.find_bounds(eps_s_1, eps_u_1)
-
-    #     guess_2 = [eps_s_1*np.power(self.lambda_s, 1/2), eps_u_1*np.power(self.lambda_u, 1/2)]
-    #     eps_s_2, eps_u_2 = self.find_homoclinic(guess_2[0], guess_2[1], **defaults)
-
-    #     # considering the >_u ordering of the homoclinic points
+        return fig, ax
 
     ### Calculating Island/Turnstile Flux
 
@@ -808,47 +822,3 @@ class Manifold(BaseSolver):
                 x = x_new
 
         return x_path
-
-    def integrate_single(
-        self,
-        RZstart,
-        nintersect,
-        direction=1,
-        ret_jacobian=True,
-        integrate_A=False,
-        dt=None,
-    ):
-        r, z = RZstart
-        t0 = self._params["zeta"]
-        if dt is None:
-            dt = self.fixedpoint_1.qq * direction * 2 * np.pi / self._problem.Nfp
-
-        t = t0
-        if ret_jacobian:
-            ic = np.array([r, z, 1.0, 0.0, 0.0, 1.0], dtype=np.float64)
-            self._integrator.change_rhs(self._problem.f_RZ_tangent)
-        elif integrate_A:
-            ic = np.array([r, z, 0.0], dtype=np.float64)
-            self._integrator.change_rhs(self._problem.f_RZ_A)
-        else:
-            ic = np.array([r, z], dtype=np.float64)
-
-        self._integrator.set_initial_value(t, ic)
-
-        try:
-            for _ in range(nintersect):
-                output = self._integrator.integrate(t + dt)
-                t = t + dt
-        except Exception:
-            self._integrator.change_rhs(self._problem.f_RZ)
-            raise
-
-        if ret_jacobian:
-            self._integrator.change_rhs(self._problem.f_RZ)
-            jacobian = output[2:].reshape((2, 2)).T
-            return output[:2], jacobian
-        elif integrate_A:
-            self._integrator.change_rhs(self._problem.f_RZ)
-            return output[:2], output[2]
-        else:
-            return output[:2]
