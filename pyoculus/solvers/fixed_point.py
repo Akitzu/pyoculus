@@ -14,8 +14,8 @@ import pyoculus.maps as maps
 from ..utils.plot import create_canvas
 from scipy.optimize import root
 import numpy as np
+from numpy.typing import ArrayLike
 import logging
-
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class FixedPoint(BaseSolver):
 
     ## Findings fixed points methods
 
-    def find(self, t, guess=None, nrestart=0, method="newton", **kwargs):
+    def find(self, t : float | int, guess : ArrayLike = None, nrestart : int = 0, method : str = "newton", **kwargs):
         """
         Tries to find a fixed point of the map applied :math:`t` times.
 
@@ -139,7 +139,7 @@ class FixedPoint(BaseSolver):
 
         return rdata
 
-    def find_with_iota(self, n, m, guess, x_axis=None, nrestart=0, method="newton", **kwargs):
+    def find_with_iota(self, n : int, m : int, guess : ArrayLike, x_axis : ArrayLike = None, nrestart : int = 0, method : str = "newton", **kwargs):
         """
         Tries to find the fixed point of a map with winding number :math:`\\iota/2\\pi = q^{-1} = n/m` around x_axis.s
 
@@ -371,7 +371,6 @@ class FixedPoint(BaseSolver):
 
             dW = self._map.dwinding(self.t, x)
             x_winding = self._map.winding(self.t, x)
-
             logger.info(
                 f"Newton {i} - x_winding : {x_winding}"
             )
