@@ -16,7 +16,7 @@ def xyz_jac(r, phi, z):
     return np.array(
         [
             [np.cos(phi), np.sin(phi), 0],
-            [-np.sin(phi) / r, np.cos(phi) / r, 0],
+            [-1 * np.sin(phi) / r, np.cos(phi) / r, 0],
             [0, 0, 1],
         ]
     )
@@ -41,8 +41,8 @@ def xyz_inv_jac(r, phi, z):
     """
     return np.array(
         [
-            [np.cos(phi), -np.sin(phi) / r, 0],
-            [np.sin(phi), np.cos(phi) / r, 0],
+            [np.cos(phi), -1 * np.sin(phi) * r, 0],
+            [np.sin(phi), np.cos(phi) * r, 0],
             [0, 0, 1],
         ]
     )
@@ -50,12 +50,12 @@ def xyz_inv_jac(r, phi, z):
 
 def rphiz_inv_jac(x, y, z):
     """
-    Inverse Jacobian of the map (r, phi, z) -> (x, y, z)s at (x, y, z)
+    Inverse Jacobian of the map (r, phi, z) -> (x, y, z) at (x, y, z)
     """
     return np.array(
         [
-            [x / np.sqrt(x**2 + y**2), -y / (x**2 + y**2), 0],
-            [y / np.sqrt(x**2 + y**2), x / (x**2 + y**2), 0],
+            [x / np.sqrt(x**2 + y**2), -y * np.sqrt(x**2 + y**2), 0],
+            [y / np.sqrt(x**2 + y**2), x * np.sqrt(x**2 + y**2), 0],
             [0, 0, 1],
         ]
     )
