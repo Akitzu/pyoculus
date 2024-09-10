@@ -23,7 +23,7 @@ class BaseMap(ABC):
         domain (list of tuples, optional): The domain of the map. Each tuple should contain the lower and upper bounds for each dimension. If None, the domain is assumed to be :math:`(-\\infty, \\infty)` for each dimension.
     """
 
-    def __init__(self, dim=2, is_discrete=False, domain=None, periodicity=None):
+    def __init__(self, dim=2, is_discrete=False, domain=None, periodicity=None, dzeta=1):
         """
         Initializes BaseMap object.
 
@@ -41,7 +41,8 @@ class BaseMap(ABC):
         self.is_discrete = is_discrete
         self.domain = domain
         self.periodicity = periodicity
-
+        self.dzeta = dzeta
+        
     @abstractmethod
     def f(self, t, y0):
         """
@@ -56,7 +57,16 @@ class BaseMap(ABC):
     @abstractmethod
     def df(self, t, y0):
         """
-        Computes the Jacobian of the map at :math:`y_0` after :math:`t` applications :math:`df^t = (\\frac{\\partial f^t}{\\partial x})_{i,j}`.
+        Computes the Jacobian matrix of the map at :math:`y_0` after :math:`t` applications :math:`df^t = (\\frac{\\partial f^t}{\\partial x})_{i,j}`.
+
+        The 
+
+        .. math::
+            J_f(x) = \\begin{bmatrix}
+                \\partial_{x^1}f^1 & \\cdots & \\partial_{x^n}f^1 \\\\ 
+                \\vdots & \\ddots & \\vdots \\\\
+                \\partial_{x^1}f^n & \\cdots & \\partial_{x^n}f^n
+            \\end{bmatrix}
 
         Args:
             t (float or int): The number of times the map is applied.
@@ -67,7 +77,7 @@ class BaseMap(ABC):
         )
 
     def lagrangian(self, y0, t=None):
-        """      
+        """
         Calculates the Lagrangian at a given point or the difference in Lagrangian between two points. The Lagrangian is as defined in the paper by Meiss (https://doi.org/10.1063/1.4915831).
 
         Args:

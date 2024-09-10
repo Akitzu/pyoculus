@@ -14,7 +14,7 @@ class CylindricalBfieldSection(IntegratedMap):
         Z0 (float): The vertical position of the magnetic axis in the :math:`\\phi_0` plane.
     """
 
-    def __init__(self, cylindricalbfield : CylindricalBfield, phi0=0.0, R0=None, Z0=None, domain=None, finderargs=dict(), **kwargs):
+    def __init__(self, cylindricalbfield : CylindricalBfield, phi0=0.0, R0=None, Z0=None, domain=None, finderargs=dict(), cache_size=None, **kwargs):
         """
         Initializes the CylindricalBfieldSection object.
 
@@ -42,8 +42,7 @@ class CylindricalBfieldSection(IntegratedMap):
         self.phi0 = phi0
 
         # Allow to cache the result of the field line tracing
-        self.cache_f = {'args': None, 'output': None}
-        self.cache_w = {'args': None, 'output': None}
+        self.cache = Cache(cache_size)
 
         # Find the magnetic axis if not provided
         self.R0 = R0
@@ -53,7 +52,8 @@ class CylindricalBfieldSection(IntegratedMap):
             self.find_axis(**finderargs)
 
     @classmethod
-    def without_axis(self, cylindricalbfield : CylindricalBfield, phi0=0.0, domain=None, finderargs=dict(), **kwargs):
+    def without_axis(self, cylindricalbfield : CylindricalBfield, guess=None, phi0=0.0, domain=None, finderargs=dict(), **kwargs):
+        finderargs["guess"] = guess
         return CylindricalBfieldSection(cylindricalbfield, phi0, None, None, domain, finderargs, **kwargs)
 
     def find_axis(self, guess=None, **kwargs):
@@ -83,33 +83,64 @@ class CylindricalBfieldSection(IntegratedMap):
         """
         Trace the field line for a number of periods.
         """
-        # if self.cache_f['args'] == (t, y0):
-        #     return self.cache_f['return']
-
-        self._integrator.set_rhs(self._rhs_RZ)
+        # Check if the result is in the cache and use it if possible
+        cache_res = self.cache.retrieve(t, y0, "f")
+        if cache_res is not None and cache_res['t'] == t:
+            return cache_res['f']
+        elif cache_res is not None and cache_res['t'] < t:
+            return self.f(t - cache_res['t'], cache_res['f'])
         
-        return self._integrate(t, y0)
+        # Set the initial conditions and integrate
+        if self._integrator.rhs is not self._rhs_RZ:
+            self._integrator.set_rhs(self._rhs_RZ)
+        output = self._integrate(t, y0)
+
+        # Cache the result and return
+        self.cache.save(t, y0, {'t': t, 'f': output})
+        return output
 
     def df(self, t, y0):
         """
         Compute the Jacobian of the field line map for a number of periods.
         """
-        # if self.cache_w["args"] is not None and self.cache_w["args"][:2] == (t, y0):
-        #     return self.cache_w["dG"]
+        # Check if the result is in the cache and use it if possible
+        cache_res = self.cache.retrieve(t, y0, "df")
+        if cache_res is not None and cache_res['t'] == t:
+            return cache_res['df']
+        elif cache_res is not None and cache_res['t'] < t:
+            return self.df(t - cache_res['t'], cache_res['f'])
+        
+        # Set the initial conditions and integrate
         ic = np.array([*y0, 1.0, 0.0, 0.0, 1.0])
-        self._integrator.set_rhs(self._rhs_RZ_tangent)
+        if self._integrator.rhs is not self._rhs_RZ_tangent:
+            self._integrator.set_rhs(self._rhs_RZ_tangent)
         output = self._integrate(t, ic)
-        self.cache_f = {"args": [t, y0], "return": output[:2], "output": output}
-        return output[2:6].reshape(2, 2).T
+
+        # Cache the result and return
+        df = output[2:6].reshape(2, 2).T
+        self.cache.save(t, y0, {'t': t, 'f': output[:2], 'df': df})
+        return df
 
     def lagrangian(self, y0, t):
         """
         Set Meiss's Lagrangian for the magnetic field.
         """
+        # Check if the result is in the cache and use it if possible
+        cache_res = self.cache.retrieve(t, y0, "lagrangian")
+        if cache_res is not None and cache_res['t'] == t:
+            return cache_res['lagrangian']
+        elif cache_res is not None and cache_res['t'] < t:
+            return self.lagrangian(cache_res['f'], t - cache_res['t'])
+
+        # Set the initial conditions and integrate
         ic = np.array([*y0, 0.0])
         self._integrator.set_rhs(self._rhs_RZ_A)
         output = self._integrate(t, ic)
-        return output[2]
+
+        # Cache the result and return
+        lagrangian = output[2]
+        self.cache.save(t, y0, {'t': t, 'f': output[:2], 'lagrangian': lagrangian})
+        return lagrangian
 
     def winding(self, t, y0, y1=None):
         """
@@ -126,38 +157,54 @@ class CylindricalBfieldSection(IntegratedMap):
         if y1 is None:
             y1 = np.array([self.R0, self.Z0])
         
-        # if self.cache_w['args'] == (t, y0, y1):
-        #     return self.cache_w['return']
+        # Check if the result is in the cache and use it if possible
+        cache_res = self.cache.retrieve(t, y0, "winding", y1)
+        if cache_res is not None and cache_res['t'] == t:
+            return cache_res['winding']
+        elif cache_res is not None and cache_res['t'] < t:
+            return self.winding(t - cache_res['t'], cache_res['f'], cache_res['f_y1'])
 
-        theta0 = np.arctan2(y0[1] - y1[1], y0[0] - y1[0])
-        rho0 = np.sqrt((y0[0] - y1[0]) ** 2 + (y0[1] - y1[1]) ** 2)
-
-        self._integrator.set_rhs(self._ode_rhs)
-        ic = np.array([*y0, *y1, theta0])
-        output = self._integrate(t, ic)
-        
-        theta1 = output[4]
-        rho1 = np.sqrt((output[0] - output[2]) ** 2 + (output[1] - output[3]) ** 2)
-
-        return np.array([rho1 - rho0, theta1 - theta0])
-
-    def dwinding(self, t, y0, y1 = None):
-        """
-        Calculates the Jacobian of the winding number 
-        
-        """
-        if y1 is None:
-            y1 = np.array([self.R0, self.Z0])
-        
         # Set the initial position in the phi0 plane in polar coordinates
         theta0 = np.arctan2(y0[1] - y1[1], y0[0] - y1[0])
         rho0 = np.sqrt((y0[0] - y1[0]) ** 2 + (y0[1] - y1[1]) ** 2)
 
         # Integrate until the final time
-        self._integrator.set_rhs(self._ode_rhs_tangent)
+        if self._integrator.rhs is not self._ode_rhs:
+            self._integrator.set_rhs(self._ode_rhs)
+        ic = np.array([*y0, *y1, theta0])
+        output = self._integrate(t, ic)
+        
+        # Retrieve the final position in polar coordinate (with theta1 not modulo 2*pi but as a winding)
+        theta1 = output[4]
+        rho1 = np.sqrt((output[0] - output[2]) ** 2 + (output[1] - output[3]) ** 2)
+        winding = np.array([rho1 - rho0, theta1 - theta0])
+        self.cache.save(t, y0, {'t': t, 'f': output[:2], 'f_y1': output[2:4], 'winding': winding}, y1)
+        return winding
+
+    def dwinding(self, t, y0, y1=None):
+        """
+        Calculates the Jacobian of the winding number 
+        """
+        if y1 is None:
+            y1 = np.array([self.R0, self.Z0])
+
+        # Check if the result is in the cache and use it if possible
+        cache_res = self.cache.retrieve(t, y0, "dwinding", y1)
+        if cache_res is not None and cache_res['t'] == t:
+            return cache_res['dwinding']
+        elif cache_res is not None and cache_res['t'] < t:
+            return self.dwinding(t - cache_res['t'], cache_res['f'], cache_res['f_y1'])
+
+        # Set the initial position in the phi0 plane in polar coordinates
+        theta0 = np.arctan2(y0[1] - y1[1], y0[0] - y1[0])
+        rho0 = np.sqrt((y0[0] - y1[0]) ** 2 + (y0[1] - y1[1]) ** 2)
+
+        # Integrate until the final time
+        if self._integrator.rhs is not self._ode_rhs_tangent:
+            self._integrator.set_rhs(self._ode_rhs_tangent)
         ic = np.array([*y0, *y1, theta0, 1., 0., 0., 1.])
         output = self._integrate(t, ic)
-
+        
         # Retrieve the final position in the phi0 plane in polar coordinates
         theta1 = np.arctan2(output[1] - output[3], output[0] - output[2])
         rho1 = np.sqrt((output[0] - output[2]) ** 2 + (output[1] - output[3]) ** 2)
@@ -168,9 +215,6 @@ class CylindricalBfieldSection(IntegratedMap):
                 [output[6], output[8]]
             ], dtype=np.float64)
         
-        # Cache the result
-        self.cache_w = {'args': (t, y0, y1), 'return': np.array([rho1 - rho0, theta1 - theta0]), "dG": dG, "output": output}
-
         # Jacobian of the change of coordinates from R, Z to polar at end point : dH = dH(G(R,Z)) 
         deltaRZ = output[:2] - y1
         dH = np.array([
@@ -185,8 +229,10 @@ class CylindricalBfieldSection(IntegratedMap):
             np.array([-deltaRZ[1], deltaRZ[0]], dtype=np.float64) / (deltaRZ[0]**2 + deltaRZ[1]**2)
         ], dtype=np.float64)
 
-        # Jacobian of the map F = H(G(R,Z)) - H(R,Z)
-        return dH @ dG - dP
+        # Jacobian of the map W = H(G(R,Z)) - H(R,Z)
+        dW = dH @ dG - dP
+        self.cache.save(t, y0, {'t': t, 'f': output[:2], 'f_y1': output[2:4], 'winding': np.array([rho1 - rho0, theta1 - theta0]), 'dwinding': dW}, y1)
+        return dW
 
     ## Integration methods
 
@@ -258,21 +304,21 @@ class CylindricalBfieldSection(IntegratedMap):
         """
         R, Z, R0, Z0, theta, *dRZ = y
 
-        dy1 = self._rhs_RZ_tangent(phi, np.array([R, Z, dRZ]))
+        dy1 = self._rhs_RZ_tangent(phi, np.array([R, Z, *dRZ]))
         dy2 = self._ode_rhs(phi, np.array([R, Z, R0, Z0, theta]))
 
-        return np.concatenate([dy1, dy2])
+        return np.array([*dy2, *dy1[2:]])
 
     def _rhs_RZ_tangent(self, phi, y, *args):
         """
         Returns the right-hand side (RHS) of the ODE with the calculation of the differential evolution. For an explanation, one could look at [S.R. Hudson](https://w3.pppl.gov/~shudson/Oculus/ga00aa.pdf).
 
         Args:
-            phi (float): The current cylindrical angle.
-            y (array): The current R, Z and dRZ. y = [dR/dphi, dZ/dphi, dR/dR_i, dZ/dR_i, dR/dZ_i, dZ/dZ_i] where i stands for the initial point in the phi0 plane (not the axis).
+            phi (float): The current cylindrical angle :math:`\\phi`.
+            y (array): The current :math:`R, Z` and :math:`d\\textbf{RZ}/dRZ` matrix. y = [dR/dphi, dZ/dphi, dR/dR_i, dZ/dR_i, dR/dZ_i, dZ/dZ_i] where i stands for the initial point in the phi0 plane (not the axis).
             *args: Additional parameters for the magnetic field calculation.
         Returns:
-            array: The RHS of the ODE, with tangent.
+            array: 
         """
         R, Z, *dRZ = y
         # dRZ = [[y[2], y[4]], [y[3], y[5]]]
@@ -334,3 +380,49 @@ class CylindricalBfieldSection(IntegratedMap):
         dintegralAdphi = np.dot(A, dl)
 
         return np.array([dRdphi, dZdphi, dintegralAdphi])
+    
+    # Cache methods
+    
+    def clear_cache(self):
+        self.cache.clear()
+
+class Cache:
+    def __init__(self, size=None):
+        if size is None:
+            size = 512
+        self.size = size
+        self.clear()
+    
+    def retrieve(self, t, y0, what, y1=None):
+        current_possible_i = None
+        for i, (id, tc, y1c) in enumerate(self.ids):
+            if self.cache[i].get(what) is None:
+                continue
+
+            if id != hash(tuple(y0)):
+                continue
+        
+            if what in ["winding", "dwinding"] and (y1 is None or (y1c != y1).all()):
+                continue
+
+            if tc == t:
+                return self.cache[i]
+            elif tc < t:
+                if current_possible_i is None or tc > self.cache[current_possible_i]['t']:
+                    current_possible_i = i
+
+        if current_possible_i is not None:
+            return self.cache[current_possible_i]
+        
+        return None
+
+    def save(self, t, y0, dic, y1=None):
+        self.ids.append((hash(tuple(y0)), t, y1))
+        if len(self.cache) >= self.size:
+            self.ids.pop(0)
+            self.cache.pop(0)
+        self.cache.append(dic)
+
+    def clear(self):
+        self.cache = []
+        self.ids = []

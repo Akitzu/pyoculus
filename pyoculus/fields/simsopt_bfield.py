@@ -5,8 +5,10 @@ from simsopt.geo import SurfaceXYZFourier, SurfaceClassifier
 from typing import Union
 import numpy as np
 
+import logging
+logger = logging.getLogger(__name__)
 
-class SimsoptBfieldProblem(CylindricalBfield):
+class SimsoptBfield(CylindricalBfield):
     """
     
     """
@@ -75,44 +77,61 @@ class SimsoptBfieldProblem(CylindricalBfield):
     # Methods of the MagneticField class
 
     def B(self, rphiz):
+        """
+        
+        """
         xyz = cct.xyz(*rphiz)
         xyz = np.reshape(xyz, (-1, 3))
         self._mf_B.set_points(xyz)
+
         B_cart = self._mf_B.B().flatten()
-        return cct.vec_cart2cyl(B_cart, *rphiz).flatten()
 
-    def dBdX(self, xyz):
-        xyz = np.reshape(xyz, (-1, 3))
-        self._mf.set_points(xyz)
+        return cct.vec_cart2cyl(B_cart, *rphiz)
+
+    def dBdX(self, rphiz):
+        """
         
-        return [self._mf.B().flatten()], self._mf.dB_by_dX().reshape(3, 3)
-
-    def B_many(self, x1arr, x2arr, x3arr, input1D=True):
-        if input1D:
-            xyz = np.array([x1arr, x2arr, x3arr], dtype=np.float64).T
-        else:
-            xyz = np.meshgrid(x1arr, x2arr, x3arr)
-            xyz = np.array(
-                [xyz[0].flatten(), xyz[1].flatten(), xyz[2].flatten()], dtype=np.float64
-            ).T
-
-        xyz = np.ascontiguousarray(xyz, dtype=np.float64)
-        self._mf_B.set_points(xyz)
-
-        return self._mf_B.B()
-
-    def dBdX_many(self, x1arr, x2arr, x3arr, input1D=True):
-        B = self.B_many(x1arr, x2arr, x3arr, input1D=input1D)
-        return [B], self._mf.dB_by_dX()
-    
-    def A(self, xyz):
+        """
+        xyz = cct.xyz(*rphiz)
         xyz = np.reshape(xyz, (-1, 3))
         self._mf.set_points(xyz)
-        return self._mf.A().flatten()
 
+        B_cart = self._mf.B()
+        dBdX_cart = self._mf.dB_by_dX().reshape(3, 3)
+        
+        return cct.vec_cart2cyl(B_cart, *rphiz), cct.mat_cart2cyl(dBdX_cart, *rphiz) 
+
+    def A(self, rphiz):
+        """
+        
+        """
+        xyz = cct.xyz(*rphiz)
+        xyz = np.reshape(xyz, (-1, 3))
+        self._mf.set_points(xyz)
+
+        A_cart = self._mf.A().flatten()
+
+        return cct.vec_cart2cyl(A_cart, *rphiz)
+
+
+    # def B_many(self, x1arr, x2arr, x3arr, input1D=True):
+    #     if input1D:
+    #         xyz = np.array([x1arr, x2arr, x3arr], dtype=np.float64).T
+    #     else:
+    #         xyz = np.meshgrid(x1arr, x2arr, x3arr)
+    #         xyz = np.array(
+    #             [xyz[0].flatten(), xyz[1].flatten(), xyz[2].flatten()], dtype=np.float64
+    #         ).T
+
+    #     xyz = np.ascontiguousarray(xyz, dtype=np.float64)
+    #     self._mf_B.set_points(xyz)
+
+    #     return self._mf_B.B()    
 
 def surf_from_coils(coils, **kwargs):
-    print(kwargs)
+    logger.info(f"Using surf_from_coils with parameters: {kwargs}")
+    logger.warning("Using surf_from_coild can result in weird surfaces. Use with caution.")
+    
     mpol = kwargs.get('mpol', 3)
     ntor = kwargs.get('ntor', 3)
     stellsym = kwargs.get('stellsym', False)

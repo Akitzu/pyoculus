@@ -680,9 +680,12 @@ class Manifold(BaseSolver):
     # def resonance_area(self):
     #     pass
 
-    def turnstile_area(self, cyl_flag, n_joining = 100):
+    def turnstile_area(self, n_joining = 100):
         """Compute the turnstile area by integrating the vector potential along the trajectory of the homo/hetero-clinics points.
         """
+
+        if not isinstance(self._map, maps.CylindricalBfieldSection):
+            raise NotImplementedError("Turnstile area computation only implemented for CylindricalBfieldSection")
 
         # Function for forward/backward integration for each clinic point
         def integrate_direction(rz, n, rfp, direction):
@@ -691,9 +694,8 @@ class Manifold(BaseSolver):
             n_tmp = 0
 
             while n_tmp < n:
-                rz_end, intA_tmp = self.integrate_single(
-                    rz, 1, direction=direction, ret_jacobian=False, integrate_A=True
-                )
+                intA_tmp = self._map.lagrangian(rz, direction)
+                rz_end = self._map.f(direction, rz)
 
                 if n_tmp > 3 and np.linalg.norm(
                     rz_end - rfp
@@ -772,20 +774,18 @@ class Manifold(BaseSolver):
 
                 # Evaluate A at the middle point between (x_i, x_{i+1})
                 mid_gamma = (gamma + dl/2)[:-1]
-                mid_gamma = np.vstack((mid_gamma[:,0], self._params['zeta']*np.ones(mid_gamma.shape[0]), mid_gamma[:,1])).T
-                
-                if cyl_flag:
-                    mid_A = np.array([self._problem.A(r)[0::2] for r in mid_gamma])
-                else:
-                    mid_A = np.empty((mid_gamma.shape[0], 2))
-                    for k, r in enumerate(mid_gamma):
-                        xyz = np.array([
-                            r[0] * np.cos(r[1]),
-                            r[0] * np.sin(r[1]),
-                            r[2]
-                        ])
-                        invJacobian = self._problem._inv_Jacobian(r[0], r[1], r[2])
-                        mid_A[k] = np.matmul(invJacobian, np.array([self._problem.A(xyz)]).T).T[0][::2]
+                mid_gamma = np.vstack((mid_gamma[:,0], self._map.phi0*np.ones(mid_gamma.shape[0]), mid_gamma[:,1])).T
+                mid_A = np.array([self._map._mf.A(r)[0::2] for r in mid_gamma])
+                # else:
+                #     mid_A = np.empty((mid_gamma.shape[0], 2))
+                #     for k, r in enumerate(mid_gamma):
+                #         xyz = np.array([
+                #             r[0] * np.cos(r[1]),
+                #             r[0] * np.sin(r[1]),
+                #             r[2]
+                #         ])
+                #         invJacobian = self._problem._inv_Jacobian(r[0], r[1], r[2])
+                #         mid_A[k] = np.matmul(invJacobian, np.array([self._problem.A(xyz)]).T).T[0][::2]
 
                 # Discretize the A.dl integral and sum it
                 areas[i] += np.einsum('ij,ij->i', mid_A, np.ones((mid_A.shape[0], 1)) * dl).sum()
