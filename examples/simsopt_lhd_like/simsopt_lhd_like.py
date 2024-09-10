@@ -159,9 +159,9 @@ bsh = InterpolatedField(
 )
 proc0_print("Done initializing InterpolatedField.")
 
-# logging.basicConfig()
-# logger = logging.getLogger("simsopt.field.tracing")
-# logger.setLevel(1)
+logging.basicConfig()
+logger = logging.getLogger("simsopt.field.tracing")
+logger.setLevel(1)
 
 
 # Same as simsopt's compute_fieldlines, but take the initial locations as
@@ -383,7 +383,7 @@ def trace_fieldlines(bfield, label):
 import datetime
 
 label = "bsh_" + datetime.datetime.now().strftime("%Y%m%d-%H%M")
-# fig, axs = trace_fieldlines(bsh, label)
+fig, axs = trace_fieldlines(bsh, label)
 
 ###############################################################################
 # Searching the fixed points with pyoculus.
