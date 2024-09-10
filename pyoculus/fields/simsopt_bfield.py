@@ -99,7 +99,7 @@ class SimsoptBfield(CylindricalBfield):
         B_cart = self._mf.B()
         dBdX_cart = self._mf.dB_by_dX().reshape(3, 3)
         
-        return cct.vec_cart2cyl(B_cart, *rphiz), cct.mat_cart2cyl(dBdX_cart, *rphiz) 
+        return cct.vec_cart2cyl(B_cart, *rphiz), cct.mat_cart2cyl(dBdX_cart, *rphiz) + cct.dinvJ_matrix(B_cart, *rphiz)
 
     def A(self, rphiz):
         """

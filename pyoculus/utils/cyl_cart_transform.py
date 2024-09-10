@@ -131,3 +131,11 @@ def mat_cart2cyl(mat, r, phi, z):
 
 def mat_cyl2cart(mat, x, y, z):
     pass
+
+def dinvJ_matrix(vec, r, phi, z):
+    vec = vec.flatten()
+    return np.array([
+            [0, -vec[0] * np.sin(phi) + vec[1] * np.cos(phi), 0 ],
+            [(vec[0] * np.sin(phi) - vec[1] * np.cos(phi)) / r**2, (-vec[0] * np.cos(phi) - vec[1] * np.sin(phi)) / r, 0],
+            [0, 0, 0]
+        ])
