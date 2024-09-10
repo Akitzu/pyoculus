@@ -317,9 +317,8 @@ class Manifold(BaseSolver):
             "colors": ["green", "red", "green", "red"],
         }
         default.update({key: value for key, value in kwargs.items() if key in default})
-        plotkwargs = {key: value for key, value in kwargs.items() if key not in default}
-
         fig, ax, kwargs = create_canvas(**kwargs)
+        plotkwargs = {key: value for key, value in kwargs.items() if key not in default}
 
         dirdict = {
             "is": self.inner["lfs"]["stable"],
