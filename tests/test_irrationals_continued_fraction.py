@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from pyoculus.irrationals import expandcf, fromcf
+from pyoculus.utils import expandcf, fromcf
 
 # Define a list of test cases, each case is a tuple of (NUM, FRAC, CI)
 # where NUM is the real number to be expanded into a continued fraction
