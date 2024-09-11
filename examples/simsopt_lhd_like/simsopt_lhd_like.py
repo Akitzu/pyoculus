@@ -159,7 +159,7 @@ bsh = InterpolatedField(
 )
 proc0_print("Done initializing InterpolatedField.")
 
-logging.basicConfig()
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("simsopt.field.tracing")
 logger.setLevel(1)
 
@@ -391,8 +391,6 @@ fig, axs = trace_fieldlines(bsh, label)
 if comm_world is not None and comm_world.rank != 0:
     comm_world.abort()
 
-logging.basicConfig(level=logging.INFO)
-
 proc0_print("Setting up the problem")
 simsoptfield = SimsoptBfield(nfp, bs)
 pyoproblem = CylindricalBfieldSection.without_axis(simsoptfield, phi0=0.1*np.pi, guess=[3.6, 0.], rtol=1e-10)
@@ -410,38 +408,38 @@ proc0_print("Searching fixed points")
 
 # Island m = 7, n = ? (10 ?)
 fp_7o = FixedPoint(pyoproblem)
-fp_7o.find(7, guess=[4.5394, 0.0], tol=1e-15)
+fp_7o.find(7, guess=[4.529755513450892, 0.0], tol=1e-13)
 fp_7x = FixedPoint(pyoproblem)
-fp_7x.find(7, guess=[4.45012135, -0.15772282])
+fp_7x.find(7, guess=[4.450121349671787, -0.15772282315783062], tol=1e-13)
 
 # Island m = 13, n = ? (20 ?)
 fp_13o = FixedPoint(pyoproblem)
-fp_13o.find(13, guess=[4.54492985, -0.07441066])
+fp_13o.find(13, guess=[4.54492985895576, -0.07441064599290155], tol=1e-13)
 fp_13x = FixedPoint(pyoproblem)
-fp_13x.find(13, guess=[4.56964356, 0.0])
+fp_13x.find(13, guess=[4.569643555967269, 0.0], tol=1e-13)
 
 # Island m = 6, n = ? (10 ?)
 fp_6o = FixedPoint(pyoproblem)
-fp_6o.find(6, guess=[4.49199436, -0.1779669])
+fp_6o.find(6, guess=[4.491994363204575, -0.1779668945266374], tol=1e-13)
 fp_6x = FixedPoint(pyoproblem)
-fp_6x.find(6, guess=[4.60062493, 0.0])
+fp_6x.find(6, guess=[4.60062492610659, 0.0], tol=1e-13)
 
 # Island m = 19, n = ? (30 ?)
 fp_19o = FixedPoint(pyoproblem)
-fp_19o.find(19, guess=[4.58393511, 0.0])
+fp_19o.find(19, guess=[4.583935109909209, 0.0], tol=1e-13)
 fp_19x = FixedPoint(pyoproblem)
-fp_19x.find(19, guess=[4.5757102, -0.03811962])
+fp_19x.find(19, guess=[4.5757101993549085, -0.038119626370894465], tol=1e-13)
 
 
 colors = ["red", "green", "blue", "yellow"]
 for i, fp in enumerate([fp_7o, fp_13o, fp_6o, fp_19o]):
-    fp.plot(ax=axs[1, 0], color=colors[i])
+    fp.plot(ax=axs[1, 0], edgecolors="black", linewidths=1, color=colors[i])
 
 for i, fp in enumerate([fp_7x, fp_13x, fp_6x, fp_19x]):
-    fp.plot(ax=axs[1, 0], color=colors[i])
+    fp.plot(ax=axs[1, 0], edgecolors="black", linewidths=1, color=colors[i])
         
 proc0_print(
-    f"GreenesResidues for X-points:\n m=7 - {fp_7x.GreenesResidue}\n m=13 - {fp_13x.GreenesResidue}, \n m=6 - {fp_6x.GreenesResidue}, \n m=19 - {fp_19x.GreenesResidue}"
+    f"GreenesResidues for X-points:\n m=7 - {fp_7x.GreenesResidues[0]}\n m=13 - {fp_13x.GreenesResidues[0]}, \n m=6 - {fp_6x.GreenesResidues[0]}, \n m=19 - {fp_19x.GreenesResidues[0]}"
 )
 
 # Saving the whole figure with fixed points on the row 1, column 0 subplot
