@@ -96,7 +96,7 @@ def convergence_domain(map : maps.BaseMap, x1s : npt.ArrayLike, x2s : npt.ArrayL
             )
 
         if fp_result.successful is True:
-            fp_result_x = fp_result_x.coords[0]
+            fp_result_x = fp_result.coords[0]
             assigned = False
             for j, fpt in enumerate(fixed_points):
                 fpt_x = fpt.coords[0]
