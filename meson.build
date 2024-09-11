@@ -101,6 +101,7 @@ py3.install_sources(
   'pyoculus/utils/continued_fraction.py',
   'pyoculus/utils/plot.py',
   'pyoculus/utils/cyl_cart_transform.py',
+  'pyoculus/utils/convergence_domain.py',
   'pyoculus/utils/__init__.py',
   subdir: 'pyoculus'
 )

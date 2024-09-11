@@ -57,7 +57,8 @@ class FluxSurfaceGR(BaseSolver):
 
         # iota will be divided by Nfp
         # if isinstance(self._map, pyoculus.map.ToroidalBfieldSection):
-        # iota = iota / self.Nfp
+        # if isinstance(self._map, maps.ToroidalBfieldSection):
+        #     iota = iota / self.Nfp
 
         # continued fraction expansion of the input irrational
         ais = expandcf(iota, nexpand)

@@ -258,7 +258,7 @@ class PoincarePlot(BaseSolver):
             # Uses the Reiman and Greenside least square fit optimization method
             for ii in range(rho.shape[0]):
                 nlist = np.arange(self._windings.shape[1], dtype=np.float64)
-                dzeta = 2.0 * np.pi / self._map._mf.Nfp
+                dzeta = self._map.dzeta
                 leastfit = np.zeros(6, dtype=np.float64)
                 leastfit[1] = np.sum((nlist * dzeta) ** 2)
                 leastfit[2] = np.sum((nlist * dzeta))

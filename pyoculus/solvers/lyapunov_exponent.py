@@ -49,7 +49,7 @@ class LyapunovExponent(BaseSolver):
         #     self.dt = self._map.dt
         # else:
         #     self.dt = 1
-        dt = 2*np.pi
+        dt = self._map.dzeta
 
         x_nearby = x + eps
 

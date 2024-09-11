@@ -17,7 +17,7 @@ class ToroidalBfieldSection(IntegratedMap):
         domain = [(0, np.inf), (0, 2*np.pi)]
         periodicity = [0, 1]
 
-        super().__init__(dim=2, domain=domain, periodicity=periodicity, ode = self._ode_rhs_tangent, **kwargs)
+        super().__init__(dim=2, domain=domain, periodicity=periodicity, dzeta=2*np.pi/toroidalbfield.Nfp, ode = self._ode_rhs_tangent, **kwargs)
 
         self.phi0 = phi0
 
@@ -53,7 +53,7 @@ class ToroidalBfieldSection(IntegratedMap):
         """
         Integrates the ODE for a number of periods.
         """
-        dphi = t * 2 * np.pi / self._mf.Nfp
+        dphi = t * self.dzeta
         y = np.array(y0)
         self._integrator.set_initial_value(self.phi0, y)
         return self._integrator.integrate(self.phi0 + dphi)

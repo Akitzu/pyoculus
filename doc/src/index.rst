@@ -20,4 +20,4 @@ Pyoculus documentation
    :maxdepth: 2
    :caption: API Reference:
    
-   api.md
+   api

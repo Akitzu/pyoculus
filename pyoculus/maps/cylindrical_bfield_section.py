@@ -37,7 +37,7 @@ class CylindricalBfieldSection(IntegratedMap):
         if domain is None:
             domain = [(0, np.inf), (-np.inf, np.inf)]
 
-        super().__init__(dim=2, domain=domain, ode = self._ode_rhs_tangent, **kwargs)
+        super().__init__(dim=2, domain=domain, dzeta=2*np.pi/cylindricalbfield.Nfp, ode = self._ode_rhs_tangent, **kwargs)
 
         self.phi0 = phi0
 
@@ -240,7 +240,7 @@ class CylindricalBfieldSection(IntegratedMap):
         """
         Integrates the ODE for a number of periods.
         """
-        dphi = t * 2 * np.pi / self._mf.Nfp
+        dphi = t * self.dzeta
         y = np.array(y0)
         self._integrator.set_initial_value(self.phi0, y)
         return self._integrator.integrate(self.phi0 + dphi)
