@@ -24,21 +24,25 @@ incdir_numpy = run_command(
     check: true,
 ).stdout().strip()
 
-inc_np = include_directories(incdir_numpy)
+incdir_f2py = run_command(
+    py3, '-c',
+    'import os; os.chdir(".."); import numpy.f2py; print(numpy.f2py.get_include())',
+    check : true
+).stdout().strip()
 
-incdir_f2py = incdir_numpy / '..' / '..' / 'f2py' / 'src'
-inc_f2py = include_directories(incdir_f2py)
+inc_np = include_directories(incdir_numpy, incdir_f2py)
+
+
 fortranobject_c = incdir_f2py / 'fortranobject.c'
-
 # Share this object across multiple modules.
 fortranobject_lib = static_library('_fortranobject',
   fortranobject_c,
   dependencies: py3_dep,
-  include_directories: [inc_np, inc_f2py],
+  include_directories: inc_np,
 )
 fortranobject_dep = declare_dependency(
   link_with: fortranobject_lib,
-  include_directories: [inc_np, inc_f2py],
+  include_directories: inc_np,
 )
 
 sourcefiles = files(
@@ -48,20 +52,6 @@ sourcefiles = files(
         'pyoculus/maps/SPECfortran/pybfield.f90',
         'pyoculus/maps/SPECfortran/pyPJH.f90'
 )
-
-compiled_fortran = custom_target('pyoculus_spec_fortran_module',
-  input : sourcefiles,
-  output: 'pyoculus_spec_fortran_modulemodule.c',
-  command : [py3, '-m', 'numpy.f2py',  '-m', 'pyoculus_spec_fortran_module', '@INPUT@'],
-  install : true,
-  install_dir : py3.get_install_dir()
-)
-
-py3.extension_module('pyoculus_spec_fortran_module', 
-                    sourcefiles, compiled_fortran, 
-                    dependencies: fortranobject_dep, 
-                    install: true, 
-                    fortran_args: f90flags)
 
 py3.install_sources(
   'pyoculus/__init__.py',
