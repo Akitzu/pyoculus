@@ -1,12 +1,18 @@
 from .cylindrical_bfield import CylindricalBfield
 import pyoculus.utils.cyl_cart_transform as cct
-from simsopt.field import MagneticField, InterpolatedField, BiotSavart
-from simsopt.geo import SurfaceXYZFourier, SurfaceClassifier
 from typing import Union
 import numpy as np
 
 import logging
 logger = logging.getLogger(__name__)
+
+try:
+    from simsopt.field import MagneticField, InterpolatedField, BiotSavart
+    from simsopt.geo import SurfaceXYZFourier, SurfaceClassifier
+except ImportError as e:
+    MagneticField, InterpolatedField, BiotSavart = None, None, None
+    SurfaceXYZFourier, SurfaceClassifier = None, None
+    logger.debug(str(e))
 
 class SimsoptBfield(CylindricalBfield):
     """
