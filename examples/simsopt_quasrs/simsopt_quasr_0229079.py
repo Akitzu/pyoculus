@@ -43,7 +43,7 @@ surfaces, ma, coils = load(f'coils/serial0229079.json')
 
 # Setting the problem
 simsoptfield = SimsoptBfield.from_coils(coils, Nfp=3, interpolate=True, ncoils=3, mpol=5, ntor=5, n=40)
-pyoproblem = CylindricalBfieldSection.without_axis(simsoptfield, guess=ma.gamma()[0,:2], rtol=1e-12)
+pyoproblem = CylindricalBfieldSection.without_axis(simsoptfield, guess=ma.gamma()[0,::2], rtol=1e-12)
 
 # Fixed points Search
 fp_x1 = FixedPoint(pyoproblem)
