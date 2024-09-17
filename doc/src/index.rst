@@ -8,7 +8,11 @@ Pyoculus documentation
    :maxdepth: 2
    :caption: Contents:
 
-   contents
+   installation
+   maps
+   magneticmaps
+   fields
+   toybox
 
 .. toctree::
    :maxdepth: 2
