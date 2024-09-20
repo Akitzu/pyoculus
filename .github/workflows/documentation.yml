@@ -21,6 +21,9 @@ jobs:
       - name: Build the package
         run: |
           pip install .
+      - name: Verify package installation
+        run: |
+          python -c "import pyoculus; print(pyoculus.__version__)"
       - name: Sphinx build
         run: |
           sphinx-build doc/src _build
