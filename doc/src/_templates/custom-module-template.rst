@@ -28,19 +28,6 @@
    {% endif %}
    {% endblock %}
 
-   {% block classes %}
-   {% if classes %}
-   .. rubric:: {{ _('Classes') }}
-
-   .. autosummary::
-      :toctree:
-      :template: custom-class-template.rst
-   {% for item in classes %}
-      {{ item }}
-   {%- endfor %}
-   {% endif %}
-   {% endblock %}
-
    {% block exceptions %}
    {% if exceptions %}
    .. rubric:: {{ _('Exceptions') }}
