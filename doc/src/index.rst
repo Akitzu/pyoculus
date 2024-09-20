@@ -6,7 +6,7 @@ Pyoculus documentation
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Contents
 
    installation
    maps
@@ -16,12 +16,17 @@ Pyoculus documentation
 
 .. toctree::
    :maxdepth: 2
-   :caption: Tutorials:
+   :caption: Tutorials
 
    tutorials
 
-.. toctree::
-   :maxdepth: 2
-   :caption: API Reference:
-   
-   api
+API Reference
+=============
+
+.. autosummary::
+   :caption: API Reference
+   :toctree: _autosummary
+   :template: custom-module-template.rst
+   :recursive:
+
+   pyoculus
