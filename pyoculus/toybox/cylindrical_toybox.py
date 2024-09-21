@@ -1,3 +1,12 @@
+"""
+This module provides functions to calculate equilibrium and perturbation fields in cylindrical coordinates.
+
+The fields are calculated from the vector potential :math:`A` as :math:`B = \\nabla \\times A`.
+
+:authors:
+    - Ludovic Rais (ludovic.rais@epfl.ch)
+"""
+
 from functools import wraps
 from jax import config
 
@@ -10,10 +19,18 @@ import numpy as np
 
 ## Decorators
 
+
 def psitob(f):
-    """Decorator to calculate the contribution of a Psi function to a B field
-    using the relation B = grad x A, with A_\phi e_\phi = \psi / r e_\phi, where
-    g(e_\phi, e_\phi) = 1
+    """
+    Decorator to calculate the contribution of a :math:`\\psi` function to a :math:`B` field
+    using the relation :math:`B = \\nabla \\times A`, with :math:`A_\\phi \\textbf{e}_\\phi = \\psi / r \\textbf{e}_\\phi`, where
+    :math:`g(\\textbf{e}_\phi, \\textbf{e}_\phi) = 1`.
+
+    Args:
+        f (function): Function that returns the :math:`\\psi` field. The function must take the position vector :math:`\\textbf{r}` as first argument.
+
+    Returns:
+        function: Function that returns the :math:`B` field.
     """
 
     @wraps(f)
@@ -25,10 +42,16 @@ def psitob(f):
 
 
 def rot(f, from_holonomous=True):
-    """Decorator that calculate the curl in cylindrical coordinates, useful to get
-    the B field from a vector potential A using the relation B = Nabla x A. It takes the
-    holonomous component (or non-holonomous, orthonormal basis)
-    and returns the holonomous components (cylindrical metric).
+    """
+    Decorator that calculate the `curl` in cylindrical coordinates, useful to get
+    the :math:`B` field from a vector potential :math:`A` using the relation :math:`B = \\nabla \\times A`.
+
+    Args:
+        f (function): Function that returns the vector potential :math:`A` field. The function must take the position vector :math:`\\textbf{r}` as first argument.
+        from_holonomous (bool): If True, the input of the function is in holonomous coordinates :math:`\\{\\partial_r, \\partial_\\phi, \\partial_z\\}`. If False, the input is in non-holonomous coordinates :math:`\\{\\textbf{e}_r, \\textbf{e}_\\phi, \\textbf{e}_z\\}`.
+
+    Returns:
+        function: Function that returns the :math:`B` field.
     """
 
     @wraps(f)
@@ -63,14 +86,42 @@ def rot(f, from_holonomous=True):
 
 
 def psi_squared(rr: jnp.array, R: float, Z: float) -> jnp.float64:
-    """Psi flux function for the squared circle equilibrium field."""
+    """
+    :math:`\\psi` flux function for the squared circle equilibrium field. The squared circle equilibrium field is defined as:
+
+    .. math::
+        \\psi(r, z) = (r - R)^2 + (z - Z)^2.
+
+    Args:
+        rr (array): Position vector in cylindrical coordinates.
+        R (float): R coordinate of the center of the squared circle.
+        Z (float): Z coordinate of the center of the squared circle.
+
+    Returns:
+        float: :math:`\\psi` flux at position `rr`.
+    """
     return (Z - rr[2]) ** 2 + (R - rr[0]) ** 2
 
 
 def A_r_squared(
     rr: jnp.array, R: float, Z: float, sf: float, shear: float
 ) -> jnp.float64:
-    """A_r vector potential (giving the poloidal flux F) for the squared circle equilibrium field."""
+    """
+    Vector potential :math:`A_r` component (giving the poloidal flux :math:`F`) for the squared circle equilibrium field. Using it with the :code:`psi_squared` function makes sense of :code:`sf` and :code:`shear` as the :math:`q`-factor profile becomes:
+
+    .. math::
+        q(r, z) = sf + shear * (r - R)^2 + (z - Z)^2.
+
+    Args:
+        rr (array): Position vector in cylindrical coordinates.
+        R (float): R coordinate of the center of the squared circle.
+        Z (float): Z coordinate of the center of the squared circle.
+        sf (float): Safety factor at :math:`\\rho = 0`.
+        shear (float): Shear of the :math:`q`-profile.
+
+    Returns:
+        float: :math:`A_r` component at position `rr`.
+    """
 
     def a(rr):
         return jnp.real(
@@ -111,7 +162,19 @@ def A_r_squared(
 def A_squared(
     rr: jnp.array, R: float, Z: float, sf: float, shear: float
 ) -> jnp.ndarray:
-    """Holonomous component of the vector potential for the squared circle equilibrium field."""
+    """
+    Holonomous component of the vector potential :math:`A` for the squared circle equilibrium field.
+
+    Args:
+        rr (array): Position vector in cylindrical coordinates.
+        R (float): R coordinate of the center of the squared circle.
+        Z (float): Z coordinate of the center of the squared circle.
+        sf (float): Safety factor at :math:`\\rho = 0`.
+        shear (float): Shear of the :math:`q`-profile.
+
+    Returns:
+        array: :math:`A` field at position `rr`.
+    """
     return jnp.array([0.0, psi_squared(rr, R, Z) / rr[0] ** 2, 0.0]) + jnp.array(
         [A_r_squared(rr, R, Z, sf, shear), 0.0, 0.0]
     )
@@ -182,19 +245,23 @@ def psi_maxwellboltzmann(
     A: float = 1.0,
     B: float = 1.0,
 ) -> jnp.float64:
-    """Maxwell-Boltzmann distributed Psi flux function.
+    """
+    Maxwell-Boltzmann distributed :math:`\\psi` flux function.
 
     Args:
-        rr (array): Position vector in cylindrical coordinates
-        R (float): R coordinate of the center of the Maxwell-Boltzmann distribution
-        Z (float): Z coordinate of the center of the Maxwell-Boltzmann distribution
-        d (float): Standard deviation of the Maxwell-Boltzmann distribution
-        m (int): Poloidal mode number
-        n (int): Toroidal mode number
-        phase_poloidal (float): Poloidal phase of the perturbation
-        phase_toroidal (float): Toroidal phase of the perturbation
-        A (float): Scaling factor for the R coordinate
-        B (float): Scaling factor for the Z coordinate
+        rr (array): Position vector in cylindrical coordinates.
+        R (float): R coordinate of the center of the Maxwell-Boltzmann distribution.
+        Z (float): Z coordinate of the center of the Maxwell-Boltzmann distribution.
+        d (float): Standard deviation of the Maxwell-Boltzmann distribution.
+        m (int): Poloidal mode number.
+        n (int): Toroidal mode number.
+        phase_poloidal (float): Poloidal phase of the perturbation.
+        phase_toroidal (float): Toroidal phase of the perturbation.
+        A (float): Scaling factor for the R coordinate.
+        B (float): Scaling factor for the Z coordinate.
+
+    Returns:
+        float: :math:`\\psi` flux at position `rr`.
     """
 
     rho2 = (R - rr[0]) ** 2 / A**2 + (Z - rr[2]) ** 2 / B**2
@@ -231,7 +298,24 @@ def A_maxwellboltzmann(
     A: float = 1.0,
     B: float = 1.0,
 ) -> jnp.ndarray:
-    """Holonomous component of the vector potential for the Maxwell-Boltzmann distributed perturbation."""
+    """
+    Holonomous component of the vector potential :math:`A` for the Maxwell-Boltzmann distributed perturbation.
+
+    Args:
+        rr (array): Position vector in cylindrical coordinates.
+        R (float): R coordinate of the center of the Maxwell-Boltzmann distribution.
+        Z (float): Z coordinate of the center of the Maxwell-Boltzmann distribution.
+        d (float): Standard deviation of the Maxwell-Boltzmann distribution.
+        m (int): Poloidal mode number.
+        n (int): Toroidal mode number.
+        phase_poloidal (float): Poloidal phase of the perturbation.
+        phase_toroidal (float): Toroidal phase of the perturbation.
+        A (float): Scaling factor for the R coordinate.
+        B (float): Scaling factor for the Z coordinate.
+
+    Returns:
+        array: :math:`A` field at position `rr`.
+    """
     return jnp.array(
         [
             0.0,
@@ -260,20 +344,24 @@ def psi_gaussian(
     A: float = 1.0,
     B: float = 1.0,
 ) -> jnp.float64:
-    """Gaussian distributed Psi flux function.
+    """
+    Gaussian distributed :math:`\\psi` flux function.
 
     Args:
-        rr (array): Position vector in cylindrical coordinates
-        R (float): R coordinate of the center of the Gaussian distribution
-        Z (float): Z coordinate of the center of the Gaussian distribution
-        mu (float): Mean of the Gaussian distribution
-        sigma (float): Standard deviation of the Gaussian distribution
-        m (int): Poloidal mode number
-        n (int): Toroidal mode number
-        phase_poloidal (float): Poloidal phase of the perturbation
-        phase_toroidal (float): Toroidal phase of the perturbation
-        A (float): Scaling factor for the R coordinate
-        B (float): Scaling factor for the Z coordinate
+        rr (array): Position vector in cylindrical coordinates.
+        R (float): R coordinate of the center of the Gaussian distribution.
+        Z (float): Z coordinate of the center of the Gaussian distribution.
+        mu (float): Mean of the Gaussian distribution.
+        sigma (float): Standard deviation of the Gaussian distribution.
+        m (int): Poloidal mode number.
+        n (int): Toroidal mode number.
+        phase_poloidal (float): Poloidal phase of the perturbation.
+        phase_toroidal (float): Toroidal phase of the perturbation.
+        A (float): Scaling factor for the R coordinate.
+        B (float): Scaling factor for the Z coordinate.
+
+    Returns:
+        float: :math:`\\psi` flux at position `rr`.
     """
     rho2 = (R - rr[0]) ** 2 / A**2 + (Z - rr[2]) ** 2 / B**2
 
@@ -309,7 +397,25 @@ def A_gaussian(
     A: float = 1.0,
     B: float = 1.0,
 ) -> jnp.ndarray:
-    """Holonomous component of the vector potential for the Gaussian distributed perturbation."""
+    """
+    Holonomous component of the vector potential :math:`A` for the Gaussian distributed perturbation.
+
+    Args:
+        rr (array): Position vector in cylindrical coordinates.
+        R (float): R coordinate of the center of the Gaussian distribution.
+        Z (float): Z coordinate of the center of the Gaussian distribution.
+        mu (float): Mean of the Gaussian distribution.
+        sigma (float): Standard deviation of the Gaussian distribution.
+        m (int): Poloidal mode number.
+        n (int): Toroidal mode number.
+        phase_poloidal (float): Poloidal phase of the perturbation.
+        phase_toroidal (float): Toroidal phase of the perturbation.
+        A (float): Scaling factor for the R coordinate.
+        B (float): Scaling factor for the Z coordinate.
+
+    Returns:
+        array: :math:`A` field at position `rr`.
+    """
     return jnp.array(
         [
             0.0,
@@ -326,7 +432,9 @@ def A_gaussian(
 
 
 def ellpe(m):
-    """Complete elliptic integral of the second kind"""
+    """
+    Complete elliptic integral of the second kind.
+    """
     P_coeffs = jnp.array(
         [
             1.53552577301013293365e-4,
@@ -367,7 +475,9 @@ def ellpe(m):
 
 
 def ellpk(m):
-    """Complete elliptic integral of the first kind"""
+    """
+    Complete elliptic integral of the first kind.
+    """
     P_coeffs = jnp.array(
         [
             1.37982864606273237150e-4,
@@ -405,7 +515,17 @@ def ellpk(m):
 
 
 def psi_circularcurrentloop(rr: jnp.array, R: float, Z: float) -> jnp.float64:
-    """Vector potential (\phi coordinates) generated at rr = rphiz by a circular current loop located at radius R and height Z."""
+    """
+    :math:`\\psi` flux function generated at :math:`(r, \\phi, z)` by a circular current loop located at position :math:`(R, Z)`.
+
+    Args:
+        rr (array): Position vector in cylindrical coordinates.
+        R (float): R coordinate of the center of the circular current loop.
+        Z (float): Z coordinate of the center of the circular current loop.
+
+    Returns:
+        float: :math:`\\psi` flux at position `rr`.
+    """
     alpha2 = (R - rr[0]) ** 2 + (rr[2] - Z) ** 2
     beta2 = alpha2 + 4 * R * rr[0]
     k2 = 1 - alpha2 / beta2
@@ -417,5 +537,15 @@ def psi_circularcurrentloop(rr: jnp.array, R: float, Z: float) -> jnp.float64:
 
 
 def A_circularcurrentloop(rr: jnp.array, R: float, Z: float) -> jnp.ndarray:
-    """Holonomous component of the vector potential for the circular current loop perturbation."""
+    """
+    Contravariant component of the vector potential :math:`A` for the circular current loop perturbation.
+
+    Args:
+        rr (array): Position vector in cylindrical coordinates.
+        R (float): R coordinate of the center of the circular current loop.
+        Z (float): Z coordinate of the center of the circular current loop.
+
+    Returns:
+        array: :math:`A` field at position `rr`.
+    """
     return jnp.array([0.0, psi_circularcurrentloop(rr, R, Z) / rr[0] ** 2, 0.0])
