@@ -1,3 +1,12 @@
+"""
+This module provides functions to make and plot a convergence domain.
+
+For each pair in a grid of (x1, x2) points, it tries to find a cretain fixed point and the store the convergence behaviour.
+
+:authors:
+    - Ludovic Rais (ludovic.rais@epfl.ch)
+"""
+
 from pyoculus.solvers import FixedPoint
 import pyoculus.maps as maps
 from .plot import create_canvas
@@ -51,7 +60,14 @@ import numpy as np
 #     # return R_values, Z_values, assigned_to, all_fixed_points
 
 
-def convergence_domain(map : maps.BaseMap, x1s : npt.ArrayLike, x2s : npt.ArrayLike, find_with_iota : bool = True, eps : float = 1e-3, **kwargs):
+def compute_convergence_domain(
+    map: maps.BaseMap,
+    x1s: npt.ArrayLike,
+    x2s: npt.ArrayLike,
+    find_with_iota: bool = True,
+    eps: float = 1e-3,
+    **kwargs,
+) -> tuple:
     """
     Compute where the FixedPoint solver converges to for each of the [x1, x2] point pair. If a point converges, it is assigned a number which is the index corresponding to the equal first fixedpoint converging to the same place, otherwise it is assigned -1. The number corresponds to the index of the fixed point in the returned list of fixed points.
 
@@ -111,10 +127,24 @@ def convergence_domain(map : maps.BaseMap, x1s : npt.ArrayLike, x2s : npt.ArrayL
             assigned_to.append(-1)
             all_fixed_points.append(fp_result)
 
-    return np.array([X1s, X2s, np.array(assigned_to).reshape(X1s.shape), np.array(all_fixed_points).reshape(X1s.shape)]), np.array(fixed_points, dtype=object)
+    return np.array(
+        [
+            X1s,
+            X2s,
+            np.array(assigned_to).reshape(X1s.shape),
+            np.array(all_fixed_points).reshape(X1s.shape),
+        ]
+    ), np.array(fixed_points, dtype=object)
 
 
-def plot_convergence_domain(X1s, X2s, assigned_to, fixed_points, colors=None, **kwargs):
+def plot_convergence_domain(
+    X1s: np.array,
+    X2s: np.array,
+    assigned_to: np.array,
+    fixed_points: npt.ArrayLike,
+    colors=None,
+    **kwargs,
+) -> tuple:
     """
     Plot the convergence domain for the FixedPoint solver in the X1s-X2s plane. If ax is None, a new figure is created,
     otherwise the plot is added to the existing figure.
@@ -142,7 +172,7 @@ def plot_convergence_domain(X1s, X2s, assigned_to, fixed_points, colors=None, **
         colors = cm.rainbow(np.linspace(0, 1, len(fixed_points)))
         colors[:, 3] = 0.8
         colors = np.vstack(([0.3, 0.3, 0.3, 0.15], colors))
-        
+
     cmap = np.array([colors[j] for j in assigned_to])
     cmap = cmap.reshape(X1s.shape[0], X1s.shape[1], cmap.shape[1])
 
@@ -161,7 +191,6 @@ def plot_convergence_domain(X1s, X2s, assigned_to, fixed_points, colors=None, **
             linewidths=1,
             label=f"[{fpt.coords[0][0]:.2f},{fpt.coords[0][1]:.2f}]",
         )
-
 
     # # Plot arrows from the meshgrid points to the fixed points they converge to
     # for r, z, a in zip(R.flat, Z.flat, assigned_to.flat):

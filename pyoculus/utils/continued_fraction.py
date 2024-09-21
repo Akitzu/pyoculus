@@ -1,8 +1,5 @@
 """
-continued_fraction.py
-==================
-
-Contains functions related to the continued fraction expansion. Reference in Ivan Niven, Irrational Numbers (Cambridge University Press, 2005).
+This module provides functions related to the continued fraction expansion. Reference in Ivan Niven, Irrational Numbers (Cambridge University Press, 2005).
 
 :authors:
     - Zhisong Qu (zhisong.qu@anu.edu.au)
@@ -15,7 +12,7 @@ import numpy as np
 def expandcf(realnumber, n=100, thres=1e-12):
     """
     Expands a positive real number in its continued fraction.
-    
+
     Args:
         realnumber (float): The positive real number to expand. An absolute value will be taken if negative.
         n (int, optional): The maximum number of terms in the expansion. Default to 100.
@@ -31,7 +28,7 @@ def expandcf(realnumber, n=100, thres=1e-12):
         int_part = np.ceil(residue)
         if np.abs(residue - int_part) > 1e-3:
             int_part -= 1
-        
+
         ais[i] = int_part
         f = residue - int_part
 
@@ -39,7 +36,7 @@ def expandcf(realnumber, n=100, thres=1e-12):
             break
         residue = 1.0 / f
 
-    return ais[:i+1]
+    return ais[: i + 1]
 
 
 def fromcf(ai):
@@ -55,7 +52,7 @@ def fromcf(ai):
 
     # Use the relation of the Gaussian bracket to get the fraction
     h, k = np.zeros(len(ai) + 2), np.zeros(len(ai) + 2)
-    
+
     h[0], h[1] = 0, 1
     k[0], k[1] = 1, 0
 
