@@ -1,6 +1,8 @@
 .. |_| unicode:: 0xA0 
    :trim:
 
+.. math:: \newcommand{\dpmap}{\mathcal{D}\mathcal{P}}
+
 .. math:: \newcommand{\pmap}{\mathcal{P}}
 
 Field Line map
@@ -47,6 +49,7 @@ Due to the choice of coordinates the field will have at most a :math:`\phi` peri
   :align: center
 
 |
+
 The `Poincaré` section is identical for :math:`\phi_0` and :math:`\phi_i + kT`, :math:`k\in\mathbb{Z}`. Writing :math:`\Omega` the set of initial points in the :math:`\phi_i` plane for which :math:`\Phi` is effectively re-parametrizable between :math:`\phi_i` and :math:`\phi_i + T`, allows to define the map :math:`\pmap : \Omega \rightarrow \mathbb{R}_+\times\mathbb{R}` as |_| :
 
 .. math::
@@ -70,42 +73,46 @@ As the evolution is performed by following :math:`\mathbf{B}` and due to the mag
 Jacobian of :math:`\mathcal{P}`
 -------------------------------
 
-The Jacobian of the field line map as a matrix form :math:`\mathcal{D}\pmap := \partial \pmap^{\{1, 3\}}/{\partial \{1, 3\}} \in \mathbb{R}^{2\times2}`. Here we distinguish between :math:`r, z` in the starting plane and the general evolution around the torus :math:`R = \Phi^R, Z = \Phi^Z`, which is a handy abuse of notation. For instance |_| :
+The Jacobian of the field line map as a matrix form :math:`\dpmap := \partial \pmap^{\{R, Z\}}/{\partial \{R, Z\}} \in \mathbb{R}^{2\times2}`. Here we distinguish between :math:`R, Z` in the starting plane and the general evolution around the torus :math:`r = \Phi^r, z = \Phi^z`, which is a handy abuse of notation. For instance |_| :
 
 .. math::
 
-    \mathcal{D}\pmap^{r}_{\,\:r} = \frac{\partial}{\partial r}\left[\int_{\phi_i}^{T+\phi_i}\frac{B^R}{B^\phi}d\phi\right] + 1 = \int_{\phi_i}^{\phi_i+T}\partial_{r}\left[\frac{B^R}{B^\phi}\right]d\phi + 1 =\, ...
+    \dpmap^{R}_{\,\:R} = \frac{\partial}{\partial R}\left[\int_{\phi_i}^{\phi_i+T}\frac{B^r}{B^\phi}d\phi\right] + 1 = \int_{\phi_i}^{\phi_i+T}\partial_{R}\left[\frac{B^r}{B^\phi}\right]d\phi + 1 =\, ...
 
-with $B^R$ and $B^\phi$ being evaluated at |_| :
+with :math:`B^r` and :math:`B^\phi` being evaluated at |_| :
 
 .. math::
 
-  B^R = B^R(R(r, \phi, z), \phi, Z(r, \phi, z))\\
-    B^\phi = B^\phi(R(r, \phi, z), \phi, Z(r, \phi, z)).
+    B^r &= B^r(r(R, Z, \phi), \phi, z(R, Z, \phi))\\
+    B^\phi &= B^\phi(r(R, Z, \phi), \phi, z(R, Z, \phi)).
 
 The integrand can then be developed using the chain rule |_| :
 
 .. math::
 
-    \partial_{r}\left[\frac{B^R}{B^\phi}\right] &= \partial_{R}\left[\frac{B^R}{B^\phi}\right]\partial_{r}R + \partial_{Z}\left[\frac{B^R}{B^\phi}\right]\partial_{r}Z = \frac{1}{B^\phi}\frac{\partial B^R}{\partial_r} - \frac{B^R}{(B^\phi)^2}\frac{\partial B^\phi}{\partial_r} \\&= \frac{1}{B^\phi}\left(\frac{\partial B^R}{\partial R}\frac{\partial R}{\partial_r}+\frac{\partial B^R}{\partial Z}\frac{\partial Z}{\partial_r}\right) - \frac{B^R}{(B^\phi)^2}\left(\frac{\partial B^\phi}{\partial R}\frac{\partial R}{\partial_r}+\frac{\partial B^\phi}{\partial Z}\frac{\partial Z}{\partial_r}\right).
+    \partial_{R}\left[\frac{B^r}{B^\phi}\right] = \partial_{r}\left[\frac{B^r}{B^\phi}\right]\frac{\partial r}{\partial R} + \partial_{z}\left[\frac{B^r}{B^\phi}\right]\frac{\partial z}{\partial R}
 
-Without showing the same kind of equality for the other integrands, we can write in matrix form that |_| :
+and all the components can be written as a matrix multiplication by |_| :
 
 .. math::
 
-    \mathcal{D}\pmap = \int_{\phi_i}^{T+\phi_i}\begin{pmatrix}
-        \partial_{R}\left[B^R/B^\phi\right] & \partial_{Z}\left[B^R/B^\phi\right]\\
-        \partial_{R}\left[B^Z/B^\phi\right] & \partial_{Z}\left[B^Z/B^\phi\right]
+    \dpmap = \int_{\phi_i}^{\phi_i+T}\begin{pmatrix}
+        \partial_{r}\left[B^r/B^\phi\right] & \partial_{z}\left[B^r/B^\phi\right]\\
+        \partial_{r}\left[B^z/B^\phi\right] & \partial_{z}\left[B^z/B^\phi\right]
     \end{pmatrix}\cdot\begin{pmatrix}
-        \partial_{r}R & \partial_{z}R\\
-        \partial_{r}Z & \partial_{z}Z
-    \end{pmatrix}d\phi + \mathbb{I}_2
+        \partial_{R}r & \partial_{Z}r\\
+        \partial_{R}z & \partial_{Z}z
+    \end{pmatrix}d\phi + \mathbb{I}_2.
 
+For example |_| :
+
+.. math::
+    \partial_{r}\left[\frac{B^r}{B^\phi}\right] = \frac{1}{B^\phi}\frac{\partial B^r}{\partial r} - \frac{B^r}{(B^\phi)^2}\frac{\partial B^\phi}{\partial r}.
 
 Determinant of the Jacobian
 ---------------------------
 
-Using differential forms, it can be shown a relation for the determinant of the Jacobian matrix :math:`\mathcal{D}\pmap`. If we write the flux in the form formalism, then :math:`\beta = B^\phi dx^1\wedge dx^3` and the integral becomes |_| :
+Using differential forms, it can be shown a relation for the determinant of the Jacobian matrix :math:`\dpmap`. If we write the flux in the form formalism, then :math:`\beta = B^\phi dR \wedge dZ` and the integral becomes |_| :
 
 .. math::
 
@@ -124,4 +131,4 @@ and we see that it implies here |_| :
 
     \det(\dpmap) = \beta_{R\,Z}(x)/\beta_{R\,Z}(\pmap(x)) = B^\phi(x)/B^\phi(\pmap(x))
 
-and we got the same formula back as a direct calculation.This shows the power of differential forms.
+and we got the same formula back as a direct calculation.This shows the power of differential forms. This can be generalized to any number of iteration of the map.
