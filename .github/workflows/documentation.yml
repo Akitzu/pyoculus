@@ -19,7 +19,7 @@ jobs:
           pip install sphinx sphinx_rtd_theme myst_parser sphinxcontrib-napoleon
       - name: Build the package
         run: |
-          pip install .
+          pip install .[JAX]
       - name: Verify package installation
         run: |
           python -c "import pyoculus; print(pyoculus.__version__)"
