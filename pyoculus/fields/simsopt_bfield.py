@@ -10,8 +10,7 @@ try:
     from simsopt.field import MagneticField, InterpolatedField, BiotSavart
     from simsopt.geo import SurfaceXYZFourier, SurfaceClassifier
 except ImportError as e:
-    MagneticField, InterpolatedField, BiotSavart = None, None, None
-    SurfaceXYZFourier, SurfaceClassifier = None, None
+    logger.warning("Could not import simsopt. Some functionalities will not be available.")
     logger.debug(str(e))
 
 class SimsoptBfield(CylindricalBfield):
