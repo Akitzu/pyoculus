@@ -8,9 +8,10 @@ logger = logging.getLogger(__name__)
 
 try:
     from jax import jit, jacfwd
+    import jax.numpy as jnp
 except ImportError as e:
     logger.warning("Could not import jax. Some functionalities will not be available.")
-    logger.debug(str(e))
+    raise e
 
 class AnalyticCylindricalBfield(CylindricalBfield):
     """Analytical Bfield problem class that allows adding analytical perturbations to an analytical equilibrium field. The equilibrium field is

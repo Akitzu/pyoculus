@@ -11,7 +11,7 @@ try:
     from simsopt.geo import SurfaceXYZFourier, SurfaceClassifier
 except ImportError as e:
     logger.warning("Could not import simsopt. Some functionalities will not be available.")
-    logger.debug(str(e))
+    raise e
 
 class SimsoptBfield(CylindricalBfield):
     """

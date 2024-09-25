@@ -20,7 +20,7 @@ try:
     import jax.numpy as jnp
 except ImportError as e:
     logger.warning("Could not import jax. Some functionalities will not be available.")
-    logger.debug(str(e))
+    raise e
 
 import numpy as np
 

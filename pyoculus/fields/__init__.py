@@ -1,3 +1,6 @@
+import logging
+logger = logging.getLogger(__name__)
+
 from .magnetic_field import MagneticField
 
 # Cartesian magnetic fields
@@ -11,6 +14,13 @@ from .two_waves import TwoWaves
 
 # Cylindrical magnetic fields
 from .cylindrical_bfield import CylindricalBfield
-from .cylindrical_bfield_analytic import AnalyticCylindricalBfield
-from .simsopt_bfield import SimsoptBfield
+try:
+    from .simsopt_bfield import SimsoptBfield
+except ImportError as e:
+    logger.debug(e)
+try:
+    from .cylindrical_bfield_analytic import AnalyticCylindricalBfield
+except ImportError as e:
+    logger.debug(e)
+
 # from .m3dc1_bfield import M3DC1Bfield
