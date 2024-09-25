@@ -1,6 +1,6 @@
 """
 base_map.py
-==================
+===========
 
 Contains the abstract base class for maps.
 

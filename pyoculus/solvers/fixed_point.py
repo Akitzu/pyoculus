@@ -1,6 +1,6 @@
 """
 fixed_point.py
-==================
+==============
 
 Contains the class for finding fixed points of a map.
 
