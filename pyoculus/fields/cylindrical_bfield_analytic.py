@@ -2,8 +2,16 @@ from ..toybox.cylindrical_toybox import *
 from .cylindrical_bfield import CylindricalBfield
 import matplotlib.pyplot as plt
 from functools import partial
-from jax import jit, jacfwd
 
+import logging
+logger = logging.getLogger(__name__)
+
+try:
+    from jax import jit, jacfwd
+    import jax.numpy as jnp
+except ImportError as e:
+    logger.warning("Could not import jax. Some functionalities will not be available.")
+    raise e
 
 class AnalyticCylindricalBfield(CylindricalBfield):
     """Analytical Bfield problem class that allows adding analytical perturbations to an analytical equilibrium field. The equilibrium field is

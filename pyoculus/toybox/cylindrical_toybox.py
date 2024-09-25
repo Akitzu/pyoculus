@@ -8,13 +8,20 @@ The fields are calculated from the vector potential :math:`A` as :math:`B = \\na
 """
 
 from functools import wraps
-from jax import config
 
-config.update("jax_enable_x64", True)
+import logging
+logger = logging.getLogger(__name__)
 
-from jax import jacfwd
-from jax.lax import cond
-import jax.numpy as jnp
+try:
+    from jax import config
+    config.update("jax_enable_x64", True)
+    from jax import jacfwd
+    from jax.lax import cond
+    import jax.numpy as jnp
+except ImportError as e:
+    logger.warning("Could not import jax. Some functionalities will not be available.")
+    raise e
+
 import numpy as np
 
 ## Decorators

@@ -5,9 +5,6 @@ requires = [
     "ninja", 
     "numpy>=2.0; python_version>'3.8'",
     "oldest-supported-numpy; python_version<='3.8'",
-    "traitlets>=5.1.0",
-    "jupyter-core>=4.9.2",
-    "python-dateutil>=2.8.2",
 ]
 build-backend = "mesonpy"
 
@@ -39,7 +36,12 @@ dependencies=[
     "numpy>1.21.1",
     "scipy",
     "matplotlib",
+    "scipy",
     ]
+
+[project.optional-dependencies]
+SIMSOPT = ["simsopt"]
+JAX = ["jax"]
 
 [tool.pytest.ini_options]
 addopts = [
