@@ -104,7 +104,6 @@ py3.install_sources(
   'pyoculus/maps/cylindrical_bfield_section.py',
   'pyoculus/maps/integrated_map.py',
   'pyoculus/maps/spec_pjh.py',
-  'pyoculus/maps/spec_problem.py',
   'pyoculus/maps/toroidal_bfield_section.py',
   'pyoculus/maps/__init__.py',
   subdir: 'pyoculus/maps'
@@ -133,6 +132,7 @@ py3.install_sources(
   'pyoculus/utils/plot.py',
   'pyoculus/utils/cyl_cart_transform.py',
   'pyoculus/utils/convergence_domain.py',
+  'pyoculus/utils/fortran.py',
   'pyoculus/utils/__init__.py',
   subdir: 'pyoculus/utils'
 )
