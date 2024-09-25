@@ -1,20 +1,27 @@
-## @file spec_field.py
-#  @brief Setup the SPEC magnetic field system for ODE solver
-#  @author Zhisong Qu (zhisong.qu@anu.edu.au)
-#
-from ..maps.spec_problem import SPECProblem
+"""
+spec_field.py
+=============
+
+Setup the SPEC magnetic field from spec output file.
+
+:authors:
+    - Zhisong Qu (zhisong.qu@anu.edu.au)
+"""
+
+from ..utils.fortran import setup_fortran_module
 from .toroidal_bfield import ToroidalBfield
 import numpy as np
 
 
-## Class that used to setup the SPEC bfield problem for interfacing Fortran, used in ODE solver.
-# See \ref specbfield for more details.
-#
-# The SPECBfield system of ODEs is given by
-# \f[ \frac{ds}{d\zeta} = \frac{B^{s}}{B^{\zeta}}  \f]
-# \f[ \frac{d\theta}{d\zeta} = \frac{B^{\theta}}{B^{\zeta}}  \f]
-class SPECBfield(SPECProblem, ToroidalBfield):
+class SPECBfield(ToroidalBfield):
+    """
+    SPEC magnetic field class.
+    
+    The SPECBfield system of ODEs is given by
+    \f[ \frac{ds}{d\zeta} = \frac{B^{s}}{B^{\zeta}}  \f]
+    \f[ \frac{d\theta}{d\zeta} = \frac{B^{\theta}}{B^{\zeta}}  \f]
     ## the problem size, 2 for 1.5D/2D Hamiltonian system
+    """
 
     def __init__(self, spec_data, lvol):
         """! Set up the equilibrium for use of the fortran module
@@ -22,25 +29,28 @@ class SPECBfield(SPECProblem, ToroidalBfield):
         @param lvol which volume we are interested in, from 1 to spec_data.input.Mvol
         Only support SPEC version >=3.0
         """
-        super().__init__(spec_data, lvol)
-        self.problem_size = 2
-        if self.Igeometry == 1:
-            self.poincare_plot_type = "yx"
-            self.poincare_plot_xlabel = r"$\theta$"
-            self.poincare_plot_ylabel = r"R"
-        elif self.Igeometry == 2:
-            self.poincare_plot_type = "RZ"
-            self.poincare_plot_xlabel = "X(m)"
-            self.poincare_plot_ylabel = "Y(m)"
-        elif self.Igeometry == 3:
-            self.poincare_plot_type = "RZ"
-            self.poincare_plot_xlabel = "R(m)"
-            self.poincare_plot_ylabel = "Z(m)"
-        else:
-            raise ValueError("Unknown Igeometry!")
+
+        super().__init__(spec_data.input.physics.Nfp)
+        setup_fortran_module(spec_data, lvol)
+        
+        # self.problem_size = 2
+        # if self.Igeometry == 1:
+        #     self.poincare_plot_type = "yx"
+        #     self.poincare_plot_xlabel = r"$\theta$"
+        #     self.poincare_plot_ylabel = r"R"
+        # elif self.Igeometry == 2:
+        #     self.poincare_plot_type = "RZ"
+        #     self.poincare_plot_xlabel = "X(m)"
+        #     self.poincare_plot_ylabel = "Y(m)"
+        # elif self.Igeometry == 3:
+        #     self.poincare_plot_type = "RZ"
+        #     self.poincare_plot_xlabel = "R(m)"
+        #     self.poincare_plot_ylabel = "Z(m)"
+        # else:
+        #     raise ValueError("Unknown Igeometry!")
 
         ## The output of B contains the jacobian factor
-        self.has_jacobian = True
+        # self.has_jacobian = Trues
 
     def B(self, coords, *args):
         """! Returns magnetic fields
