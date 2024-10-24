@@ -61,8 +61,8 @@ class Manifold(BaseSolver):
 
         Args:
             map (maps.base_map): The map to use for the computation.
-            fixedpoint_1 (FixedPoint): 
-            fixedpoint_2 (FixedPoint, optional):
+            fixedpoint_1 (FixedPoint): first fixed point
+            fixedpoint_2 (FixedPoint, optional): second fix point if not homoclinic manifold. Defaults to None.
         """
 
         # Check that the fixed points are correct FixedPoint instances
@@ -80,86 +80,58 @@ class Manifold(BaseSolver):
                 )
 
         # Initialize the directions and the dictionnaries
-        self._is_self_intersection = False
         if fixedpoint_2 is not None:
             self.fixedpoint_1 = fixedpoint_1
             self.fixedpoint_2 = fixedpoint_2
-
-            # Initialize the inner/outer dictionnaries
-            self.outer = dict()
-            self.inner = dict()
-
-            # Initialize the manifold for later computations
-            self.outer['lfs'] = {"stable": None, "unstable": None}
-            self.inner['lfs'] = {"stable": None, "unstable": None}
-
-            # Set the hetero/homo-clinic lists
-            self.outer['clinics'] = []
-            self.inner['clinics'] = []
         else:
-            self._is_self_intersection = True
             self.fixedpoint_1 = fixedpoint_1
             self.fixedpoint_2 = fixedpoint_1
 
-            # Same as for outer/inner but in the case of self intersection
-            self.records = dict()
-            self.records['lfs'] = {"stable": None, "unstable": None}
-            self.records['clinics'] = []
+        self._lfs = {"stable": None, "unstable": None}
 
         # Initialize the BaseSolver
         super().__init__(map)
 
-    def choose(self, dir_1, dir_2, first_stable_inner):
+    def choose(self, dir_1, dir_2, is_first_stable):
         """
-        Choose two fixed points and their stable or unstable directions.
+        Choose the stable and unstable directions.
         
         Args:
-            dirs_1 (str): 
-            dirs_2 (str): Same as for dirs_1 but for the second fixed point.
-            first_stable_inner (bool): Whether the first fixed point stable direction on the inner manifold or not, True means it is.
+            dir_1 (str): '+' or '-' for the stable direction.
+            dir_2 (str): '+' or '-' for the unstable direction.
+            first_stable (bool): Whether the first fixed point is a stable direction.
         """
 
-        if first_stable_inner:    
+        if is_first_stable:
             fp_1, fp_2 = self.fixedpoint_1, self.fixedpoint_2
         else:
             fp_1, fp_2 = self.fixedpoint_2, self.fixedpoint_1
 
-        signs = [(-1)**int(d=='+') for d in dirs_1 + dirs_2]
+        signs = [(-1)**int(d=='+') for d in dir_1 + dir_2]
 
         # Choose the fixed points and their directions
         rfp_1 = fp_1.coords[0]
-        p1_lambda_s, p1_vector_s, p1_lambda_u, p1_vector_u = eig(
+        p1_lambda_s, p1_vector_s, _, _ = eig(
             fp_1.jacobians[0]
         )
 
         rfp_2 = fp_2.coords[0]
-        p2_lambda_s, p2_vector_s, p2_lambda_u, p2_vector_u = eig(
+        _, _, p2_lambda_u, p2_vector_u = eig(
             fp_2.jacobians[0]
         )
         
-        # Inner direction
-        self.inner['rfp_s'], self.inner['lambda_s'], self.inner['vector_s'] = (
+        # Assign the fixed points and their directions
+        self.rfp_s, self.lambda_s, self.vector_s = (
             rfp_1,
             p1_lambda_s,
             signs[0] * p1_vector_s,
         )
-        self.inner['rfp_u'], self.inner['lambda_u'], self.inner['vector_u'] = (
+        self.rfp_u, self.lambda_u, self.vector_u = (
             rfp_2,
             p2_lambda_u,
             signs[3] * p2_vector_u,
         )
 
-        # Outter direction
-        self.outer['rfp_s'], self.outer['lambda_s'], self.outer['vector_s'] = (
-            rfp_2,
-            p2_lambda_s,
-            signs[2] * p2_vector_s,
-        )
-        self.outer['rfp_u'], self.outer['lambda_u'], self.outer['vector_u'] = (
-            rfp_1,
-            p1_lambda_u,
-            signs[1] * p1_vector_u,
-        )
     
     @classmethod
     def show_directions(cls, fp_1, fp_2, **kwargs):
@@ -245,7 +217,7 @@ class Manifold(BaseSolver):
 
     ### Computation of the manifolds
 
-    def start_config(self, epsilon, rfp, eigenvalue, eigenvector, neps=10, direction=1):
+    def start_config(self, epsilon, rfp, eigenvalue, eigenvector, neps, direction=1):
         """
         Compute a starting configuration for the manifold drawing. It takes a point in the linear regime
         and devide the interval from the point to its evolution after one nfp into neps points. The interval
@@ -301,134 +273,115 @@ class Manifold(BaseSolver):
                 f"Search for minimum of the linear error succeeded, epsilon = {esp_root:.5e}"
             )
             return esp_root
-
-    def compute(self, epsilon: float = None, **kwargs):
-        """Computation of the manifold. If no fixed point number is given, the tangle is computed otherwise
-        selects the fixed point associated to fp_num and compute for the directions.
+    
+    def compute_manifold(self, eps, compute_stable, **kwargs):
+        """
+        Compute the stable or unstable manifold.
 
         Args:
-            epsilon (float, optional): epsilon for the starting configuration. If not given, it is computed for both the stable and unstable directions.
-            fp_num (int, optional): fixed point number. If given, the computation is perform for manifold from this fixed point only.
+            eps (float): epsilon in the stable or unstable direction
+            compute_stable (bool): whether to compute the stable or unstable manifold
 
         Keyword Args:
+            eps_guess (float): guess for epsilon (if eps is not given)
+            neps (int): number of points in the starting configuration
+            nint (int): number of intersections
+
+        Returns:
+            np.array: array of points on the manifold
+        """
+        # Set the right parameters
+        mname = "stable" if compute_stable else "unstable"
+        if compute_stable:
+            rfp, vector, lambda_, goes = self.rfp_s, self.vector_s, self.lambda_s, -1
+        else:
+            rfp, vector, lambda_, goes = self.rfp_u, self.vector_u, self.lambda_u, 1
+
+        # Setup the epsilon such that the first point is at rfp + eps * vector
+        eps = kwargs.get("eps", None)
+
+        # If the epsilon is not given, find the best one in the linear regime
+        eps_guess = kwargs.get("eps_guess", 1e-3)
+        if eps is None:
+            eps = self.find_epsilon(
+                rfp, vector, eps_guess, goes
+            )
+
+        # Compute the starting configuration and the manifold
+        neps, nint = kwargs.get("neps", 20), kwargs.get("nint", 10)
+        RZs = self.start_config(
+            eps, rfp, lambda_, vector, neps, goes
+        )
+        logger.info(f"Computing {mname} manifold...")
+        self._lfs[mname] = self.integrate(
+            RZs, nintersect=nint, direction=goes
+        )
+
+        return self._lfs[mname]
+
+    @property
+    def stable(self):
+        if self._lfs["stable"] is None:
+            logger.info("Stable manifold not computed. Using the computation method.")
+            self.compute_manifold(1e-3, True)
+        return self._lfs["stable"]
+    
+    @property
+    def unstable(self):
+        if self._lfs["unstable"] is None:
+            logger.info("Unstable manifold not computed. Using the computation method.")
+            self.compute_manifold(1e-3, False)
+        return self._lfs["unstable"]
+
+    def compute(self, eps_s, eps_u, **kwargs):
+        """
+        Computation of the stable and unstable manifolds.
+
+        Args:
             eps_s (float): epsilon in the stable direction
-            eps_u (float): epsilon in the unstable direction
+            eps_u (float): epsilon in the unstable direction    
+        
+        Keyword Args:
             eps_guess_s (float): guess for epsilon in the stable direction (if eps_s is not given)
             eps_guess_u (float): guess for epsilon in the unstable direction (if eps_u is not given)
-            nintersect (int): number of intersections
-            directions (str): directions to compute the manifold
             neps (int): number of points in the starting configuration
         """
-        options = {
-            "eps_guess_s": 1e-3,
-            "eps_guess_u": 1e-3,
-            "nintersect": 10,
-            "neps": 2,
-            "directions": "both",
-            "eps_s": None,
-            "eps_u": None,
-        }
-        options.update({key: value for key, value in kwargs.items() if key in options})
+        # Extract the keyword arguments
+        kwargs_s = {key: kwargs.pop(key) for key in ["eps_guess_s", "neps_s", "nint_s"] if key in kwargs}
+        kwargs_u = {key: kwargs.pop(key) for key in ["eps_guess_u", "neps_u", "nint_u"] if key in kwargs}
+        if kwargs:
+            logger.warning(f"Unused keyword arguments: {kwargs}")
 
-        # Setup the fixedpoints/eigenvectors to use
-        if options['directions'] == "both":
-            directions = [self.inner, self.outer]
-        elif options['directions'] == "inner":
-            directions = [self.inner]
-        elif options['directions'] == "outer":
-            directions = [self.outer]
-        else:
-            raise ValueError("Invalid directions")
-        logger.info(f"Computing manifold for directions [inner/outer/both]: {options['directions']}")
+        # Compute the manifolds
+        self.compute_manifold(eps_s, True, **kwargs_s)
+        self.compute_manifold(eps_u, False, **kwargs_u)
 
-        # Computation
-        for dik in directions:
-            rfp_s, rfp_u = dik['rfp_s'], dik['rfp_u']
-            vector_s, vector_u = dik['vector_s'], dik['vector_u']
-            lambda_s, lambda_u = dik['lambda_s'], dik['lambda_u']
-
-            # Setup the epsilon (eps_s, eps_u) of stable and unstable directions
-            if epsilon is not None:
-                if options["eps_s"] is not None:
-                    logger.warning("Both eps_s and epsilon are given, ignoring the eps_s.")
-                if options["eps_u"] is not None:
-                    logger.warning("Both eps_u and epsilon are given, ignoring the eps_u.")
-                options["eps_s"] = epsilon
-                options["eps_u"] = epsilon
-            if options["eps_s"] is None:
-                options["eps_s"] = self.find_epsilon(
-                    rfp_s, vector_s, options["eps_guess_s"], -1
-                )
-            if options["eps_u"] is None:
-                options["eps_u"] = self.find_epsilon(
-                    rfp_u, vector_u, options["eps_guess_u"]
-                )
-
-            # Compute the unstable starting configuration and the manifold
-            RZs = self.start_config(
-                options["eps_u"], rfp_u, lambda_u, vector_u, options["neps"]
-            )
-            logger.info("Computing unstable manifold...")
-            dik["lfs"]["unstable"] = self.integrate(RZs, nintersect=options["nintersect"])
-
-            # Compute the stable starting configuration and the manifold
-            RZs = self.start_config(
-                options["eps_s"], rfp_s, lambda_s, vector_s, options["neps"], -1
-            )
-            logger.info("Computing stable manifold...")
-            dik["lfs"]["stable"] = self.integrate(
-                RZs, nintersect=options["nintersect"], direction=-1
-            )
+        return self._lfs["stable"], self._lfs["unstable"]
 
 
-    def plot(self, directions="isiuosou", color=None, end=None, **kwargs):
-        default = {
-            "markersize": 2,
-            "fmt": "-o",
-            "colors": ["green", "red", "green", "red"],
-        }
-        default.update({key: value for key, value in kwargs.items() if key in default})
+    def plot(self, which="both", **kwargs):
+        """
+        
+        """
         fig, ax, kwargs = create_canvas(**kwargs)
-        plotkwargs = {key: value for key, value in kwargs.items() if key not in default}
+        
+        colors = kwargs.pop("colors", ["green", "red"])
+        markersize = kwargs.pop("markersize", 2)
+        fmt = kwargs.pop("fmt", "-o")
 
-        dirdict = {
-            "is": self.inner["lfs"]["stable"],
-            "iu": self.inner["lfs"]["unstable"],
-            "os": self.outer["lfs"]["stable"],
-            "ou": self.outer["lfs"]["unstable"]
-        }
-
-        for i, dir in enumerate(["is", "iu", "os", "ou"]):
-            if dir in directions:
-                out = dirdict[dir]
-                if out is None:
-                    logger.warning(f"Manifold {dir} not computed.")
-                else:
-                    # plotting each starting point trajectory as order
-                    # for yr, yz in zip(out[::2], out[1::2]):
-                    #     # ax.scatter(yr, yz, alpha=1, s=5)
-                    #     ax.scatter(yr, yz, color=color[i], alpha=1, s=5)
-                    if color is None:
-                        tmpcolor = default["colors"][i]
-                    else:
-                        tmpcolor = color
-                    if end is not None:
-                        if end > out.shape[1]:
-                            raise ValueError("End index out of bounds")
-                        out = out[:, :end]
-
-                    out = out.T.flatten()
-                    ax.plot(
-                        out[::2],
-                        out[1::2],
-                        default["fmt"],
-                        label=f"{dir} - manifold",
-                        color=tmpcolor,
-                        markersize=default["markersize"],
-                        **plotkwargs,
-                    )
-                    #     # ax.scatter(yr, yz, alpha=1, s=5)
-                    #     ax.scatter(yr, yz, color=color[i], alpha=1, s=5)
+        for i, dir in enumerate(["stable", "unstable"]):
+            if dir == which or which == "both":
+                points = self._lfs[dir]
+                points = points.T.flatten()
+                ax.plot(
+                    points[::2],
+                    points[1::2],
+                    fmt,
+                    label=f"{dir} manifold",
+                    color=colors[i],
+                    markersize=markersize,
+                    **kwargs,
+                )
 
         return fig, ax
 
