@@ -5,14 +5,51 @@ from ..utils.plot import create_canvas
 from scipy.optimize import root, minimize
 
 # from functools import total_ordering
+from matplotlib.patches import FancyArrowPatch
 import matplotlib.pyplot as plt
 import numpy as np
 
 import logging
 logger = logging.getLogger(__name__)
 
+def eig(jacobian):
+    """
+    Compute the stable and unstable eigenvalues and eigenvectors of the fixed point.
+    
+    Args:
+        jacobian (np.array): Jacobian matrix of the fixed point.
+
+    Returns:
+        tuple: A tuple containing four elements: 
+            - lambda_s (float): The stable eigenvalue.
+            - vector_s (np.array): The stable eigenvector.
+            - lambda_u (float): The unstable eigenvalue.
+            - vector_u (np.array): The unstable eigenvector.
+    """
+    eigRes = np.linalg.eig(jacobian)
+    eigenvalues = np.abs(eigRes[0])
+
+    # Eigenvectors are stored as columns of the matrix eigRes[1], transposing it to access them as np.array[i]
+    eigenvectors = eigRes[1].T
+
+    # Extract the index of the stable and unstable eigenvalues
+    s_index, u_index = 0, 1
+    if eigenvalues[0].real > eigenvalues[1].real:
+        s_index, u_index = 1, 0
+
+    return (
+        eigenvalues[s_index],
+        eigenvectors[s_index],
+        eigenvalues[u_index],
+        eigenvectors[u_index],
+    )
 
 class Manifold(BaseSolver):
+    """
+    
+    
+    """
+
     def __init__(
         self,
         map : maps.base_map,
@@ -20,7 +57,12 @@ class Manifold(BaseSolver):
         fixedpoint_2 : FixedPoint = None
     ):
         """
-        
+        Initialize the Manifold class.
+
+        Args:
+            map (maps.base_map): The map to use for the computation.
+            fixedpoint_1 (FixedPoint): 
+            fixedpoint_2 (FixedPoint, optional):
         """
 
         # Check that the fixed points are correct FixedPoint instances
@@ -37,6 +79,7 @@ class Manifold(BaseSolver):
                     "Need a successful fixed point to compute the manifold"
                 )
 
+        # Initialize the directions and the dictionnaries
         self._is_self_intersection = False
         if fixedpoint_2 is not None:
             self.fixedpoint_1 = fixedpoint_1
@@ -66,98 +109,129 @@ class Manifold(BaseSolver):
         # Initialize the BaseSolver
         super().__init__(map)
 
-    @staticmethod
-    def eig(jacobian):
-        """Compute the eigenvalues and eigenvectors of the jacobian and returns them in the order : stable, unstable."""
-        eigRes = np.linalg.eig(jacobian)
-        eigenvalues = np.abs(eigRes[0])
+    def choose(self, dir_1, dir_2, first_stable_inner):
+        """
+        Choose two fixed points and their stable or unstable directions.
+        
+        Args:
+            dirs_1 (str): 
+            dirs_2 (str): Same as for dirs_1 but for the second fixed point.
+            first_stable_inner (bool): Whether the first fixed point stable direction on the inner manifold or not, True means it is.
+        """
 
-        # Eigenvectors are stored as columns of the matrix eigRes[1], transposing it to access them as np.array[i]
-        eigenvectors = eigRes[1].T
-        s_index, u_index = 0, 1
-        if eigenvalues[0].real > eigenvalues[1].real:
-            s_index, u_index = 1, 0
-
-        return (
-            eigenvalues[s_index],
-            eigenvectors[s_index],
-            eigenvalues[u_index],
-            eigenvectors[u_index],
-        )
-
-    def choose(self, signs, order=True):
-        """Choose the two fixed points and their stable or unstable directions."""
-
-        # Choose the 1st/2nd fixedpoint as inner/outer stable
-        if order:
+        if first_stable_inner:    
             fp_1, fp_2 = self.fixedpoint_1, self.fixedpoint_2
         else:
             fp_1, fp_2 = self.fixedpoint_2, self.fixedpoint_1
 
+        signs = [(-1)**int(d=='+') for d in dirs_1 + dirs_2]
+
         # Choose the fixed points and their directions
         rfp_1 = fp_1.coords[0]
-        p1_lambda_s, p1_vector_s, p1_lambda_u, p1_vector_u = self.eig(
+        p1_lambda_s, p1_vector_s, p1_lambda_u, p1_vector_u = eig(
             fp_1.jacobians[0]
         )
 
         rfp_2 = fp_2.coords[0]
-        p2_lambda_s, p2_vector_s, p2_lambda_u, p2_vector_u = self.eig(
+        p2_lambda_s, p2_vector_s, p2_lambda_u, p2_vector_u = eig(
             fp_2.jacobians[0]
         )
-
-        # Inner difrection
+        
+        # Inner direction
         self.inner['rfp_s'], self.inner['lambda_s'], self.inner['vector_s'] = (
             rfp_1,
             p1_lambda_s,
-            signs[0][0] * p1_vector_s,
+            signs[0] * p1_vector_s,
         )
         self.inner['rfp_u'], self.inner['lambda_u'], self.inner['vector_u'] = (
             rfp_2,
             p2_lambda_u,
-            signs[1][0] * p2_vector_u,
+            signs[3] * p2_vector_u,
         )
 
         # Outter direction
         self.outer['rfp_s'], self.outer['lambda_s'], self.outer['vector_s'] = (
             rfp_2,
             p2_lambda_s,
-            signs[1][1] * p2_vector_s,
+            signs[2] * p2_vector_s,
         )
         self.outer['rfp_u'], self.outer['lambda_u'], self.outer['vector_u'] = (
             rfp_1,
             p1_lambda_u,
-            signs[0][1] * p1_vector_u,
+            signs[1] * p1_vector_u,
         )
-        
-    def show_directions(self, **kwargs):
+    
+    @classmethod
+    def show_directions(cls, fp_1, fp_2, **kwargs):
+        """
+        Helper function to plot the fixed points and their stable and unstable direction. Usefull to look at which direction need to be considered for the inner and outer manifolds before creating a class and analyzed them.
 
+        Args:
+            fp_1 (FixedPoint): First fixed point.
+            fp_2 (FixedPoint): Second fixed point.
+            **kwargs: Additional optional keyword arguments.
+                - pcolors (list): Colors for the fixed points.
+                - vcolors (list): Colors for the eigenvectors.
+                - vscale (int): Scale for the eigenvectors (default is 18).
+                - dvtext (float): Additional distance for the text as a fraction of the eigenvector (default is 0.005).
+
+        Returns:
+            tuple: A tuple containing the figure and the axis.
+        """
+
+        # Defaults 
+        pcolors = kwargs.get("pcolors", ['tab:blue', 'tab:orange'])
+        vcolors = kwargs.get("vcolors", ['tab:green', 'tab:red'])
+        vscale = kwargs.get("scale", 18)
+        dvtext = kwargs.get("dvtext", 0.005)
+
+        # Set the figure and ax
         fig, ax, kwargs = create_canvas(**kwargs)
         
+        # Choose the fixed points and their directions
+        rfp_1 = fp_1.coords[0]
+        _, p1_vector_s, _, p1_vector_u = eig(
+            fp_1.jacobians[0]
+        )
+        rfp_2 = fp_2.coords[0]
+        _, p2_vector_s, _, p2_vector_u = eig(
+            fp_2.jacobians[0]
+        )
+
         # Plot the fixed points
-        ax.scatter(*self.inner['rfp_s'], color='blue')
-        ax.scatter(*self.inner['rfp_u'], color='blue')
+        ax.scatter(*rfp_1, marker='X', s=100, label='Fixed point 1', zorder=999, 
+                   color=pcolors[0], edgecolor='black', linewidth=1)
+        ax.scatter(*rfp_2, marker='X', s=100, label='Fixed point 2', zorder=999, 
+                   color=pcolors[1], edgecolor='black', linewidth=1)
+        # ax.text(*(rfp_1), '1', zorder=999, ha='center', va='center')
+        # ax.text(*(rfp_2), '2', zorder=999, ha='center', va='center')
 
         # Plot the eigenvectors
-        Q_inner_stable = ax.quiver(*self.inner['rfp_s'], *self.inner['vector_s'], color='green')
-        Q_inner_unstable = ax.quiver(*self.inner['rfp_u'], *self.inner['vector_u'], color='red')
-        Q_outer_stable = ax.quiver(*self.outer['rfp_s'], *self.outer['vector_s'], color='green')
-        Q_outer_unstable = ax.quiver(*self.outer['rfp_u'], *self.outer['vector_u'], color='red')
+        def plot_eigenvectors(ax, rfp, vectors):
+            for vector, color in zip(vectors, vcolors):
+                # Positive and negative arrows
+                p_arrow = FancyArrowPatch(rfp, rfp + vector / vscale, arrowstyle='-|>', color=color, mutation_scale=10)
+                n_arrow = FancyArrowPatch(rfp, rfp - vector / vscale, arrowstyle='-|>', color=color, mutation_scale=10)
+                
+                # Add the arrows to the plot
+                ax.add_patch(p_arrow)
+                ax.add_patch(n_arrow)
 
-        # Convert the start point of the quiver from data coordinates to axes coordinates
-        x_inner_stable, y_inner_stable = ax.transAxes.inverted().transform(ax.transData.transform(self.inner['rfp_s'][:2]))
-        x_inner_unstable, y_inner_unstable = ax.transAxes.inverted().transform(ax.transData.transform(self.inner['rfp_u'][:2]))
-        x_outer_stable, y_outer_stable = ax.transAxes.inverted().transform(ax.transData.transform(self.outer['rfp_s'][:2]))
-        x_outer_unstable, y_outer_unstable = ax.transAxes.inverted().transform(ax.transData.transform(self.outer['rfp_u'][:2]))
+                # Add the text
+                ax.text(*(rfp + vector * (dvtext + 1 / vscale)), '+', zorder=999, color=color, 
+                        fontsize='large', fontweight='bold', ha='center', va='center')
+                ax.text(*(rfp - vector * (dvtext + 1 / vscale)), '-', zorder=999, color=color, 
+                        fontsize='large', fontweight='bold', ha='center', va='center')
 
-        ax.text(x_inner_stable, y_inner_stable, 'inner stable', ha='right')
-        ax.text(x_inner_unstable, y_inner_unstable, 'inner unstable', ha='left')
-        ax.text(x_outer_stable, y_outer_stable, 'outer stable', ha='left')
-        ax.text(x_outer_unstable, y_outer_unstable, 'outer unstable', ha='right')
+        plot_eigenvectors(ax, rfp_1, [p1_vector_s, p1_vector_u])
+        plot_eigenvectors(ax, rfp_2, [p2_vector_s, p2_vector_u])
 
         return fig, ax
 
     def error_linear_regime(self, epsilon, rfp, eigenvector, direction=1):
-        """Metric to evaluate if the point rfp + epsilon * eigenvector is in the linear regime of the fixed point."""
+        """
+        Metric to evaluate if the point rfp + epsilon * eigenvector is in the linear regime of the fixed point.
+        """
         # Initial point and evolution
         rEps = rfp + epsilon * eigenvector
         rz_path = self.integrate(rEps, 1, direction)
@@ -187,7 +261,6 @@ class Manifold(BaseSolver):
 
         Returns:
             np.array: array of starting points (shape (neps, 2))
-            float: norm of the difference between the computed eigenvector and the given one
         """
         # Initial point and evolution
         rEps = rfp + epsilon * eigenvector
@@ -208,9 +281,7 @@ class Manifold(BaseSolver):
 
         Rs = rfp[0] + eps * eps_dir_norm[0]
         Zs = rfp[1] + eps * eps_dir_norm[1]
-        RZs = np.array([[r, z] for r, z in zip(Rs, Zs)])
-
-        return RZs
+        return Rs, Zs
 
     def find_epsilon(self, rfp, eigenvector, eps_guess=1e-3, direction=1):
         """Find the epsilon that lies in the linear regime."""
