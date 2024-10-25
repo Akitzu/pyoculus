@@ -87,7 +87,9 @@ class Manifold(BaseSolver):
             self.fixedpoint_1 = fixedpoint_1
             self.fixedpoint_2 = fixedpoint_1
 
-        self._lfs = {"stable": None, "unstable": None}
+        # No choice of direction is made
+        logger.warning("No choice of direction is made. Proceeding with a random default.")
+        self.choose("+", "+", True)
 
         # Initialize the BaseSolver
         super().__init__(map)
@@ -103,34 +105,29 @@ class Manifold(BaseSolver):
         """
 
         if is_first_stable:
-            fp_1, fp_2 = self.fixedpoint_1, self.fixedpoint_2
+            fp_s, fp_u = self.fixedpoint_1, self.fixedpoint_2
         else:
-            fp_1, fp_2 = self.fixedpoint_2, self.fixedpoint_1
+            fp_s, fp_u = self.fixedpoint_2, self.fixedpoint_1
 
-        signs = [(-1)**int(d=='+') for d in dir_1 + dir_2]
+        signs = [(-1)**int(d=='-') for d in dir_1 + dir_2]
 
         # Choose the fixed points and their directions
-        rfp_1 = fp_1.coords[0]
-        p1_lambda_s, p1_vector_s, _, _ = eig(
-            fp_1.jacobians[0]
+        self.rfp_s = fp_s.coords[0]
+        self.lambda_s, self.vector_s, _, _ = eig(
+            fp_s.jacobians[0]
         )
 
-        rfp_2 = fp_2.coords[0]
-        _, _, p2_lambda_u, p2_vector_u = eig(
-            fp_2.jacobians[0]
+        self.rfp_u = fp_u.coords[0]
+        _, _, self.lambda_u, self.vector_u = eig(
+            fp_u.jacobians[0]
         )
         
         # Assign the fixed points and their directions
-        self.rfp_s, self.lambda_s, self.vector_s = (
-            rfp_1,
-            p1_lambda_s,
-            signs[0] * p1_vector_s,
-        )
-        self.rfp_u, self.lambda_u, self.vector_u = (
-            rfp_2,
-            p2_lambda_u,
-            signs[3] * p2_vector_u,
-        )
+        self.vector_s *= signs[0]
+        self.vector_u *= signs[1]
+
+        # Initialize the manifolds
+        self._lfs = {"stable": None, "unstable": None}
 
     
     @classmethod
@@ -200,6 +197,9 @@ class Manifold(BaseSolver):
 
         return fig, ax
 
+    def show_current_directions(self, **kwargs):
+        pass
+
     def error_linear_regime(self, epsilon, rfp, eigenvector, direction=1):
         """
         Metric to evaluate if the point rfp + epsilon * eigenvector is in the linear regime of the fixed point.
@@ -253,7 +253,7 @@ class Manifold(BaseSolver):
 
         Rs = rfp[0] + eps * eps_dir_norm[0]
         Zs = rfp[1] + eps * eps_dir_norm[1]
-        return Rs, Zs
+        return np.array([Rs, Zs]).T
 
     def find_epsilon(self, rfp, eigenvector, eps_guess=1e-3, direction=1):
         """Find the epsilon that lies in the linear regime."""
@@ -274,7 +274,7 @@ class Manifold(BaseSolver):
             )
             return esp_root
     
-    def compute_manifold(self, eps, compute_stable, **kwargs):
+    def compute_manifold(self, compute_stable, eps = None, **kwargs):
         """
         Compute the stable or unstable manifold.
 
@@ -297,9 +297,6 @@ class Manifold(BaseSolver):
         else:
             rfp, vector, lambda_, goes = self.rfp_u, self.vector_u, self.lambda_u, 1
 
-        # Setup the epsilon such that the first point is at rfp + eps * vector
-        eps = kwargs.get("eps", None)
-
         # If the epsilon is not given, find the best one in the linear regime
         eps_guess = kwargs.get("eps_guess", 1e-3)
         if eps is None:
@@ -308,7 +305,7 @@ class Manifold(BaseSolver):
             )
 
         # Compute the starting configuration and the manifold
-        neps, nint = kwargs.get("neps", 20), kwargs.get("nint", 10)
+        neps, nint = kwargs.get("neps", 40), kwargs.get("nint", 6)
         RZs = self.start_config(
             eps, rfp, lambda_, vector, neps, goes
         )
@@ -333,7 +330,7 @@ class Manifold(BaseSolver):
             self.compute_manifold(1e-3, False)
         return self._lfs["unstable"]
 
-    def compute(self, eps_s, eps_u, **kwargs):
+    def compute(self, eps_s = None, eps_u = None, **kwargs):
         """
         Computation of the stable and unstable manifolds.
 
@@ -353,8 +350,8 @@ class Manifold(BaseSolver):
             logger.warning(f"Unused keyword arguments: {kwargs}")
 
         # Compute the manifolds
-        self.compute_manifold(eps_s, True, **kwargs_s)
-        self.compute_manifold(eps_u, False, **kwargs_u)
+        self.compute_manifold(True, eps_s, **kwargs_s)
+        self.compute_manifold(False, eps_u, **kwargs_u)
 
         return self._lfs["stable"], self._lfs["unstable"]
 
@@ -368,14 +365,15 @@ class Manifold(BaseSolver):
         colors = kwargs.pop("colors", ["green", "red"])
         markersize = kwargs.pop("markersize", 2)
         fmt = kwargs.pop("fmt", "-o")
+        rm_points = kwargs.pop("rm_points", 0)
 
         for i, dir in enumerate(["stable", "unstable"]):
             if dir == which or which == "both":
                 points = self._lfs[dir]
                 points = points.T.flatten()
                 ax.plot(
-                    points[::2],
-                    points[1::2],
+                    points[:-2*rm_points:2],
+                    points[1:-2*rm_points:2],
                     fmt,
                     label=f"{dir} manifold",
                     color=colors[i],
