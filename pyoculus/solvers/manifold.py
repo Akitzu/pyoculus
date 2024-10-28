@@ -91,7 +91,7 @@ class Manifold(BaseSolver):
             self.fixedpoint_2 = fixedpoint_1
 
         # Setting the fast and slow directions
-        if dir1 is not None or dir2 is not None or is_first_stable is not None:
+        if dir1 is None or dir2 is None or is_first_stable is None:
             logger.warning("No choice of direction was made. Proceeding with default.")
             dir1, dir2, is_first_stable = '+', '+', True
         self.choose(dir1, dir2, is_first_stable)
@@ -319,7 +319,7 @@ class Manifold(BaseSolver):
         eps_guess = kwargs.get("eps_guess", 1e-3)
         if eps is None:
             eps = self.find_epsilon(
-                compute_stable, eps_guess
+                which, eps_guess
             )
 
         # Compute the starting configuration and the manifold
@@ -412,38 +412,84 @@ class Manifold(BaseSolver):
     class ClinicSet:
         def __init__(self, manifold):
             self._manifold = manifold
-            self._tuples = []
+            self.reset()
 
-        def record_clinic(self, eps_s, eps_u, n_s, n_u):
+        def __iter__(self):
+            self._index = 0
+            return self
+        
+        def __next__(self):
+            if self._index < len(self._tuples):
+                result = self._tuples[self._index]
+                self._index += 1
+                return result
+            else:
+                raise StopIteration
+        
+        def record_clinic(self, eps_s, eps_u, n_s, n_u, **kwargs):
             num_clinics = len(self._tuples)
             
             if num_clinics == 0:
-                self._fundamental_segment = self._manifold.fundamental_segments_from_eps(eps_s, eps_u)
+                bnd_s, bnd_u = self._manifold.fundamental_segments_from_eps(eps_s, eps_u)
+                self._fundamental_segments = {"stable": bnd_s, "unstable": bnd_u}
+                self._nint_found = (n_s, n_u)
 
-        def _order(self, clinic):
-            fund = self.onworking["fundamental_segment"][1]
-            rfp_u = self.onworking["rfp_u"]
+            r_s = self._manifold._map.f(-1*self._manifold.fixedpoint_1.m*n_s,
+                                        self._manifold.rfp_s + eps_s * self._manifold.vector_s)
+            r_u = self._manifold._map.f(+1*self._manifold.fixedpoint_1.m*n_u,
+                                        self._manifold.rfp_u + eps_u * self._manifold.vector_u)
 
-            norm = np.linalg.norm(clinic - rfp_u)
+            order_s = self._find_order(eps_s, "stable")
+            order_u = self._find_order(eps_u, "unstable")
 
-            r_ev = clinic
-            max_iterations = 20  # Set a maximum number of iterations
+            tol = kwargs.get("tol", 1e-3)
+            if not np.any([np.isclose(order_s, other[1], rtol=tol) for other in self._tuples]):
+                self._tuples.append((num_clinics, order_s, order_u, n_s, n_u, r_s, r_u))
+                self.order()
+            else:
+                logger.warning("Homo/heteroclinic already recorded, skipping...")
+
+
+        def _find_order(self, eps, which, **kwargs):
+            if which == "stable":
+                rfp, eigenvector, forward_dir = self._manifold.rfp_s, self._manifold.vector_s, -1
+            elif which == "unstable":
+                rfp, eigenvector, forward_dir = self._manifold.rfp_u, self._manifold.vector_u, +1
+            else:
+                raise ValueError("Invalid manifold selection.")
+
+            fund = self._fundamental_segments[which]
+            r_cur = rfp + eps * eigenvector
+            norm = eps
+
+            # If the eps is less then the lower bound, then the direction should be forward otherwise backward
+            forward_dir *= 1 if eps < fund[0] else -1
+    
+            # Set a maximum number of iterations
+            max_iterations = kwargs.get("max_iters", 20)  
             for _ in range(max_iterations):
                 if fund[0] <= norm < fund[1]:
                     return norm
-                logger.debug(f"norm = {norm}")
-                r_ev = self._map.f(-1*self.fixedpoint_1.m, r_ev)
-                norm = np.linalg.norm(r_ev - rfp_u)
+                r_cur = self._manifold._map.f(-1*self._manifold.fixedpoint_1.m, r_cur)
+                norm = np.linalg.norm(r_cur - rfp)
+                logger.debug(f"Current epsilon (from norm calculation): {norm}")
 
             raise ValueError(
                 "Failed to find a solution within the maximum number of iterations"
             )
-
+        
         def order(self):
-            """Order the homo/hetero-clinic points with the induced linear ordering of the unstable manifold >_u."""
-            self.onworking["clinics"] = [
-                self.onworking["clinics"][i] for i in np.argsort([x[0] for x in self.onworking["clinics"]])
+            """
+            Order the homo/hetero-clinic points with the induced linear ordering of the unstable manifold >_u.
+            """
+            self._tuples = [
+                self._tuples[i] for i in np.argsort([x[1] for x in self._tuples])
             ]
+
+        def reset(self):
+            self._tuples = []
+            self._fundamental_segments = None
+            
         
     def fundamental_segments_from_eps(self, eps_s : float, eps_u : float):
         """
@@ -475,8 +521,7 @@ class Manifold(BaseSolver):
         upperbound_s = np.linalg.norm(r_s_evolved - self.rfp_s)
         upperbound_u = np.linalg.norm(r_u_evolved - self.rfp_u)
 
-        bounds = ((eps_s, upperbound_s), (eps_u, upperbound_u))
-        return bounds
+        return (eps_s, upperbound_s), (eps_u, upperbound_u)
 
     def find_N(self, eps_s : float, eps_u : float):
         """
@@ -506,7 +551,7 @@ class Manifold(BaseSolver):
                 r_s = self._map.f(-1*self.fixedpoint_1.m, r_s)
                 n_s += 1
             else:
-                r_u = self._map.f(1*self.fixedpoint_1.m, r_u)
+                r_u = self._map.f(+1*self.fixedpoint_1.m, r_u)
                 n_u += 1
             stable_evol = not stable_evol
 
@@ -641,30 +686,46 @@ class Manifold(BaseSolver):
         )
 
         # Recording the homo/hetero-clinic point
-        
+        self._clinics.record_clinic(eps_s, eps_u, n_s, n_u)
+
         return eps_s, eps_u
 
-    def find_clinics(self, n_points = None, **kwargs):
+    def find_clinics(self, first_guess_eps_s, first_guess_eps_u, n_points = None, **kwargs):
         """
+        Args:
+
         """
+        shift = kwargs.pop('shift', 0)
 
         if n_points is None:
             n_points = 2*self.fixedpoint_1.m
-        
-        stable_multiplicators = np.power(self.lambda_s, np.arange(n_points) / n_points)
-        unstable_multiplicators = np.power(self.lambda_u, np.arange(n_points) / n_points)
-        
-        for i, (mult_s, mult_u) in enumerate(zip(stable_multiplicators, unstable_multiplicators)):
-            guess_i = [
-                bounds_0[0][1] * mult_s,
-                bounds_0[1][0] * mult_u,
-            ]
-            logger.info(f"Search {i+1}/{n_points} - initial guess for epsilon pair (eps_s, eps_u): {guess_i}")
 
-            n_s = self.onworking["find_clinic_configuration"]["n_s"]
-            n_u = self.onworking["find_clinic_configuration"]["n_u"] - 1
+        # Reset the clinic search 
+        if kwargs.get("reset", True):
+            self._clinics.reset()
+
+        logger.info(f"Search {1}/{n_points} - initial guess for epsilon pair (eps_s, eps_u): {first_guess_eps_s, first_guess_eps_u}")
+        self.find_clinic_single(first_guess_eps_s, first_guess_eps_u, **kwargs)
+        bounds = self._clinics._fundamental_segments
+
+        stable_multiplicators = np.power(self.lambda_s, np.arange(n_points)[1:] / n_points)
+        unstable_multiplicators = np.power(self.lambda_u, np.arange(n_points)[1:] / n_points)
+
+        for i, (mult_s, mult_u) in enumerate(zip(stable_multiplicators, unstable_multiplicators)):    
+            guess_i = [
+                    bounds["stable"][1] * mult_s,
+                    bounds["unstable"][0] * mult_u,
+                ]
+
+            logger.info(f"Search {i+2}/{n_points} - initial guess for epsilon pair (eps_s, eps_u): {guess_i}")
+
+            # Retrieve the 
+            n_s, n_u = self._clinics._nint_found
+            n_s += shift
+            n_u -= shift + 1
+
             self.find_clinic_single(
-                *guess_i, bounds=bounds_i, n_s=n_s, n_u=n_u, **kwargs
+                *guess_i, n_s=n_s, n_u=n_u, **kwargs
             )
         
         # if len(self.onworking["clinics"]) != n_points:
@@ -672,27 +733,29 @@ class Manifold(BaseSolver):
 
 
     def plot_clinics(self, **kwargs):
-        marker = ["P", "o", "s", "p", "P", "*", "X", "D", "d", "^", "v", "<", ">"]
+        """
+        """
+        markers = kwargs.get("markers", ["P", "o", "s", "p", "*", "X", "D", "d", "^", "v", "<", ">"])
+        color, edgecolor = kwargs.get("color", "royalblue"), kwargs.get("edgecolor", "cyan")
 
         fig, ax, kwargs = create_canvas(**kwargs)
         
-        for i, clinic in enumerate(self.onworking["clinics"]):
-            eps_s, eps_u = clinic[1:3]
-            n_s, n_u = self.onworking["find_clinic_configuration"].values()
-            rfp_s, rfp_u = self.onworking["rfp_s"], self.onworking["rfp_u"]
-            vec_s, vec_u = self.onworking["vector_s"], self.onworking["vector_u"]
+        for i, clinic in enumerate(self._clinics):
+            eps_s, eps_u, n_s, n_u, r_end_s = clinic[1:-1]
+            hs_i = self.integrate(self.rfp_s + eps_s * self.vector_s, n_s-1, -1)
+            hu_i = self.integrate(self.rfp_u + eps_u * self.vector_u, n_u-1, 1)
 
-            hs_i = self.integrate(rfp_s + eps_s * vec_s, n_s, -1)
-            hu_i = self.integrate(rfp_u + eps_u * vec_u, n_u, 1)
-            ax.scatter(hs_i[0,:], hs_i[1,:], marker=marker[i], color="royalblue", edgecolor='cyan', zorder=10)
-            ax.scatter(hu_i[0,:], hu_i[1,:], marker=marker[i], color="royalblue", edgecolor='cyan', zorder=10)
+            ax.scatter(*r_end_s, marker=markers[i], color=color, edgecolor=edgecolor, zorder=10)
+            ax.scatter(hs_i[0,:], hs_i[1,:], marker=markers[i], color=color, edgecolor=edgecolor, zorder=10)
+            ax.scatter(hu_i[0,:], hu_i[1,:], marker=markers[i], color=color, edgecolor=edgecolor, zorder=10)
 
         return fig, ax
 
-    ### Calculating Island/Turnstile Flux34
+    ### Calculating Island/Turnstile Flux
 
     def turnstile_area(self, n_joining = 100):
-        """Compute the turnstile area by integrating the vector potential along the trajectory of the homo/hetero-clinics points.
+        """
+        Compute the turnstile area by integrating the vector potential along the trajectory of the homo/hetero-clinics points.
         """
 
         if not isinstance(self._map, maps.CylindricalBfieldSection):
