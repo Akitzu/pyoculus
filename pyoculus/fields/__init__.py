@@ -2,6 +2,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from .magnetic_field import MagneticField
+from .cylindrical_grid_interpolated_field import AxisymmetricCylindricalGridField
 
 # Cartesian magnetic fields
 # from .cartesian_bfield import CartesianBfield
