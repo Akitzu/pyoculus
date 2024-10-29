@@ -6,14 +6,15 @@ Pyoculus implementation of the standard map with automatic differentiation
 The map is 'raised' so that the identity mapping takes place at p=0.5
 
 """
-import jax
-jax.config.update("jax_enable_x64", True)
 from .base_map import BaseMap
 import numpy as np
 
 import logging
 logger = logging.getLogger(__name__)
+
 try:
+    import jax
+    jax.config.update("jax_enable_x64", True)
     from jax import jit, jacfwd
     import jax.numpy as jnp
 except ImportError as e:

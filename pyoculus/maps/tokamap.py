@@ -5,14 +5,14 @@ Balescu, Radu, Mǎdǎlina Vlad, and F. Spineanu. "Tokamap: A Hamiltonian twist m
 
 This is a map that is slightly more complex than the standard map or the nontwist map, but is a two-dimensional iterated map for which it is easier to define the (monotonic) twist profile or safety factor profile. 
 """
-import jax
-jax.config.update("jax_enable_x64", True)
 import numpy as np
 from .base_map import BaseMap
 
 import logging
 logger = logging.getLogger(__name__)
 try:
+    import jax
+    jax.config.update("jax_enable_x64", True)
     from jax import jit, jacfwd
     import jax.numpy as jnp
 except ImportError as e:
