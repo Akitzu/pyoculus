@@ -1,4 +1,4 @@
-pyoculus
+yoculus
 =========
 
 .. image:: https://img.shields.io/badge/version-1.0.0-blue
@@ -6,23 +6,30 @@ pyoculus
 
 The eye into chaos: a comprehensive diagnostic package for non-integrable, toroidal magnetic fields (and more general 1 1/2-D or 2D Hamiltonian system), analytic and more general maps that rely on integration. Started as a python version of the original package `Oculus <https://github.com/SRHudson/Oculus/>`_. Oculus is the Latin word for *eye*.
 
+This is a fork from `zhisong/pyoculus` that includes capability to plot homo/heteroclinic tangles, and calculate turnstile area (a measure for chaotic transport). It is still a work in progress but is rapidly improving. And includes a re-factoring/improvement of some of the core logic. 
+
 Package Installation
 --------------------
 
-We recommand the use of a virtual environment.
-You can obtain the package from PYPI by
+This fork of pyoculus is not uploaded to pypi, we recommend to install it directly from the git
 
 .. code-block:: bash
 
-    pip3 install pyoculus
+    git clone https://github.com/Akitzu/pyoculus.git
+    cd pyoculus
+    python -m pip install .
+
 
 or for a specific user
 
 .. code-block:: bash
 
-    pip3 install --user pyoculus
+    git clone https://github.com/Akitzu/pyoculus.git
+    cd pyoculus
+    python -m pip install --user pyoculus
 
-Alternatively, you can clone this repository. [SPEC] [SIMSOPT] or [JAX].
+
+
 
 SPEC
 ~~~~
@@ -34,6 +41,29 @@ SIMSOPT
 ~~~~~~~
 
 On Windows you may need to do the following changes to the package before being able to install it.
+
+USAGE
+_____
+At the core of pyoculus is the concept of a `Map`, that takes a point to a new point, e.g., :math:`(R,Z)\rightarrow(\tilde{R},\tilde{Z})`.
+Here we used cylindrical coordinates :math:`R,Z`, but any coordinates can be used, and there is even some functionality for higher-dimensional mappings. 
+
+A `Map` can be constructed in many ways, the simplest being iterated maps such as the `StandardMap` and `Tokamap`, in which the mapped-to point is evaluated from simple expressions. 
+A `Map` can also be constructed from a magnetic field. In this case the map is defined by following integral curves of the field for a given number of symmetry periods. 
+In its setup, such an `IntegratedMap` needs properties of its integrator specified. 
+A map should provide a function `map.f(t,xx)`, that applies the map `t` times on the point `xx`, and `map.df` that provides the derivatives of the map (the Jacobian matrix). 
+More advanced maps can also provide a Lagrangian `map.lagrangian(y,t)`, that is needed for evaluating properties such as the turnstile area. 
+
+An `IntegratedMap` is generated from a `Field`, which is a vector field from :math:`\mathbb{R}^3\rightarrow\mathbb{R}^3`. 
+There are separate classes for fields given in Cartesian, cylindrical or toroidal coordinates, and separate `Integrators` that can be applied to them to construct the `map`. 
+The fields can be instantiated from different outputs, including regular grids, and the output of specific simulation/equilibrium reconstruction software (M3DC-1, SPEC), and toy models given by analytical expressions in the `Toybox`. 
+
+With your favorite `map` in hand, you can analyze it with any of the `solvers`.
+- `PoincarePlot`: Is instantiated with an array of starting points, and calling its `.compute(npts=1000)` will calculate all the trajectories from the list of starting points. 
+- `FixedPoint`: Finds fixed points of the map. 
+- `Manifold`: compute the intersections between manifolds of one or two fixed points, the tangles and turnstile areas. 
+
+There are also a few solvers that act on fields, such as `qfm` which finds quadratic flux minimizing surfaces in fields specified by toroidal coordinates using spectral methods. 
+
 
 Documentation
 -------------
