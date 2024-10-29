@@ -21,7 +21,7 @@ except ImportError as e:
     raise e
 
 @jit
-def standardmap_f_pure(y, K):
+def standardmap_f_pure(y, k):
     """
     Pyoculus implementation of the standard map with automatic differentiation
 
@@ -37,7 +37,7 @@ def standardmap_f_pure(y, K):
 
 
 @jit
-def standardmap_frev_pure(y, K, w):
+def standardmap_frev_pure(y, k):
     """
     Inverse of the Tokamap as described in:
     Balescu, Radu, Mǎdǎlina Vlad, and F. Spineanu. "Tokamap: A Hamiltonian twist map for magnetic field lines in a toroidal geometry." Physical Review E 58.1 (1998): 951.
