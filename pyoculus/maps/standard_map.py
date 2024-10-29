@@ -27,8 +27,8 @@ def standardmap_f_pure(y, K):
 
     The map is 'raised' so that the identity mapping takes place at p=0.5
     """
-    theta_old = xy[0]
-    p_old = xy[1]
+    theta_old = y[0]
+    p_old = y[1]
     # applying standard map on old coordinates to get new coordinates
     p = p_old + (k/(2*np.pi))*np.sin(2*np.pi*theta_old)
     theta = theta_old + p + 0.5 % 1
