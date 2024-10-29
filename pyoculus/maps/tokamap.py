@@ -7,11 +7,17 @@ This is a map that is slightly more complex than the standard map or the nontwis
 """
 import jax
 jax.config.update("jax_enable_x64", True)
-from jax import numpy as jnp
 import numpy as np
-from jax import jacfwd
-from jax import jit
 from .base_map import BaseMap
+
+import logging
+logger = logging.getLogger(__name__)
+try:
+    from jax import jit, jacfwd
+    import jax.numpy as jnp
+except ImportError as e:
+    logger.warning("Could not import jax. Some functionalities will not be available.")
+    raise e
 
 @jit
 def tokamap_f_pure(y, K, w):
