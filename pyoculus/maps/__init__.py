@@ -9,4 +9,7 @@ from .integrated_map import IntegratedMap
 
 from .toroidal_bfield_section import ToroidalBfieldSection
 from .cylindrical_bfield_section import CylindricalBfieldSection
+
+from .tokamap import TokaMap
+from .standard_map import StandardMap
 # from .spec_pjh import *

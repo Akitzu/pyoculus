@@ -314,9 +314,11 @@ class PoincarePlot(BaseSolver):
         if "fig" in kwargs.keys():
             fig = kwargs["fig"]
             ax = fig.gca()
+            kwargs.pop("fig")
         elif "ax" in kwargs.keys():
             ax = kwargs["ax"]
             fig = ax.figure
+            kwargs.pop("ax")
         elif plt.get_fignums():
             fig = plt.gcf()
             ax = plt.gca()
