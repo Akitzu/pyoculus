@@ -51,11 +51,53 @@ class Clinic:
         self.eps_u = eps_u
         self.nint_s = n_s
         self.nint_u = n_u
-        self.fundamental_segments = None
+        self._fundamental_segments = None
+        self._trajectory = None
+        self._path_s = None
+        self._path_u = None
+        self._xend_s = None
+        self._xend_u = None
 
     @property
     def trajectory(self):
-        pass
+        """
+        gives the evolution of the clinic point from the unstable fixed point to the stable fixed point.
+        """
+        if self._trajectory is not None:
+            return self._trajectory
+        
+        path_u = self._manifold.integrate(self._manifold.rfp_u + self.eps_u * self._manifold.vector_u, self.nint_u, +1)
+        path_s = self._manifold.integrate(self._manifold.rfp_s + self.eps_s * self._manifold.vector_s, self.nint_s, -1)
+        
+        self._path_u, self._path_s = path_u.T, path_s.T
+        self._trajectory = np.concatenate((path_u, path_s.T[::-1][1:].T), axis=1).T
+
+        return self._trajectory
+
+    # The end points are the points that where found to be close in the clinic search
+    @property
+    def x_end_s(self):
+        if self._xend_s is not None:
+            return self._xend_s
+        elif self._path_s is not None:
+            self._xend_s = self._path_s[-1,:]
+        else:
+            self.trajectory
+            self._xend_s = self._path_s[-1,:]
+
+        return self._xend_s
+
+    @property
+    def x_end_u(self):
+        if self._xend_u is not None:
+            return self._xend_u
+        elif self._path_u is not None:
+            self._xend_u = self._path_u[-1,:]
+        else:
+            self.trajectory
+            self._xend_u = self._path_u[-1,:]
+
+        return self._xend_u
 
     # Fundamental segments
     @property
@@ -92,8 +134,8 @@ class Clinic:
         # r_u_evolved   = self._map.f(+1*self.fixedpoint_1.m, r_u)
         r_u_evolved = self._manifold.integrate(r_u, 1, +1)[:,1]
 
-        upperbound_s = np.linalg.norm(r_s_evolved - self.rfp_s)
-        upperbound_u = np.linalg.norm(r_u_evolved - self.rfp_u)
+        upperbound_s = np.linalg.norm(r_s_evolved - self._manifold.rfp_s)
+        upperbound_u = np.linalg.norm(r_u_evolved - self._manifold.rfp_u)
 
         return (self.eps_s, upperbound_s), (self.eps_u, upperbound_u)
     
@@ -504,8 +546,8 @@ class Manifold(BaseSolver):
             tuple: A tuple containing two np.array of points, the first one for the stable manifold and the second one for the unstable manifold.
         """
         # Extract the keyword arguments
-        kwargs_s = {key: kwargs.pop(key) for key in ["eps_guess_s", "neps_s", "nint_s"] if key in kwargs}
-        kwargs_u = {key: kwargs.pop(key) for key in ["eps_guess_u", "neps_u", "nint_u"] if key in kwargs}
+        kwargs_s = {key[:-2]: kwargs.pop(key) for key in ["eps_guess_s", "neps_s", "nint_s"] if key in kwargs}
+        kwargs_u = {key[:-2]: kwargs.pop(key) for key in ["eps_guess_u", "neps_u", "nint_u"] if key in kwargs}
         if kwargs:
             logger.warning(f"Unused keyword arguments: {kwargs}")
 
@@ -533,8 +575,8 @@ class Manifold(BaseSolver):
                 points = self._lfs[dir]
                 points = points.T.flatten()
                 ax.plot(
-                    points[::2][final_index],
-                    points[1::2][final_index],
+                    points[::2][:final_index],
+                    points[1::2][:final_index],
                     fmt,
                     label=f"{dir} manifold",
                     color=colors[i],
@@ -747,7 +789,6 @@ class Manifold(BaseSolver):
             n_s += shift
             n_u += shift - 1
 
-            breakpoint()
             self.find_clinic_single(
                 *guess_i, n_s=n_s, n_u=n_u, **kwargs
             )
@@ -765,15 +806,9 @@ class Manifold(BaseSolver):
         fig, ax, kwargs = create_canvas(**kwargs)
         
         for i, clinic in enumerate(self.clinics):
-            pass
-            # eps_s, eps_u, n_s, n_u, r_end_s =
-            # hs_i = self.integrate(self.rfp_s + eps_s * self.vector_s, n_s-1, -1)
-            # hu_i = self.integrate(self.rfp_u + eps_u * self.vector_u, n_u-1, 1)
-
-            # ax.scatter(*r_end_s, marker=markers[i], color=color, edgecolor=edgecolor, zorder=10)
-            # ax.scatter(hs_i[0,:], hs_i[1,:], marker=markers[i], color=color, edgecolor=edgecolor, zorder=10)
-            # ax.scatter(hu_i[0,:], hu_i[1,:], marker=markers[i], color=color, edgecolor=edgecolor, zorder=10)
-
+            trajectory = clinic.trajectory
+            ax.scatter(*trajectory.T, marker=markers[i], color=color, edgecolor=edgecolor, zorder=10)
+        
         return fig, ax
 
     ### Calculating Island/Turnstile Flux
