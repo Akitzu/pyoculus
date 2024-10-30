@@ -147,6 +147,12 @@ class ClinicSet:
         self._manifold = manifold
         self.reset()
 
+    def __getitem__(self, index):
+        return self._clinics_list[index]
+
+    def __len__(self):
+        return len(self._clinics_list)
+
     def __iter__(self):
         self._index = 0
         return self
@@ -812,99 +818,68 @@ class Manifold(BaseSolver):
         return fig, ax
 
     ### Calculating Island/Turnstile Flux
+    
+    @property
+    def turnstile_areas(self):
+        if self._areas is None:
+            self.compute_turnstile_areas()
+        return self._areas
 
-    def turnstile_area(self, n_joining = 100):
+    def compute_turnstile_areas(self, **kwargs):
+        if isinstance(self._map, maps.CylindricalBfieldSection):
+            return self._turnstile_areas_cylbfieldsection(**kwargs)
+        else:
+            raise NotImplementedError("Turnstile area computation only implemented for CylindricalBfieldSection for now.")
+
+    def _turnstile_areas_cylbfieldsection(self, n_joining = 100):
         """
         Compute the turnstile area by integrating the vector potential along the trajectory of the homo/hetero-clinics points.
         """
+        lagrangian_values = []
 
-        if not isinstance(self._map, maps.CylindricalBfieldSection):
-            raise NotImplementedError("Turnstile area computation only implemented for CylindricalBfieldSection")
-
-        # Function for forward/backward integration for each clinic point
-        def integrate_direction(rz, n, rfp, direction):
-            history = []
-            intA = []
-            n_tmp = 0
-
-            while n_tmp < n:
-                intA_tmp = self._map.lagrangian(rz, direction)
-                rz_end = self._map.f(direction, rz)
-
-                if n_tmp > 3 and np.linalg.norm(
-                    rz_end - rfp
-                ) > np.linalg.norm(rz - rfp):
-                    if direction == -1:
-                        direction_str = "Backward"
-                    else:
-                        direction_str = "Forward"
-                    logger.info(f"{direction_str} integration goes beyond stable saddle point.")
-                    logger.debug(
-                        f"rfp: {rfp}, rz_end: {rz_end}, rz: {rz}"
-                    )
-                    break
-
-                rz = rz_end
-                history.append(rz)
-                intA.append(intA_tmp)
-                n_tmp += 1
+        # Could be put in the clinic trajectory directly. Open question.
+        # Calculation of the lagrangian value (from the unstable to the stable fundamental segment)
+        for i, clinic in enumerate(self.clinics):
+            x_s_0, x_u_0 = clinic.trajectory[-1 if i !=0 else -2, :], clinic.trajectory[0, :]
+            n_bwd, n_fwd = clinic.nint_s, clinic.nint_u
             
-            return history, intA
+            intA_s = self._map.lagrangian(x_s_0, - n_bwd + 1 if i==0 else -n_bwd)
+            intA_u = self._map.lagrangian(x_u_0, n_fwd)
+            
+            # x_t_s = self._map.f(- n_bwd + 1 if i==0 else -n_bwd, x_s_0)
+            # x_t_u = self._map.f(n_fwd, x_u_0)
 
-        # Potential integration
-        n_fwd, n_bwd = self.onworking["find_clinic_configuration"].values()
-        potential_integrations = []
-        history = []
-        for i, clinic in enumerate(self.onworking["clinics"]):
-            # Forward integration
-            rz_forward = clinic[-2]
-            history_forward, intA_forward = integrate_direction(rz_forward, n_fwd, self.onworking["rfp_s"], 1)
-
-            # Backward integration
-            # taking the point found from unstable manifold to go back to the fixedpoint
-            rz_backward = clinic[-1]
-            history_backward, intA_backward = integrate_direction(rz_backward, n_bwd, self.onworking["rfp_u"], -1)
+            lagrangian_values.append(intA_u - intA_s)
 
             logger.info(
-                f"Potential integration completed for homo/hetero-clinic point of order : {clinic[0]:.3e}"
+                f"Lagrangian value obtained ({(intA_s - intA_u):.3e}) for homo/hetero-clinic trajectory (eps_s, eps_u) : {clinic.eps_s, clinic.eps_u}"
             )
-
-            if i == 0:
-                n_bwd -= 1
-
-            potential_integrations.append(
-                [np.array(intA_forward), np.array(intA_backward)]
-            )
-            history.append([history_forward, history_backward])
 
         # Computation of the turnstile area
-        areas = np.zeros(len(potential_integrations))
-        err_by_diff, err_by_estim = np.zeros_like(areas), np.zeros_like(areas)
+        areas = np.empty(len(self.clinics))
+        shifted_indices = [i for i in np.roll(np.arange(len(lagrangian_values), dtype=int), -1)]
 
-        # Loop on the intA values : intA_h current clinic point, intA_m next clinic point (in term of >_u ordering)
-        for i, (intA_h, intA_m) in enumerate(zip(
-            potential_integrations,
-            [
-                potential_integrations[i]
-                for i in np.roll(np.arange(len(potential_integrations), dtype=int), -1)
-            ],
-        )):
-            # Set up the maximum number of fwd/bwd usable iterations
-            n_fwd = min(intA_h[0].size, intA_m[0].size)
-            n_bwd = min(intA_h[1].size, intA_m[1].size)
-
-            # Action integration
-            intm = intA_m[0][:n_fwd].sum() - intA_m[1][:n_bwd].sum()
-            inth = intA_h[0][:n_fwd].sum() - intA_h[1][:n_bwd].sum()
-            areas[i] = intm - inth
+        # Loop on the L values : L_h current clinic point, L_m next clinic point (in term of >_u ordering)
+        for i, shifted_i in enumerate(shifted_indices):
+            # Area is the difference in the 
+            areas[i] = lagrangian_values[i] - lagrangian_values[shifted_i]
 
             # Closure by joining integrals
-            for j, n in enumerate([n_fwd, n_bwd]):
-                r1 = history[i][j][n-1]
-                r2 = history[(i+1)%len(potential_integrations)][j][n-1]
-                
+            traj_h = self.clinics[i].trajectory 
+            traj_m = self.clinics[shifted_i].trajectory 
+            
+            # Get the correct point to join
+            r_h_u, r_m_u = traj_h[0, :], traj_m[0, :]
+            r_h_s, r_m_s = traj_h[-1, :], traj_m[-1, :]
+            if i == 0:
+                r_h_s, r_m_s = traj_h[-2, :], traj_m[-1, :]
+            elif i == len(shifted_indices)-1:
+                r_h_u, r_m_u = traj_h[0, :], traj_m[1, :]
+
+            # Do the calculation
+            for rA, rB in zip([r_m_u, r_h_s], [r_h_u, r_m_s]):
                 # Create a segment between r2 and r1
-                gamma, dl = np.linspace(r1, r2, n_joining, retstep=True)  
+                gamma, dl = np.linspace(rA, rB, n_joining, retstep=True)  
 
                 # Evaluate A at the middle point between (x_i, x_{i+1})
                 mid_gamma = (gamma + dl/2)[:-1]
@@ -924,9 +899,8 @@ class Manifold(BaseSolver):
                 # Discretize the A.dl integral and sum it
                 areas[i] += np.einsum('ij,ij->i', mid_A, np.ones((mid_A.shape[0], 1)) * dl).sum()
 
-        self.onworking["areas"] = np.vstack((areas, err_by_diff, err_by_estim)).T
-        self.onworking["potential_integrations"] = potential_integrations
-        self.onworking["clinic_history"] = history
+        self._areas = areas
+        self._lagrangian_values = lagrangian_values
 
         return areas
 
