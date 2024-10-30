@@ -44,6 +44,142 @@ def eig(jacobian):
         eigenvectors[u_index],
     )
 
+class Clinic:
+    def __init__(self, manifold, eps_s, eps_u, n_s, n_u):
+        self._manifold = manifold
+        self.eps_s = eps_s
+        self.eps_u = eps_u
+        self.nint_s = n_s
+        self.nint_u = n_u
+        self.fundamental_segments = None
+
+    @property
+    def trajectory(self):
+        pass
+
+    # Fundamental segments
+    @property
+    def fundamental_segments(self):
+        if self._fundamental_segments is None:
+            bnd_s, bnd_u = self._fundamental_segments_from_eps()
+            self._fundamental_segments = {"stable": bnd_s, "unstable": bnd_u}
+        return self._fundamental_segments
+
+    def _fundamental_segments_from_eps(self):
+        """
+        Calculate the fundamental segment on the unstable and stable manifolds.
+
+        Args:
+            eps_s (float): Initial :math:`\\varepsilon_s` along the stable manifold direction.
+            eps_u (float): Initial :math:`\\varepsilon_u` along the unstable manifold direction.
+
+        Returns:
+            tuple: A tuple containing two tuples:
+                - (eps_s, upperbound_s): The initial :math:`\\varepsilon_s` and the computed upper bound 
+                for the stable manifold.
+                - (eps_u, upperbound_u): The initial guess and the computed upper bound 
+                for the unstable manifold.
+        """
+
+        r_s = self._manifold.rfp_s + self.eps_s * self._manifold.vector_s
+        r_u = self._manifold.rfp_u + self.eps_u * self._manifold.vector_u
+
+        # r_s_unevolved = self._map.f(+1*self.fixedpoint_1.m, r_s)
+        # r_s_evolved   = self._map.f(-1*self.fixedpoint_1.m, r_s)
+        r_s_evolved = self._manifold.integrate(r_s, 1, -1)[:,1]
+
+        # r_u_unevolved = self._map.f(-1*self.fixedpoint_1.m, r_u)
+        # r_u_evolved   = self._map.f(+1*self.fixedpoint_1.m, r_u)
+        r_u_evolved = self._manifold.integrate(r_u, 1, +1)[:,1]
+
+        upperbound_s = np.linalg.norm(r_s_evolved - self.rfp_s)
+        upperbound_u = np.linalg.norm(r_u_evolved - self.rfp_u)
+
+        return (self.eps_s, upperbound_s), (self.eps_u, upperbound_u)
+    
+
+class ClinicSet:
+    """
+    """
+    def __init__(self, manifold):
+        self._manifold = manifold
+        self.reset()
+
+    def __iter__(self):
+        self._index = 0
+        return self
+    
+    def __next__(self):
+        if self._index < len(self._clinics_list):
+            result = self._clinics_list[self._index]
+            self._index += 1
+            return result
+        else:
+            raise StopIteration
+    
+    def record_clinic(self, eps_s, eps_u, n_s, n_u, **kwargs):
+        if not self._clinics_list:
+            clinic = Clinic(self._manifold, eps_s, eps_u, n_s, n_u)
+            self.fundamental_segments = clinic.fundamental_segments
+            self.nint_pair = (n_s, n_u)
+            self._clinics_list.append(clinic)
+        else:
+            fundamental_eps_s, n_s_shift = self._find_fundamental_eps(eps_s, "stable")     
+            fundamental_eps_u, n_u_shift = self._find_fundamental_eps(eps_u, "unstable")
+            clinic = Clinic(self._manifold, fundamental_eps_s, fundamental_eps_u,
+                            n_s+n_s_shift, n_u+n_u_shift)
+
+            tol = kwargs.get("tol", 1e-2)
+            if not np.any([np.isclose(clinic.eps_u, other.eps_u, rtol=tol) for other in self._clinics_list]):
+                self._clinics_list.append(clinic)
+                self.order()
+            else:
+                logger.warning("Homo/heteroclinic already recorded, skipping...")
+
+
+    def _find_fundamental_eps(self, eps, which, **kwargs):
+        if which == "stable":
+            rfp, eigenvector, forward_dir = self._manifold.rfp_s, self._manifold.vector_s, -1
+        elif which == "unstable":
+            rfp, eigenvector, forward_dir = self._manifold.rfp_u, self._manifold.vector_u, +1
+        else:
+            raise ValueError("Invalid manifold selection.")
+
+        fund = self.fundamental_segments[which]
+        r_cur = rfp + eps * eigenvector
+        norm = eps
+        n_shift = 0
+
+        # If the eps is less then the lower bound, then the direction should be forward otherwise backward
+        forward_dir *= 1 if eps < fund[0] else -1
+
+        # Set a maximum number of iterations
+        max_iterations = kwargs.get("max_iters", 20)  
+        for _ in range(max_iterations):
+            if fund[0] <= norm < fund[1]:
+                return norm, n_shift
+            r_cur = self._manifold._map.f(-1*self._manifold.fixedpoint_1.m, r_cur)
+            norm = np.linalg.norm(r_cur - rfp)
+            n_shift -= 1 * forward_dir
+            logger.debug(f"Current epsilon (from norm calculation): {norm}")
+
+        raise ValueError(
+            "Failed to find a solution within the maximum number of iterations"
+        )
+    
+    def order(self):
+        """
+        Order the homo/hetero-clinic points with the induced linear ordering of the unstable manifold >_u.
+        """
+        self._clinics_list = [
+            self._clinics_list[i] for i in np.argsort([x.eps_u for x in self._clinics_list])
+        ]
+
+    def reset(self):
+        self._clinics_list = []
+        self.fundamental_segments = None
+        self.nint_pair = None
+
 class Manifold(BaseSolver):
     """
     
@@ -97,7 +233,7 @@ class Manifold(BaseSolver):
         self.choose(dir1, dir2, is_first_stable)
 
         # Initialize the clinic set
-        self._clinics = self.ClinicSet(self)
+        self.clinics = ClinicSet(self)
 
         # Initialize the BaseSolver
         super().__init__(map)
@@ -390,14 +526,15 @@ class Manifold(BaseSolver):
         markersize = kwargs.pop("markersize", 2)
         fmt = kwargs.pop("fmt", "-o")
         rm_points = kwargs.pop("rm_points", 0)
+        final_index = - rm_points - 1
 
         for i, dir in enumerate(["stable", "unstable"]):
             if dir == which or which == "both":
                 points = self._lfs[dir]
                 points = points.T.flatten()
                 ax.plot(
-                    points[:-2*rm_points:2],
-                    points[1:-2*rm_points:2],
+                    points[::2][final_index],
+                    points[1::2][final_index],
                     fmt,
                     label=f"{dir} manifold",
                     color=colors[i],
@@ -408,120 +545,6 @@ class Manifold(BaseSolver):
         return fig, ax
 
     ### Homo/Hetero-clinic methods
-
-    class ClinicSet:
-        def __init__(self, manifold):
-            self._manifold = manifold
-            self.reset()
-
-        def __iter__(self):
-            self._index = 0
-            return self
-        
-        def __next__(self):
-            if self._index < len(self._tuples):
-                result = self._tuples[self._index]
-                self._index += 1
-                return result
-            else:
-                raise StopIteration
-        
-        def record_clinic(self, eps_s, eps_u, n_s, n_u, **kwargs):
-            num_clinics = len(self._tuples)
-            
-            if num_clinics == 0:
-                bnd_s, bnd_u = self._manifold.fundamental_segments_from_eps(eps_s, eps_u)
-                self._fundamental_segments = {"stable": bnd_s, "unstable": bnd_u}
-                self._nint_found = (n_s, n_u)
-
-            r_s = self._manifold._map.f(-1*self._manifold.fixedpoint_1.m*n_s,
-                                        self._manifold.rfp_s + eps_s * self._manifold.vector_s)
-            r_u = self._manifold._map.f(+1*self._manifold.fixedpoint_1.m*n_u,
-                                        self._manifold.rfp_u + eps_u * self._manifold.vector_u)
-
-            order_s = self._find_order(eps_s, "stable")
-            order_u = self._find_order(eps_u, "unstable")
-
-            tol = kwargs.get("tol", 1e-3)
-            if not np.any([np.isclose(order_s, other[1], rtol=tol) for other in self._tuples]):
-                self._tuples.append((num_clinics, order_s, order_u, n_s, n_u, r_s, r_u))
-                self.order()
-            else:
-                logger.warning("Homo/heteroclinic already recorded, skipping...")
-
-
-        def _find_order(self, eps, which, **kwargs):
-            if which == "stable":
-                rfp, eigenvector, forward_dir = self._manifold.rfp_s, self._manifold.vector_s, -1
-            elif which == "unstable":
-                rfp, eigenvector, forward_dir = self._manifold.rfp_u, self._manifold.vector_u, +1
-            else:
-                raise ValueError("Invalid manifold selection.")
-
-            fund = self._fundamental_segments[which]
-            r_cur = rfp + eps * eigenvector
-            norm = eps
-
-            # If the eps is less then the lower bound, then the direction should be forward otherwise backward
-            forward_dir *= 1 if eps < fund[0] else -1
-    
-            # Set a maximum number of iterations
-            max_iterations = kwargs.get("max_iters", 20)  
-            for _ in range(max_iterations):
-                if fund[0] <= norm < fund[1]:
-                    return norm
-                r_cur = self._manifold._map.f(-1*self._manifold.fixedpoint_1.m, r_cur)
-                norm = np.linalg.norm(r_cur - rfp)
-                logger.debug(f"Current epsilon (from norm calculation): {norm}")
-
-            raise ValueError(
-                "Failed to find a solution within the maximum number of iterations"
-            )
-        
-        def order(self):
-            """
-            Order the homo/hetero-clinic points with the induced linear ordering of the unstable manifold >_u.
-            """
-            self._tuples = [
-                self._tuples[i] for i in np.argsort([x[1] for x in self._tuples])
-            ]
-
-        def reset(self):
-            self._tuples = []
-            self._fundamental_segments = None
-            
-        
-    def fundamental_segments_from_eps(self, eps_s : float, eps_u : float):
-        """
-        Calculate the fundamental segment on the unstable and stable manifolds.
-
-        Args:
-            eps_s (float): Initial :math:`\\varepsilon_s` along the stable manifold direction.
-            eps_u (float): Initial :math:`\\varepsilon_u` along the unstable manifold direction.
-
-        Returns:
-            tuple: A tuple containing two tuples:
-                - (eps_s, upperbound_s): The initial :math:`\\varepsilon_s` and the computed upper bound 
-                for the stable manifold.
-                - (eps_u, upperbound_u): The initial guess and the computed upper bound 
-                for the unstable manifold.
-        """
-
-        r_s = self.rfp_s + eps_s * self.vector_s
-        r_u = self.rfp_u + eps_u * self.vector_u
-
-        # r_s_unevolved = self._map.f(+1*self.fixedpoint_1.m, r_s)
-        r_s_evolved   = self._map.f(-1*self.fixedpoint_1.m, r_s)
-
-        # r_u_unevolved = self._map.f(-1*self.fixedpoint_1.m, r_u)
-        r_u_evolved   = self._map.f(+1*self.fixedpoint_1.m, r_u)
-
-        # check which one is the best linear regime ?
-
-        upperbound_s = np.linalg.norm(r_s_evolved - self.rfp_s)
-        upperbound_u = np.linalg.norm(r_u_evolved - self.rfp_u)
-
-        return (eps_s, upperbound_s), (eps_u, upperbound_u)
 
     def find_N(self, eps_s : float, eps_u : float):
         """
@@ -686,7 +709,7 @@ class Manifold(BaseSolver):
         )
 
         # Recording the homo/hetero-clinic point
-        self._clinics.record_clinic(eps_s, eps_u, n_s, n_u)
+        self.clinics.record_clinic(eps_s, eps_u, n_s, n_u)
 
         return eps_s, eps_u
 
@@ -702,11 +725,11 @@ class Manifold(BaseSolver):
 
         # Reset the clinic search 
         if kwargs.get("reset", True):
-            self._clinics.reset()
+            self.clinics.reset()
 
         logger.info(f"Search {1}/{n_points} - initial guess for epsilon pair (eps_s, eps_u): {first_guess_eps_s, first_guess_eps_u}")
         self.find_clinic_single(first_guess_eps_s, first_guess_eps_u, **kwargs)
-        bounds = self._clinics._fundamental_segments
+        bounds = self.clinics.fundamental_segments
 
         stable_multiplicators = np.power(self.lambda_s, np.arange(n_points)[1:] / n_points)
         unstable_multiplicators = np.power(self.lambda_u, np.arange(n_points)[1:] / n_points)
@@ -720,10 +743,11 @@ class Manifold(BaseSolver):
             logger.info(f"Search {i+2}/{n_points} - initial guess for epsilon pair (eps_s, eps_u): {guess_i}")
 
             # Retrieve the 
-            n_s, n_u = self._clinics._nint_found
+            n_s, n_u = self.clinics.nint_pair
             n_s += shift
-            n_u -= shift + 1
+            n_u += shift - 1
 
+            breakpoint()
             self.find_clinic_single(
                 *guess_i, n_s=n_s, n_u=n_u, **kwargs
             )
@@ -740,14 +764,15 @@ class Manifold(BaseSolver):
 
         fig, ax, kwargs = create_canvas(**kwargs)
         
-        for i, clinic in enumerate(self._clinics):
-            eps_s, eps_u, n_s, n_u, r_end_s = clinic[1:-1]
-            hs_i = self.integrate(self.rfp_s + eps_s * self.vector_s, n_s-1, -1)
-            hu_i = self.integrate(self.rfp_u + eps_u * self.vector_u, n_u-1, 1)
+        for i, clinic in enumerate(self.clinics):
+            pass
+            # eps_s, eps_u, n_s, n_u, r_end_s =
+            # hs_i = self.integrate(self.rfp_s + eps_s * self.vector_s, n_s-1, -1)
+            # hu_i = self.integrate(self.rfp_u + eps_u * self.vector_u, n_u-1, 1)
 
-            ax.scatter(*r_end_s, marker=markers[i], color=color, edgecolor=edgecolor, zorder=10)
-            ax.scatter(hs_i[0,:], hs_i[1,:], marker=markers[i], color=color, edgecolor=edgecolor, zorder=10)
-            ax.scatter(hu_i[0,:], hu_i[1,:], marker=markers[i], color=color, edgecolor=edgecolor, zorder=10)
+            # ax.scatter(*r_end_s, marker=markers[i], color=color, edgecolor=edgecolor, zorder=10)
+            # ax.scatter(hs_i[0,:], hs_i[1,:], marker=markers[i], color=color, edgecolor=edgecolor, zorder=10)
+            # ax.scatter(hu_i[0,:], hu_i[1,:], marker=markers[i], color=color, edgecolor=edgecolor, zorder=10)
 
         return fig, ax
 
