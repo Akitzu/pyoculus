@@ -2,6 +2,7 @@ from .integrated_map import IntegratedMap
 from ..fields.cylindrical_bfield import CylindricalBfield
 import pyoculus.solvers as solvers
 import numpy as np
+from collections import OrderedDict
 
 class CylindricalBfieldSection(IntegratedMap):
     """
@@ -52,9 +53,9 @@ class CylindricalBfieldSection(IntegratedMap):
             self.find_axis(**finderargs)
 
     @classmethod
-    def without_axis(self, cylindricalbfield : CylindricalBfield, guess=None, phi0=0.0, domain=None, finderargs=dict(), **kwargs):
+    def without_axis(cls, cylindricalbfield : CylindricalBfield, guess=None, phi0=0.0, domain=None, finderargs=dict(), **kwargs):
         finderargs["guess"] = guess
-        return CylindricalBfieldSection(cylindricalbfield, phi0, None, None, domain, finderargs, **kwargs)
+        return cls(cylindricalbfield, phi0, None, None, domain, finderargs, **kwargs)
 
     def find_axis(self, guess=None, **kwargs):
         """
@@ -84,46 +85,65 @@ class CylindricalBfieldSection(IntegratedMap):
         Trace the field line for a number of periods.
         """
         # Check if the result is in the cache and use it if possible
-        cache_res = self.cache.retrieve(t, y0, "f")
-        if cache_res is not None and cache_res['t'] == t:
-            return cache_res['f']
-        elif cache_res is not None and cache_res['t'] < t:
-            return self.f(t - cache_res['t'], cache_res['f'])
+        cache_res = self.cache.retrieve(y0, "f")
+        if cache_res is None:
+            self.cache.save(y0, 'f', 0, y0)
+            cache_res = self.cache.retrieve(y0, "f")
         
-        # Set the initial conditions and integrate
-        if self._integrator.rhs is not self._rhs_RZ:
-            self._integrator.set_rhs(self._rhs_RZ)
-        output = self._integrate(t, y0)
 
-        # Cache the result and return
-        self.cache.save(t, y0, {'t': t, 'f': output})
-        return output
+        if t in cache_res: # this point has been computed before
+            return cache_res[t]
+        else:
+            #set integrator
+            if self._integrator.rhs is not self._rhs_RZ:
+                self._integrator.set_rhs(self._rhs_RZ)
+
+            if t>0: # forward integration
+                tstart = max(cache_res.keys())
+                for t0 in range(tstart, t): # forward integration
+                    cache_res[t0 + 1] = self._integrate(1, cache_res[t0])
+            if t < 0: # backward integration
+                tstart = min(cache_res.keys())
+                for t0 in range(tstart, t, -1): # backward integration 
+                    cache_res[t0 - 1] = self._integrate(-1, cache_res[t0])
+        
+        return np.copy(cache_res[t])
 
     def df(self, t, y0):
         """
         Compute the Jacobian of the field line map for a number of periods.
         """
         # Check if the result is in the cache and use it if possible
-        cache_res = self.cache.retrieve(t, y0, "df")
-        if cache_res is not None and cache_res['t'] == t:
-            return cache_res['df']
-        elif cache_res is not None and cache_res['t'] < t:
-            return self.df(t - cache_res['t'], cache_res['f'])
+        cache_res = self.cache.retrieve(y0, "df")
+        if cache_res is None:
+            self.cache.save(y0, 'df', 0, [*y0, 1, 0, 0, 1])  # the cache stores the ode rhs.
+            cache_res = self.cache.retrieve(y0, "df")
         
-        # Set the initial conditions and integrate
-        ic = np.array([*y0, 1.0, 0.0, 0.0, 1.0])
-        if self._integrator.rhs is not self._rhs_RZ_tangent:
-            self._integrator.set_rhs(self._rhs_RZ_tangent)
-        output = self._integrate(t, ic)
 
-        # Cache the result and return
-        df = output[2:6].reshape(2, 2).T
-        self.cache.save(t, y0, {'t': t, 'f': output[:2], 'df': df})
-        return df
+        if t in cache_res:  # this point has been computed before
+            df = cache_res[t][2:6].reshape(2, 2).T
+            return np.copy(df)
+        else: # integrate one period at a time till you reach the desired time.
+            if self._integrator.rhs is not self._rhs_RZ_tangent:
+                self._integrator.set_rhs(self._rhs_RZ_tangent)
+            if t > 0:  # forward integration
+                tstart = max(cache_res.keys())
+                for t0 in range(tstart, t):  # forward integration
+                    cache_res[t0 + 1] = self._integrate(1, cache_res[t0])
+            if t < 0:  # backward integration
+                tstart = min(cache_res.keys())
+                for t0 in range(tstart, t, -1):  # backward integration 
+                    cache_res[t0 - 1] = self._integrate(-1, cache_res[t0])
+            
+        df = cache_res[t][2:6].reshape(2, 2).T
+        return np.copy(df)
+        
+        
 
     def lagrangian(self, y0, t):
         """
-        Set Meiss's Lagrangian for the magnetic field.
+        NOT UPDATED YET
+        Set Meiss's Lagrangiat for the magnetic field.
         """
         # Check if the result is in the cache and use it if possible
         cache_res = self.cache.retrieve(t, y0, "lagrangian")
@@ -387,42 +407,67 @@ class CylindricalBfieldSection(IntegratedMap):
         self.cache.clear()
 
 class Cache:
+    """
+    A cache to store the results of integrations. 
+    Entries are catalogue by the starting point of the field line and the type of result.
+    the cache will return a dictionary of {t: result} where t is the time period and result is the result of the integration t times. 
+
+
+    Attributes:
+        size (int): The maximum size of the cache.
+        cache (OrderedDict): The cache storage.
+    """
+
     def __init__(self, size=None):
-        if size is None:
-            size = 512
-        self.size = size
-        self.clear()
-    
-    def retrieve(self, t, y0, what, y1=None):
-        current_possible_i = None
-        for i, (id, tc, y1c) in enumerate(self.ids):
-            if self.cache[i].get(what) is None:
-                continue
+        """
+        Initializes the Cache object.
 
-            if id != hash(tuple(y0)):
-                continue
-        
-            if what in ["winding", "dwinding"] and (y1 is None or (y1c != y1).all()):
-                continue
+        Args:
+            size (int, optional): The maximum size of the cache. Defaults to 512.
+        """
+        self.size = size if size is not None else 512
+        self.cache = OrderedDict()
 
-            if tc == t:
-                return self.cache[i]
-            elif tc < t:
-                if current_possible_i is None or tc > self.cache[current_possible_i]['t']:
-                    current_possible_i = i
+    def retrieve(self, y0, what):
+        """
+        Retrieves a cached result if available.
 
-        if current_possible_i is not None:
-            return self.cache[current_possible_i]
-        
-        return None
+        Args:
+            t (float): The time period.
+            y0 (array): The starting point of the field line.
+            what (str): The type of result to retrieve.
+            y1 (array, optional): The ending point of the field line. Defaults to None.
 
-    def save(self, t, y0, dic, y1=None):
-        self.ids.append((hash(tuple(y0)), t, y1))
-        if len(self.cache) >= self.size:
-            self.ids.pop(0)
-            self.cache.pop(0)
-        self.cache.append(dic)
+        Returns:
+            dict or None: The cached result if available, otherwise None.
+        """
+        key = (hash(tuple(y0)), what)
+        if key in self.cache:
+            return self.cache[key]
+        else: 
+            return None
+
+    def save(self, y0, what, t, res):
+        """
+        Saves a result to the cache.
+
+        Args:
+            t (float): The time period.
+            y0 (array): The starting point of the field line.
+            dic (dict): The result to cache.
+            y1 (array, optional): The ending point of the field line. Defaults to None.
+        """
+        key = (hash(tuple(y0)), what)
+        if key not in self.cache:
+            self.cache[key] = OrderedDict()
+
+        if len(self.cache[key]) >= self.size:
+            self.cache[key].popitem(last=False)
+
+        self.cache[key][t] = res
 
     def clear(self):
-        self.cache = []
-        self.ids = []
+        """
+        Clears the cache.
+        """
+        self.cache = OrderedDict()
