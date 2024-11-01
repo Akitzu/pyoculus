@@ -2,7 +2,6 @@ from .integrated_map import IntegratedMap
 from ..fields.cylindrical_bfield import CylindricalBfield
 import pyoculus.solvers as solvers
 import numpy as np
-from collections import OrderedDict
 
 class CylindricalBfieldSection(IntegratedMap):
     """
@@ -83,26 +82,30 @@ class CylindricalBfieldSection(IntegratedMap):
     def f(self, t, y0):
         """
         Trace the field line for a number of periods.
+
+        Traces one field period at a time and caches the results if the number of periods is integer. 
+        Otherwise, it traces the field line for the given number of fractional periods in one go. 
         """
+        if self._integrator.rhs is not self._rhs_RZ:
+            self._integrator.set_rhs(self._rhs_RZ)
+
+        if type(t) is not int:
+            return self._integrate(t, y0)
+        
         # Check if the result is in the cache and use it if possible
         cache_res = self.cache.retrieve(y0, "f")
         if cache_res is None:
             self.cache.save(y0, 'f', 0, y0)
             cache_res = self.cache.retrieve(y0, "f")
         
-
-        if t in cache_res: # this point has been computed before
+        if t in cache_res:  # this point has been computed beforeA
             return cache_res[t]
         else:
-            #set integrator
-            if self._integrator.rhs is not self._rhs_RZ:
-                self._integrator.set_rhs(self._rhs_RZ)
-
-            if t>0: # forward integration
+            if t > 0:  # forward integration
                 tstart = max(cache_res.keys())
                 for t0 in range(tstart, t): # forward integration
                     cache_res[t0 + 1] = self._integrate(1, cache_res[t0])
-            if t < 0: # backward integration
+            if t < 0:  # backward integration
                 tstart = min(cache_res.keys())
                 for t0 in range(tstart, t, -1): # backward integration 
                     cache_res[t0 - 1] = self._integrate(-1, cache_res[t0])
@@ -113,19 +116,23 @@ class CylindricalBfieldSection(IntegratedMap):
         """
         Compute the Jacobian of the field line map for a number of periods.
         """
+        if self._integrator.rhs is not self._rhs_RZ_tangent:
+            self._integrator.set_rhs(self._rhs_RZ_tangent)
+        
+        if type(t) is not int:
+                ic = [*y0, 1., 0., 0., 1.]
+                return self._integrate(t, ic)
+
         # Check if the result is in the cache and use it if possible
         cache_res = self.cache.retrieve(y0, "df")
         if cache_res is None:
-            self.cache.save(y0, 'df', 0, [*y0, 1, 0, 0, 1])  # the cache stores the ode rhs.
+            self.cache.save(y0, 'df', 0, [*y0, 1., 0., 0., 1.])  # the cache stores the ode rhs.
             cache_res = self.cache.retrieve(y0, "df")
-        
 
         if t in cache_res:  # this point has been computed before
             df = cache_res[t][2:6].reshape(2, 2).T
             return np.copy(df)
-        else: # integrate one period at a time till you reach the desired time.
-            if self._integrator.rhs is not self._rhs_RZ_tangent:
-                self._integrator.set_rhs(self._rhs_RZ_tangent)
+        else:  # integrate one period at a time till you reach the desired time.
             if t > 0:  # forward integration
                 tstart = max(cache_res.keys())
                 for t0 in range(tstart, t):  # forward integration
@@ -134,7 +141,15 @@ class CylindricalBfieldSection(IntegratedMap):
                 tstart = min(cache_res.keys())
                 for t0 in range(tstart, t, -1):  # backward integration 
                     cache_res[t0 - 1] = self._integrate(-1, cache_res[t0])
-            
+        
+        # update the cache of f with the new positions
+        positions = {t0: cache_res[t0][:2] for t0 in cache_res}
+        pos_cache = self.cache.retrieve(y0, 'f')
+        if pos_cache is None:
+            self.cache.save(y0, 'f', 0, y0)
+            pos_cache = self.cache.retrieve(y0, 'f')
+        pos_cache.update(positions)
+
         df = cache_res[t][2:6].reshape(2, 2).T
         return np.copy(df)
         
@@ -145,22 +160,34 @@ class CylindricalBfieldSection(IntegratedMap):
         NOT UPDATED YET
         Set Meiss's Lagrangiat for the magnetic field.
         """
+        if self._integrator.rhs is not self._rhs_RZ_A:
+            self._integrator.set_rhs(self._rhs_RZ_A)
+
+        if type(t) is not int:
+            ic = [*y0, 0.0]
+            return self._integrate(t, ic)
+
         # Check if the result is in the cache and use it if possible
-        cache_res = self.cache.retrieve(t, y0, "lagrangian")
-        if cache_res is not None and cache_res['t'] == t:
-            return cache_res['lagrangian']
-        elif cache_res is not None and cache_res['t'] < t:
-            return self.lagrangian(cache_res['f'], t - cache_res['t'])
+        cache_res = self.cache.retrieve(y0, "lagrangian")
+        if cache_res is None:
+            self.cache.save(y0, 'lagrangian', 0, [*y0, 0.0])
+            cache_res = self.cache.retrieve(y0, "lagrangian")
+        
+        if t in cache_res:  # this point has been computed before
+            return np.copy(cache_res[t][2])
+        else:
+            if t > 0:  # forward integration
+                tstart = max(cache_res.keys())
+                for t0 in range(tstart, t):  # forward integration
+                    cache_res[t0 + 1] = self._integrate(1, cache_res[t0]) 
+            if t < 0:  # backward integration
+                tstart = min(cache_res.keys())
+                for t0 in range(tstart, t, -1):  # backward integration
+                    cache_res[t0 - 1] = self._integrate(-1, cache_res[t0])
+        
+        return np.copy(cache_res[t][2])
 
-        # Set the initial conditions and integrate
-        ic = np.array([*y0, 0.0])
-        self._integrator.set_rhs(self._rhs_RZ_A)
-        output = self._integrate(t, ic)
-
-        # Cache the result and return
-        lagrangian = output[2]
-        self.cache.save(t, y0, {'t': t, 'f': output[:2], 'lagrangian': lagrangian})
-        return lagrangian
+        
 
     def winding(self, t, y0, y1=None):
         """
@@ -174,56 +201,72 @@ class CylindricalBfieldSection(IntegratedMap):
         Returns:
             np.ndarray: The radius difference between initial and final point and winding number between the two field lines.
         """
-        if y1 is None:
-            y1 = np.array([self.R0, self.Z0])
-        
-        # Check if the result is in the cache and use it if possible
-        cache_res = self.cache.retrieve(t, y0, "winding", y1)
-        if cache_res is not None and cache_res['t'] == t:
-            return cache_res['winding']
-        elif cache_res is not None and cache_res['t'] < t:
-            return self.winding(t - cache_res['t'], cache_res['f'], cache_res['f_y1'])
-
-        # Set the initial position in the phi0 plane in polar coordinates
-        theta0 = np.arctan2(y0[1] - y1[1], y0[0] - y1[0])
-        rho0 = np.sqrt((y0[0] - y1[0]) ** 2 + (y0[1] - y1[1]) ** 2)
-
-        # Integrate until the final time
+        #set integrator
         if self._integrator.rhs is not self._ode_rhs:
             self._integrator.set_rhs(self._ode_rhs)
-        ic = np.array([*y0, *y1, theta0])
-        output = self._integrate(t, ic)
         
-        # Retrieve the final position in polar coordinate (with theta1 not modulo 2*pi but as a winding)
+        # Set the initial position in the phi0 plane in polar coordinates
+        if y1 is None:
+            y1 = np.array([self.R0, self.Z0])
+        theta0 = np.arctan2(y0[1] - y1[1], y0[0] - y1[0])
+        rho0 = np.sqrt((y0[0] - y1[0]) ** 2 + (y0[1] - y1[1]) ** 2)
+        
+        
+        # Check if the result is in the cache and use it if possible
+        cache_res = self.cache.retrieve(tuple(y0)+tuple(y1), "winding") # adding tuples lengthens, hased to create dict key
+        if cache_res is None:
+            self.cache.save(tuple(y0)+tuple(y1), 'winding', [*y0, *y1, theta0])
+            cache_res = self.cache.retrieve(tuple(y0)+tuple(y1), "winding")
+        
+        if t in cache_res:  # this point has been computed before
+            output = cache_res[t]
+        else:
+            if t > 0:  # forward integration
+                tstart = max(cache_res.keys())
+                for t0 in range(tstart, t):  # forward integration
+                    cache_res[t0 + 1] = self._integrate(1, cache_res[t0])
+            if t < 0:  # backward integration
+                tstart = min(cache_res.keys())
+                for t0 in range(tstart, t, -1):  # backward integration
+                    cache_res[t0 - 1] = self._integrate(-1, cache_res[t0])
+            output = cache_res[t]
+        
         theta1 = output[4]
         rho1 = np.sqrt((output[0] - output[2]) ** 2 + (output[1] - output[3]) ** 2)
         winding = np.array([rho1 - rho0, theta1 - theta0])
-        self.cache.save(t, y0, {'t': t, 'f': output[:2], 'f_y1': output[2:4], 'winding': winding}, y1)
         return winding
 
+    
     def dwinding(self, t, y0, y1=None):
         """
         Calculates the Jacobian of the winding number 
         """
+        #set integrator
+        if self._integrator.rhs is not self._ode_rhs_tangent:
+            self._integrator.set_rhs(self._ode_rhs_tangent)
         if y1 is None:
             y1 = np.array([self.R0, self.Z0])
-
-        # Check if the result is in the cache and use it if possible
-        cache_res = self.cache.retrieve(t, y0, "dwinding", y1)
-        if cache_res is not None and cache_res['t'] == t:
-            return cache_res['dwinding']
-        elif cache_res is not None and cache_res['t'] < t:
-            return self.dwinding(t - cache_res['t'], cache_res['f'], cache_res['f_y1'])
-
-        # Set the initial position in the phi0 plane in polar coordinates
         theta0 = np.arctan2(y0[1] - y1[1], y0[0] - y1[0])
         rho0 = np.sqrt((y0[0] - y1[0]) ** 2 + (y0[1] - y1[1]) ** 2)
 
-        # Integrate until the final time
-        if self._integrator.rhs is not self._ode_rhs_tangent:
-            self._integrator.set_rhs(self._ode_rhs_tangent)
-        ic = np.array([*y0, *y1, theta0, 1., 0., 0., 1.])
-        output = self._integrate(t, ic)
+        # Check if the result is in the cache and use it if possible
+        cache_res = self.cache.retrieve(tuple(y0)+tuple(y1), "dwinding")
+        if cache_res is None:
+            self.cache.save(tuple(y0)+tuple(y1), 'dwinding', 0, [*y0, *y1, theta0, 1., 0., 0., 1.])
+            cache_res = self.cache.retrieve(tuple(y0)+tuple(y1), "dwinding")
+        
+        if t in cache_res:  # this point has been computed before
+            output = cache_res[t]
+        else:
+            if t > 0:
+                tstart = max(cache_res.keys())
+                for t0 in range(tstart, t):  # forward integration
+                    cache_res[t0 + 1] = self._integrate(1, cache_res[t0])
+            if t < 0:   
+                tstart = min(cache_res.keys())
+                for t0 in range(tstart, t, -1):
+                    cache_res[t0 - 1] = self._integrate(-1, cache_res[t0])
+            output = cache_res[t]
         
         # Retrieve the final position in the phi0 plane in polar coordinates
         theta1 = np.arctan2(output[1] - output[3], output[0] - output[2])
@@ -251,7 +294,6 @@ class CylindricalBfieldSection(IntegratedMap):
 
         # Jacobian of the map W = H(G(R,Z)) - H(R,Z)
         dW = dH @ dG - dP
-        self.cache.save(t, y0, {'t': t, 'f': output[:2], 'f_y1': output[2:4], 'winding': np.array([rho1 - rho0, theta1 - theta0]), 'dwinding': dW}, y1)
         return dW
 
     ## Integration methods
@@ -406,6 +448,7 @@ class CylindricalBfieldSection(IntegratedMap):
     def clear_cache(self):
         self.cache.clear()
 
+
 class Cache:
     """
     A cache to store the results of integrations. 
@@ -415,7 +458,7 @@ class Cache:
 
     Attributes:
         size (int): The maximum size of the cache.
-        cache (OrderedDict): The cache storage.
+        cache (dictionary): The cache storage.
     """
 
     def __init__(self, size=None):
@@ -426,17 +469,15 @@ class Cache:
             size (int, optional): The maximum size of the cache. Defaults to 512.
         """
         self.size = size if size is not None else 512
-        self.cache = OrderedDict()
+        self.cache = {}
 
     def retrieve(self, y0, what):
         """
         Retrieves a cached result if available.
 
         Args:
-            t (float): The time period.
             y0 (array): The starting point of the field line.
             what (str): The type of result to retrieve.
-            y1 (array, optional): The ending point of the field line. Defaults to None.
 
         Returns:
             dict or None: The cached result if available, otherwise None.
@@ -455,19 +496,18 @@ class Cache:
             t (float): The time period.
             y0 (array): The starting point of the field line.
             dic (dict): The result to cache.
-            y1 (array, optional): The ending point of the field line. Defaults to None.
         """
         key = (hash(tuple(y0)), what)
         if key not in self.cache:
-            self.cache[key] = OrderedDict()
-
-        if len(self.cache[key]) >= self.size:
-            self.cache[key].popitem(last=False)
+            self.cache[key] = {}
+            if len(self.cache) >= self.size:
+                self.cache.pop(next(iter(self.cache)))  # remove the oldest entry
 
         self.cache[key][t] = res
+    
 
     def clear(self):
         """
         Clears the cache.
         """
-        self.cache = OrderedDict()
+        self.cache.clear()
