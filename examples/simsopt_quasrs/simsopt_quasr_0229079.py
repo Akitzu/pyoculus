@@ -61,29 +61,26 @@ fp_x2._m = 8
 fp_x1._found_by_iota = True
 fp_x2._found_by_iota = True
 
-# Working on manifold
-mp = Manifold(pyoproblem, fp_x1, fp_x2)
-mp.choose(signs=[[1, -1], [1, -1]], order=False)
-
-# mp.compute(nintersect = 6, epsilon= 1e-3, neps = 30)
-# ax.set_xlim(1.11, 1.17)
-# ax.set_ylim(0.01, 0.09)
-# mp.plot(ax=ax, directions="isiu")
-# mp.plot(ax=ax, directions="osou")
-
 # Inner manifold
-print("Working on Inner manifold")
-mp.onworking = mp.inner
-mp.find_clinic_single(0.0004935714362365777, 0.0009447855326874471, n_s=5, n_u=5, jac=False)
-mp.find_clinic_single(0.0007316896189876429, 0.001378277537890097, n_s=4, n_u=5, jac=False)
-mp.turnstile_area()
+inner_manifold = Manifold(pyoproblem, fp_x1, fp_x2, '+', '+', False)
+inner_manifold.compute(nint_s = 6, nint_u = 6, neps_s = 30, neps_u = 30)
+inner_manifold.find_clinic_single(0.003534624002967668, 0.0006573605725165735, n_s=4, n_u=4)
 
 # Outer manifold
-print("Working on Outer manifold")
-mp.onworking = mp.outer
-mp.find_clinic_single(0.003534624002967668, 0.0006573605725165735, n_s=4, n_u=4, jac=False)
-mp.find_clinics(n_points=2)
-mp.turnstile_area()
+inner_manifold = Manifold(pyoproblem, fp_x1, fp_x2, '-', '-', True)
+
+# Inner manifold
+# print("Working on Inner manifold")
+# mp.onworking = mp.inner
+# mp.find_clinic_single(0.0004935714362365777, 0.0009447855326874471, n_s=5, n_u=5, jac=False)
+# mp.find_clinic_single(0.0007316896189876429, 0.001378277537890097, n_s=4, n_u=5, jac=False)
+# mp.turnstile_area()
+
+# Outer manifold
+# print("Working on Outer manifold")
+# mp.onworking = mp.outer
+# mp.find_clinics(n_points=2)
+# mp.turnstile_area()
 
 # inner_areas = mp.inner["areas"]
 # np.save("inner_areas_0229079.npy", inner_areas)
