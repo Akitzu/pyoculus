@@ -157,7 +157,6 @@ class CylindricalBfieldSection(IntegratedMap):
 
     def lagrangian(self, y0, t):
         """
-        NOT UPDATED YET
         Set Meiss's Lagrangiat for the magnetic field.
         """
         if self._integrator.rhs is not self._rhs_RZ_A:
@@ -165,7 +164,7 @@ class CylindricalBfieldSection(IntegratedMap):
 
         if type(t) is not int:
             ic = [*y0, 0.0]
-            return self._integrate(t, ic)
+            return self._integrate(t, ic)[2]
 
         # Check if the result is in the cache and use it if possible
         cache_res = self.cache.retrieve(y0, "lagrangian")
@@ -215,7 +214,7 @@ class CylindricalBfieldSection(IntegratedMap):
         # Check if the result is in the cache and use it if possible
         cache_res = self.cache.retrieve(tuple(y0)+tuple(y1), "winding") # adding tuples lengthens, hased to create dict key
         if cache_res is None:
-            self.cache.save(tuple(y0)+tuple(y1), 'winding', [*y0, *y1, theta0])
+            self.cache.save(tuple(y0)+tuple(y1), 'winding', 0, [*y0, *y1, theta0])
             cache_res = self.cache.retrieve(tuple(y0)+tuple(y1), "winding")
         
         if t in cache_res:  # this point has been computed before
