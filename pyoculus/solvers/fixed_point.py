@@ -304,6 +304,15 @@ class FixedPoint(BaseSolver):
             rdata.MeanResidues = self.MeanResidues.copy()
 
         return rdata
+    
+    @property
+    def eigenvalues(self):
+        """
+        Compute the eigenvalues of the Jacobian of the fixed point
+        """
+        if not self.successful:
+            raise ValueError("Fixed point not found.")
+        return np.linalg.eigvals(self.jacobians)
 
     """
     Solver methods.

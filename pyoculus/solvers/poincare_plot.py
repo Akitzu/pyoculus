@@ -275,6 +275,15 @@ class PoincarePlot(BaseSolver):
         self.iota_successful = True
 
         return self.xs, self.iota
+    
+    @property
+    def rho(self):
+        """
+        the rho values, calculated from _windings which is calculated with a sucessful compute_iota
+        """
+        if not self.iota_successful:
+            raise Exception("A successful call of compute_iota() is needed")
+        return self._windings[:, 0, 0]
 
     def compute_q(self, xs, **kwargs):
         """
@@ -367,10 +376,10 @@ class PoincarePlot(BaseSolver):
             fig = plt.gcf()
             ax = plt.gca()
         if "fig" in kwargs.keys():
-            fig = kwargs["fig"]
+            fig = kwargs.pop("fig")
             ax = fig.gca()
         elif "ax" in kwargs.keys():
-            ax = kwargs["ax"]
+            ax = kwargs.pop("ax")
             fig = ax.figure
         else:
             fig, ax = plt.subplots()
@@ -407,10 +416,10 @@ class PoincarePlot(BaseSolver):
             fig = plt.gcf()
             ax = plt.gca()
         if "fig" in kwargs.keys():
-            fig = kwargs["fig"]
+            fig = kwargs.pop("fig")
             ax = fig.gca()
         elif "ax" in kwargs.keys():
-            ax = kwargs["ax"]
+            ax = kwargs.pop("ax")
             fig = ax.figure
         else:
             fig, ax = plt.subplots()
