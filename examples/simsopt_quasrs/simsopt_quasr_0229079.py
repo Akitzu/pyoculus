@@ -49,9 +49,6 @@ stopping_criteria = [
 logger = logging.getLogger("simsopt.field.tracing")
 logger.setLevel(1)
 
-# Same as simsopt's plot_poincare_data, but with consistent colors between
-# subplots, also plotting stellarator-symmetric points, and exploiting nfp
-# symmetry to plot more points for the same length of field line tracing.
 def plot_poincare_data(
     fieldlines_phi_hits,
     phis,
@@ -64,19 +61,6 @@ def plot_poincare_data(
     s=2,
     marker="o",
 ):
-    """
-    Create a poincare plot. Usage:
-
-    .. code-block::
-
-        phis = np.linspace(0, 2*np.pi/nfp, nphis, endpoint=False)
-        res_tys, res_phi_hits = compute_fieldlines(
-            bsh, R0, Z0, tmax=1000, phis=phis, stopping_criteria=[])
-        plot_poincare_data(res_phi_hits, phis, '/tmp/fieldlines.png')
-
-    Requires matplotlib to be installed.
-
-    """
     fig, ax = plt.subplots()
     ax.set_aspect(aspect)
     color = None
@@ -136,19 +120,19 @@ def trace_fieldlines(bfield, phi, RZs, label):
 
 phi = 0
 
-# line #1
+# Line #1
 nfieldlines = 40
 Rs = np.linspace(0.869, 1.05, nfieldlines)
 Zs = np.zeros_like(Rs)
 RZs = np.array([[r, z] for r, z in zip(Rs, Zs)])
 
-# line #2
+# Line #2
 nfieldlines = 20
 Rs = np.linspace(1.05, 1.2, nfieldlines)
 Zs = np.zeros_like(Rs)
 RZs2 = np.array([[r, z] for r, z in zip(Rs, Zs)])
 
-# line #3
+# Line #3
 nfieldlines = 20
 Rs = np.linspace(1.05, 1.2, nfieldlines)
 Zs = np.linspace(0, 0.05, nfieldlines)
@@ -163,7 +147,7 @@ fieldlines_tys, fieldlines_phi_hits = trace_fieldlines(bsh, phi, RZs, label)
 fig, ax = plot_poincare_data(
     fieldlines_phi_hits,
     phi,
-    __file__ + f"_{label}.png",
+    __file__ + f"_{label}",
     dpi=300,
     s=1,
 )
@@ -215,8 +199,9 @@ outer_manifold.plot_clinics(ax=ax)
 outer_manifold.compute_turnstile_areas()
 
 # Print the results
-print("Inner flux: ", inner_manifold.turnstile_areas)
-print("Outer flux: ", outer_manifold.turnstile_areas)
+B_phi_axis = simsoptfield.B([fieldmap.R0, 0., fieldmap.Z0])[1]
+print("Inner area (flux over B^\phi_axis in Tesla): ", inner_manifold.turnstile_areas / B_phi_axis / fieldmap.R0)
+print("Outer area (flux over B^\phi_axis in Tesla): ", outer_manifold.turnstile_areas / B_phi_axis / fieldmap.R0)
 
 # # Save the data
 # np.save("inner_areas_0229079.npy", inner_manifold.turnstile_areas)
