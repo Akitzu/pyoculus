@@ -71,7 +71,6 @@ class SimsoptBfield(CylindricalBfield):
                     skip=skyping,
                 )
         else:
-            self.interpolating = False
             self._mf_B = mf
 
     @classmethod
