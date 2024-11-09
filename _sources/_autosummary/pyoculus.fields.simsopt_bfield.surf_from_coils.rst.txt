@@ -1,0 +1,6 @@
+pyoculus.fields.simsopt\_bfield.surf\_from\_coils
+=================================================
+
+.. currentmodule:: pyoculus.fields.simsopt_bfield
+
+.. autofunction:: surf_from_coils
