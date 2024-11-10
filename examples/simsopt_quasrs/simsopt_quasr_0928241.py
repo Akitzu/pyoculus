@@ -187,32 +187,36 @@ if comm_world is not None and comm_world.rank != 0:
 fieldmap = CylindricalBfieldSection.without_axis(simsoptfield, guess=ma.gamma()[0,::2], rtol=1e-13)
 
 # Finding all fixedpoints
-fp11_o1 = FixedPoint(fieldmap)
-fp11_o1.find(6, guess=[1.4446355574662593, 0.0])
-fp11_o2 = FixedPoint(fieldmap)
-fp11_o2.find(6, guess=[1.40150403, 0.10815878])
-fp11_x1 = FixedPoint(fieldmap)
-fp11_x1.find(6, guess=[1.43378117, 0.05140443])
-fp11_x2 = FixedPoint(fieldmap)
-fp11_x2.find(6, guess=[1.43378117, -0.05140443])
+fp_o1 = FixedPoint(fieldmap)
+fp_o1.find(6, guess=[1.4446355574662593, 0.0])
+fp_o2 = FixedPoint(fieldmap)
+fp_o2.find(6, guess=[1.40150403, 0.10815878])
+fp_x1 = FixedPoint(fieldmap)
+fp_x1.find(6, guess=[1.43378117, 0.05140443])
+fp_x2 = FixedPoint(fieldmap)
+fp_x2.find(6, guess=[1.43378117, -0.05140443])
 
-for fp in [fp11_o1, fp11_o2, fp11_x1, fp11_x2]:
+for fp in [fp_o1, fp_o2, fp_x1, fp_x2]:
     fp.plot(ax=ax, linewidths=1)
 
 # data = [
-#     {'r': fp11_x1.x[0], 'z': fp11_x1.z[0], 'GreenesResidue': fp11_x1.GreenesResidue},
-#     {'r': fp11_x2.x[0], 'z': fp11_x2.z[0], 'GreenesResidue': fp11_x2.GreenesResidue},
-#     {'r': fp11_o1.x[0], 'z': fp11_o1.z[0], 'GreenesResidue': fp11_o1.GreenesResidue},
-#     {'r': fp11_o2.x[0], 'z': fp11_o2.z[0], 'GreenesResidue': fp11_o2.GreenesResidue},
+#     {'r': fp_x1.x[0], 'z': fp_x1.z[0], 'GreenesResidue': fp_x1.GreenesResidue},
+#     {'r': fp_x2.x[0], 'z': fp_x2.z[0], 'GreenesResidue': fp_x2.GreenesResidue},
+#     {'r': fp_o1.x[0], 'z': fp_o1.z[0], 'GreenesResidue': fp_o1.GreenesResidue},
+#     {'r': fp_o2.x[0], 'z': fp_o2.z[0], 'GreenesResidue': fp_o2.GreenesResidue},
 # ]
 # df = pd.DataFrame(data)
 
-breakpoint()
+# Provisional fix to set the poloidal mode number of the fixed points
+fp_x1._m = 6
+fp_x2._m = 6
+fp_x1._found_by_iota = True
+fp_x2._found_by_iota = True
 
 # Inner manifold
-inner_manifold = Manifold(fieldmap, fp11_x2, fp11_x1, '+', '+', False)
-inner_manifold.compute(eps_s = 1e-3, eps_u = 1e-3, nint_s = 6, nint_u = 6, neps_s = 30, neps_u = 30)
-inner_manifold.plot()
+inner_manifold = Manifold(fieldmap, fp_x1, fp_x2, '+', '+', False)
+inner_manifold.compute(eps_s = 1e-3, eps_u = 1e-3, nint_s = 3, nint_u = 3, neps_s = 30, neps_u = 30)
+inner_manifold.plot(ax=ax, rm_points=7)
 
 inner_manifold.find_clinic_single(0.001276810579762792, 0.0012768113453997163, n_s=2, n_u=2)
 inner_manifold.find_clinic_single(0.005129109370459298, 0.0051291087795083574, n_s=2, n_u = 1, tol=1e-8)
@@ -221,20 +225,24 @@ inner_manifold.plot_clinics(ax=ax)
 inner_manifold.compute_turnstile_areas()
 
 # Outer manifold
-outer_manifold = Manifold(fieldmap, fp11_x2, fp11_x1, '-', '+', True)
-outer_manifold.compute(eps_s = 1e-3, eps_u = 1e-3, nint_s = 6, nint_u = 6, neps_s = 30, neps_u = 30)
-outer_manifold.plot()
+outer_manifold = Manifold(fieldmap, fp_x1, fp_x2, '-', '+', True)
+outer_manifold.compute(eps_s = 1e-3, eps_u = 1e-3, nint_s = 3, nint_u = 3, neps_s = 30, neps_u = 30)
+outer_manifold.plot(ax=ax, rm_points=20)
 
 outer_manifold.find_clinic_single(0.0015488037705831256, 0.0015488037607238807, n_s=2, n_u=2)
 outer_manifold.find_clinic_single(0.0006060200774938109, 0.0006060193763593331, n_s=3, n_u=2)
+outer_manifold.plot_clinics(ax=ax)
 
 outer_manifold.compute_turnstile_areas()
 
 # Print the results
 B_phi_axis = simsoptfield.B([fieldmap.R0, 0., fieldmap.Z0])[1]
-print("Inner area (flux over B^\phi_axis in Tesla): ", inner_manifold.turnstile_areas / B_phi_axis / fieldmap.R0)
-print("Outer area (flux over B^\phi_axis in Tesla): ", outer_manifold.turnstile_areas / B_phi_axis / fieldmap.R0)
+print("Inner area (flux devided by B^\phi_axis in Tesla): ", inner_manifold.turnstile_areas / B_phi_axis / fieldmap.R0)
+print("Outer area (flux devided by B^\phi_axis in Tesla): ", outer_manifold.turnstile_areas / B_phi_axis / fieldmap.R0)
 
 # # Save the data
 # np.save("inner_areas_0928241.npy", inner_manifold.turnstile_areas)
 # np.save("outer_areas_0928241.npy", outer_manifold.turnstile_areas)
+
+# Save the figure
+fig.savefig("figs/" + __file__ + ".png", dpi=300)

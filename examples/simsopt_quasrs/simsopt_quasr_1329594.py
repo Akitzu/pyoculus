@@ -1,20 +1,32 @@
-from pyoculus.problems import SimsoptBfieldProblem
+from pyoculus.fields import SimsoptBfield
+from pyoculus.maps import CylindricalBfieldSection
 from pyoculus.solvers import FixedPoint, Manifold
-from simsopt.geo import SurfaceRZFourier
 import matplotlib.pyplot as plt
 from simsopt._core import load
-from horus import poincare
-import pandas as pd
+from simsopt.geo import SurfaceRZFourier
+from simsopt.field.tracing import compute_fieldlines
+from simsopt.util import proc0_print, comm_world
+from simsopt.field import (
+    particles_to_vtk,
+    LevelsetStoppingCriterion,
+    MinRStoppingCriterion,
+    MaxRStoppingCriterion,
+    MinZStoppingCriterion,
+    MaxZStoppingCriterion,
+)
 import numpy as np
-from pathlib import Path
-from horus import plot_poincare_simsopt
-import pickle
+import logging
+import time
 
-saving_folder = Path("figs").absolute()
+######################################################################
+# Define the configuration from the datafile of the 0229079 coilset. #
+######################################################################
 
-surfaces, ma, coils = load(f'serial1329594.json')
+logging.basicConfig(level=logging.INFO)
 
+surfaces, ma, coils = load(f'coils/serial1329594.json')
 nfp = 3
+
 s = SurfaceRZFourier.from_nphi_ntheta(
     mpol=5,
     ntor=5,
@@ -26,123 +38,170 @@ s = SurfaceRZFourier.from_nphi_ntheta(
 )
 s.fit_to_curve(ma, 0.4, flip_theta=False)
 
-# Setting the problem
-R0, _, Z0 = ma.gamma()[0,:]
-ps = SimsoptBfieldProblem.from_coils(R0=R0, Z0=Z0, Nfp=3, coils=coils, interpolate=True, surf=s)
+simsoptfield = SimsoptBfield.from_coils(coils, Nfp=3, interpolate=True, surf=s)
 
-# Poincare plot
-phis = [i * (2 * np.pi / nfp) for i in range(nfp)]
+##########################################
+# Setup the poincare plotting functions. #
+##########################################
+
+surf_classifier = simsoptfield.surfclassifier
+bsh = simsoptfield._mf_B if simsoptfield._interpolating else None
+
+tmax_fl = 1000  # "Time" for field line tracing
+tol = 1e-15
+
+stopping_criteria = [
+    MaxZStoppingCriterion(0.6),
+    MinZStoppingCriterion(-0.6),
+    MaxRStoppingCriterion(1.4),
+    MinRStoppingCriterion(0.4),
+    # LevelsetStoppingCriterion(surf_classifier.dist),
+]
+
+logger = logging.getLogger("simsopt.field.tracing")
+logger.setLevel(1)
+
+def plot_poincare_data(
+    fieldlines_phi_hits,
+    phis,
+    filename,
+    mark_lost=False,
+    aspect="equal",
+    dpi=300,
+    xlims=None,
+    ylims=None,
+    s=2,
+    marker="o",
+):
+    fig, ax = plt.subplots()
+    ax.set_aspect(aspect)
+    color = None
+    prop_cycle = plt.rcParams["axes.prop_cycle"]
+    colors = prop_cycle.by_key()["color"]
+    ax.grid(True, linewidth=0.5)
+
+    ax.set_xlim(xlims)
+    ax.set_ylim(ylims)
+    
+    for j in range(len(fieldlines_phi_hits)):
+        if fieldlines_phi_hits[j].size == 0:
+            continue
+        if mark_lost:
+            lost = fieldlines_phi_hits[j][-1, 1] < 0
+            color = "r" if lost else "g"
+        phi_hit_codes = fieldlines_phi_hits[j][:, 1]
+        indices = np.where(phi_hit_codes >= 0)[0]
+        data_this_phi = fieldlines_phi_hits[j][indices, :]
+        if data_this_phi.size == 0:
+            continue
+        r = np.sqrt(data_this_phi[:, 2] ** 2 + data_this_phi[:, 3] ** 2)
+        color = colors[j % len(colors)]
+        ax.scatter(
+            r, data_this_phi[:, 4], marker=marker, s=s, linewidths=0, c=color
+        )
+
+    return fig, ax
+
+
+def trace_fieldlines(bfield, phi, RZs, label):
+    phis = [phi + i * (2 * np.pi / nfp) for i in range(nfp)]
+
+    t1 = time.time()
+    fieldlines_tys, fieldlines_phi_hits = compute_fieldlines(
+        bfield,
+        RZs[:, 0],
+        RZs[:, 1],
+        tmax=tmax_fl,
+        tol=tol,
+        comm=comm_world,
+        phis=phis,
+        stopping_criteria=stopping_criteria,
+    )
+    t2 = time.time()
+    proc0_print(
+        f"Time for fieldline tracing={t2-t1:.3f}s. Num steps={sum([len(l) for l in fieldlines_tys])//nfieldlines}",
+        flush=True,
+    )
+    if comm_world is None or comm_world.rank == 0:
+        # particles_to_vtk(fieldlines_tys, __file__ + f'fieldlines_{label}')
+        return fieldlines_tys, fieldlines_phi_hits
+
+################################################################
+# Setup and compute the poincare plot using simsopt fonctions. #
+################################################################
+
+phi = 0
 
 nfieldlines = 40
 Rs = np.linspace(0.72, 0.967, nfieldlines)
 Zs = np.zeros_like(Rs)
 RZs = np.array([[r, z] for r, z in zip(Rs, Zs)])
 
-# pplane = poincare(ps._mf_B, RZs, phis, ps.surfclassifier, tmax = 15000, tol = 1e-10, plot=False)
-# pplane.save("data/poincare_1329594.pkl")
+# Compute the fieldlines and plot
+label = "1329594"
+fieldlines_tys, fieldlines_phi_hits = trace_fieldlines(bsh, phi, RZs, label)
+fig, ax = plot_poincare_data(
+    fieldlines_phi_hits,
+    phi,
+    __file__ + f"_{label}",
+    dpi=300,
+    s=1,
+)
+ax.set_xlim(0.6, 1.2)
+ax.set_ylim(-0.1, 0.1)
 
-tys, phi_hits = pickle.load(open("data/poincare_1329594.pkl", "rb"))
+##########################################################################
+# Setup the pyoculus map and solve for fixedpoints and turnstile fluxes. #
+##########################################################################
+if comm_world is not None and comm_world.rank != 0:
+    comm_world.abort()
 
-fig, ax = plt.subplots()
-plot_poincare_simsopt(phi_hits, ax)
+fieldmap = CylindricalBfieldSection.without_axis(simsoptfield, guess=ma.gamma()[0,::2], rtol=1e-13)
 
-# Finding all fixedpoints
-
-# set up the integrator
-iparams = dict()
-iparams["rtol"] = 1e-12
-
-pparams = dict()
-pparams["nrestart"] = 0
-pparams["tol"] = 1e-18
-pparams['niter'] = 100
-# pparams["Z"] = 0 
-
-fp_x1 = FixedPoint(ps, pparams, integrator_params=iparams)
-fp_x1.compute(guess=[0.815, 0.016], pp=3, qq=5, sbegin=0.62, send=1.2, checkonly=True)
-fp_x2 = FixedPoint(ps, pparams, integrator_params=iparams)
-fp_x2.compute(guess=[0.815, -0.016], pp=3, qq=5, sbegin=0.62, send=1.2, checkonly=True)
+# Finding fixedpoints
+fp_x1 = FixedPoint(fieldmap)
+fp_x1.find(5, guess=[0.815, 0.016])
+fp_x2 = FixedPoint(fieldmap)
+fp_x2.find(5, guess=[0.815, -0.016])
 
 for fp in [fp_x1]:
-    results11 = [list(p) for p in zip(fp.x, fp.y, fp.z)]
-    for rr in results11:
-        ax.scatter(rr[0], rr[2], marker="X", edgecolors="black", linewidths=1)
+    fp.plot(ax=ax, linewidth=1)
 
-fig.savefig(saving_folder / "poincare_1329594.png", dpi=300, bbox_inches="tight", pad_inches=0.1)
-fig.savefig(saving_folder / "poincare_1329594.pdf", dpi=300, bbox_inches="tight", pad_inches=0.1)
-
-# for fp in [fp11_o1, fp11_o2, fp11_o3, fp11_o4]:
-#     results11 = [list(p) for p in zip(fp.x, fp.y, fp.z)]
-#     for rr in results11:
-#         ax.scatter(rr[0], rr[2], marker="o", edgecolors="black", linewidths=1)
-
-# Working on manifold
-iparam = dict()
-iparam["rtol"] = 1e-13
-
-mp = Manifold(ps, fp_x1, fp_x2, integrator_params=iparam)
-mp.choose(signs=[[-1, -1], [-1, 1]])
-
-mp.compute(nintersect = 13, epsilon= 1e-3, neps = 30, directions="outer")
-mp.compute(nintersect = 7, epsilon= 1e-3, neps = 30, directions="inner")
-
-mp.plot(ax=ax)
-# fig.savefig(saving_folder / "manifold_.png", dpi=300, bbox_inches="tight", pad_inches=0.1)
+# Provisional fix to set the poloidal mode number of the fixed points
+fp_x1._m = 5
+fp_x2._m = 5
+fp_x1._found_by_iota = True
+fp_x2._found_by_iota = True
 
 # Inner manifold
-print("Working on Inner manifold")
-mp.onworking = mp.inner
-mp.find_clinic_single(0.0005513288491534374, 0.000551269621851158, n_s=9, n_u=2)
-mp.find_clinics(n_points=2)
-mp.turnstile_area(False)
+inner_manifold = Manifold(fieldmap, fp_x1, fp_x2, '-', '-', True)
+inner_manifold.compute(eps_s = 1e-3, eps_u = 1e-3, nint_s = 7, nint_u = 7, neps_s = 30, neps_u = 30)
+inner_manifold.plot(ax=ax)
 
-marker = ["X", "o", "s", "p", "P", "*", "x", "D", "d", "^", "v", "<", ">"]
-confns = mp.onworking["find_clinic_configuration"]
-n_u = confns["n_u"]+confns["n_s"]+2
+inner_manifold.find_clinics(0.0005513288491534374, 0.000551269621851158, 2)
+inner_manifold.plot_clinics(ax=ax)
 
-for i, clinic in enumerate(mp.onworking["clinics"]):
-    eps_s_i, eps_u_i = clinic[1:3]
-    
-    hu_i = mp.integrate(mp.onworking["rfp_u"] + eps_u_i * mp.onworking["vector_u"], n_u, 1)
-    ax.scatter(hu_i[0,:], hu_i[1,:], marker=marker[i], color="royalblue", edgecolor='cyan', zorder=10, label=f'$h_{i+1}$')
+inner_manifold.compute_turnstile_areas()
 
 # Outer manifold
-print("Working on Outer manifold")
-mp.onworking = mp.outer
-mp.find_clinic_single(0.0009706704534637185, 0.0009706469632955946, n_s=3, n_u=13)
-mp.find_clinic_single(0.0014129766700563878, 0.0014129861303559278, n_s=3, n_u=12)
-mp.turnstile_area(False)
+outer_manifold = Manifold(fieldmap, fp_x1, fp_x2, '+', '-', False)
+outer_manifold.compute(eps_s = 1e-3, eps_u = 1e-3, nint_s = 13, nint_u = 13, neps_s = 30, neps_u = 30)
+outer_manifold.plot(ax=ax)
 
-confns = mp.onworking["find_clinic_configuration"]
-n_u = confns["n_u"]+confns["n_s"]+2
+outer_manifold.find_clinic_single(0.0009706704534637185, 0.0009706469632955946, n_s=3, n_u=13)
+outer_manifold.find_clinic_single(0.0014129766700563878, 0.0014129861303559278, n_s=3, n_u=12)
+outer_manifold.plot_clinics(ax=ax)
 
-for i, clinic in enumerate(mp.onworking["clinics"]):
-    eps_s_i, eps_u_i = clinic[1:3]
-    
-    hu_i = mp.integrate(mp.onworking["rfp_u"] + eps_u_i * mp.onworking["vector_u"], n_u, 1)
-    ax.scatter(hu_i[0,:], hu_i[1,:], marker=marker[i], color="red", edgecolor='cyan', zorder=10, label=f'$h_{i+1}$')
+outer_manifold.compute_turnstile_areas()
 
-fig.savefig(saving_folder / "homoclinics_1329594.png", dpi=300, bbox_inches="tight", pad_inches=0.1)
+# Print the results
+B_phi_axis = simsoptfield.B([fieldmap.R0, 0., fieldmap.Z0])[1]
+print("Inner area (flux devided by B^\phi_axis in Tesla): ", inner_manifold.turnstile_areas / B_phi_axis / fieldmap.R0)
+print("Outer area (flux devided by B^\phi_axis in Tesla): ", outer_manifold.turnstile_areas / B_phi_axis / fieldmap.R0)
 
-inner_areas = mp.inner["areas"]
-np.save("data/inner_areas_1329594.npy", inner_areas)
-outer_areas = mp.outer["areas"]
-np.save("data/outer_areas_1329594.npy", outer_areas)
+# # Save the data
+# np.save("inner_areas_1329594.npy", inner_manifold.turnstile_areas)
+# np.save("outer_areas_1329594.npy", outer_manifold.turnstile_areas)
 
-# Convergence figure
-
-# fig_conv, ax_conv = plt.subplots()
-
-# # ar = np.zeros((2, 3))
-# for ii, pot in enumerate(mp.inner["potential_integrations"]):
-#     ns = min(len(pot[0]), len(pot[1]))
-#     # ar[ii,:] = pot[0][1:ns]-pot[1][:ns-1]
-#     ax_conv.scatter(1+np.arange(ns-1), pot[0][1:ns]-pot[1][:ns-1], zorder=10)
-
-# for ii, pot in enumerate(mp.outer["potential_integrations"]):
-#     ns = min(len(pot[0]), len(pot[1]))
-#     # ar[ii,:] = pot[0][1:ns]-pot[1][:ns-1]
-#     ax_conv.scatter(1+np.arange(ns-1), pot[0][1:ns]-pot[1][:ns-1], zorder=10)
-
-# ax_conv.set_xlabel('Iteration')
-# ax_conv.set_ylabel('Potential integration')
+# Save the figure
+fig.savefig("figs/" + __file__ + ".png", dpi=300)

@@ -200,9 +200,12 @@ outer_manifold.compute_turnstile_areas()
 
 # Print the results
 B_phi_axis = simsoptfield.B([fieldmap.R0, 0., fieldmap.Z0])[1]
-print("Inner area (flux over B^\phi_axis in Tesla): ", inner_manifold.turnstile_areas / B_phi_axis / fieldmap.R0)
-print("Outer area (flux over B^\phi_axis in Tesla): ", outer_manifold.turnstile_areas / B_phi_axis / fieldmap.R0)
+print("Inner area (flux devided by B^\phi_axis in Tesla): ", inner_manifold.turnstile_areas / B_phi_axis / fieldmap.R0)
+print("Outer area (flux devided by B^\phi_axis in Tesla): ", outer_manifold.turnstile_areas / B_phi_axis / fieldmap.R0)
 
 # # Save the data
 # np.save("inner_areas_0229079.npy", inner_manifold.turnstile_areas)
 # np.save("outer_areas_0229079.npy", outer_manifold.turnstile_areas)
+
+# Save the figure
+fig.savefig("figs/" + __file__ + ".png", dpi=300)
