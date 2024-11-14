@@ -127,14 +127,14 @@ class PoincarePlot(BaseSolver):
         return cls(map, xs, points_type = "segments")
 
     @classmethod
-    def with_horizontal(cls, map, radius, npts):
+    def with_horizontal(cls, map, radius, ntraj):
         """
         Create a Poincare plot with horizontal points.
 
         Args:
             map (maps.base_map): The map to use for the computation.
             radius (float): The radius of the horizontal points.
-            npts (int): The number of horizontal points.
+            ntraj (int): The number of seeds, starting points for your trajectories.
 
         Returns:
             PoincarePlot: The PoincarePlot object.
@@ -142,9 +142,9 @@ class PoincarePlot(BaseSolver):
 
         if isinstance(map, maps.CylindricalBfieldSection):
             opoint = np.array([map.R0, map.Z0])
-            xs = np.linspace(opoint + np.array([1e-8, 0]), opoint + np.array([radius, 0]), npts)
+            xs = np.linspace(opoint + np.array([1e-8, 0]), opoint + np.array([radius, 0]), ntraj)
         elif isinstance(map, maps.ToroidalBfieldSection):
-            xs = np.linspace(np.array([1e-8, 0]), np.array([radius, 0]), npts)
+            xs = np.linspace(np.array([1e-8, 0]), np.array([radius, 0]), ntraj)
         else:
             raise ValueError("The map is not supported for horizontal points generation.")
         
@@ -163,7 +163,7 @@ class PoincarePlot(BaseSolver):
 
     # Methods for computing the Poincare plot
 
-    def compute(self, npts=200, nprocess=1, compute_iota=False):
+    def compute(self, npts=200, compute_iota=False):
         """
         Computes the evolution of the initial points under the map for npts points.
 
@@ -181,7 +181,7 @@ class PoincarePlot(BaseSolver):
         hits = np.nan * np.ones(
             (xs.shape[0], npts + 1, self._map.dimension), dtype=np.float64
         )
-        hits[:, 0, :] = xs
+        hits[:, 0, :] = np.copy(xs)
         
         if compute_iota:
             self._iota_computed = True
@@ -204,33 +204,14 @@ class PoincarePlot(BaseSolver):
                     break
                 hits[i, j + 1, :] = current_x
 
-        if nprocess == 1:  # single thread, do it straight away
-            for i, x in enumerate(xs):
-                compute_point(i, x)
-        else:  # parallel computation
-            if nprocess > xs.shape[0]:
-                nprocess = xs.shape[0]
-                logger.warning(
-                    "The number of processes is greater than the number of initial points. Using %d processes.",
-                    nprocess,
-                ) 
-
-            # This creates a problem with the integrator
-            with concurrent.futures.ProcessPoolExecutor(max_workers=nprocess) as executor:
-                futures = [executor.submit(compute_point, i, x) for i, x in enumerate(xs)]
-                for future in concurrent.futures.as_completed(futures):
-                    try:
-                        future.result()
-                    except KeyboardInterrupt:
-                        logger.info("KeyboardInterrupt detected. Stopping the program.")
-                        sys.exit()
-                    except Exception as e:
-                        logger.warning("An error occurred: %s", str(e))
+        for i, x in enumerate(xs):
+            compute_point(i, x)
 
         # Set the success flag to True and store the results
         self._hits = hits
         if compute_iota:
             self._windings = windings[:, 1:, :]
+            self._iota_computed = True
         self._successful = True
 
         return hits
@@ -251,54 +232,62 @@ class PoincarePlot(BaseSolver):
             self.compute(**kwargs, compute_iota=True)
 
         if isinstance(self._map, maps.CylindricalBfieldSection) or isinstance(self._map, maps.ToroidalBfieldSection):
-            rho = self._windings[:, :, 0]
-            theta = np.cumsum(self._windings[:, :, 1], axis=1)
-            self.iota = np.zeros(rho.shape[0], dtype=np.float64)
-
-            # Uses the Reiman and Greenside least square fit optimization method
-            for ii in range(rho.shape[0]):
-                nlist = np.arange(self._windings.shape[1], dtype=np.float64)
-                dzeta = self._map.dzeta
-                leastfit = np.zeros(6, dtype=np.float64)
-                leastfit[1] = np.sum((nlist * dzeta) ** 2)
-                leastfit[2] = np.sum((nlist * dzeta))
-                leastfit[3] = np.sum((nlist * dzeta) * theta[ii, :])
-                leastfit[4] = np.sum(theta[ii, :])
-                leastfit[5] = 1.0
-
-                self.iota[ii] = (leastfit[5] * leastfit[3] - leastfit[2] * leastfit[4]) / (
-                    leastfit[5] * leastfit[1] - leastfit[2] * leastfit[2]
-                )
+#            rho = self._windings[:, :, 0]
+#            theta = np.cumsum(self._windings[:, :, 1], axis=1)
+#            self._iota = np.zeros(rho.shape[0], dtype=np.float64)
+#
+#            # Uses the Reiman and Greenside least square fit optimization method
+#            for ii in range(rho.shape[0]):
+#                nlist = np.arange(self._windings.shape[1], dtype=np.float64)
+#                dzeta = self._map.dzeta
+#                leastfit = np.zeros(6, dtype=np.float64)
+#                leastfit[1] = np.sum((nlist * dzeta) ** 2)
+#                leastfit[2] = np.sum((nlist * dzeta))
+#                leastfit[3] = np.sum((nlist * dzeta) * theta[ii, :])
+#                leastfit[4] = np.sum(theta[ii, :])
+#                leastfit[5] = 1.0
+#
+#                self._iota[ii] = (leastfit[5] * leastfit[3] - leastfit[2] * leastfit[4]) / (
+#                    leastfit[5] * leastfit[1] - leastfit[2] * leastfit[2]
+#                )
+            # return the average change in angle around the axis because the smart method above is not working
+            self._iota = np.array([np.mean(self._windings[i,:,1])/(2*np.pi) for i in range(self._windings.shape[0])])
         else:
             raise ValueError("The map is not supported for computing the iota profile")
 
-        self.iota_successful = True
+        self._iota_successful = True
 
-        return self.xs, self.iota
+        return self.xs, self._iota
     
     @property
     def rho(self):
         """
-        the rho values, calculated from _windings which is calculated with a sucessful compute_iota
+        the rho values, calculated the axis of the map
         """
-        if not self.iota_successful:
-            raise Exception("A successful call of compute_iota() is needed")
-        return self._windings[:, 0, 0]
-
-    def compute_q(self, xs, **kwargs):
-        """
-        Compute the :math:`q`-profile.
+        distance_to_map_axis = self.xs - np.array([self._map.R0, self._map.Z0])
+        return np.linalg.norm(distance_to_map_axis, axis=1)
         
-        Args:
-            xs (np.ndarray): The initial points where to calculate the q profile, shape (npoints, dimension). If None, then it uses a former successful call of compute() if it exists.
-            **kwargs: Additional parameters for the poincare hits computation.
-
-        Returns:
-            rho (np.ndarray): The :math:`\\rho` value of the initial points.
-            q (np.ndarray): The :math:`q` value of the initial points.
+    
+    
+    @property
+    def iota(self):
         """
-        xs, iota = self.compute_iota(xs, **kwargs)
-        return xs, 1 / iota
+        the iota values, calculated from _windings which is calculated with a sucessful compute_iota
+        """
+        if not self._iota_successful:
+            self.compute_iota()
+        return self._iota
+    
+    @property
+    def q(self):
+        """
+        the q values, calculated from _windings which is calculated with a sucessful compute_iota
+        """
+        if not self._iota_successful:
+            self.compute_iota()
+        return 1/self.iota
+    
+    
 
     ## Plotting methods
 
@@ -369,8 +358,11 @@ class PoincarePlot(BaseSolver):
             fig, ax: The figure and axis of the plot.   
         """
         
-        if not self.iota_successful:
-            raise Exception("A successful call of compute_iota() is needed")
+        if not self._iota_successful:
+            try: 
+                self.compute_iota()
+            except:
+                raise Exception("A successful call of compute_iota() is needed")
 
         if plt.get_fignums():
             fig = plt.gcf()
@@ -409,7 +401,7 @@ class PoincarePlot(BaseSolver):
         Returns:
             fig, ax: The figure and axis of the plot.
         """
-        if not self.iota_successful:
+        if not self._iota_successful:
             raise Exception("A successful call of compute_iota() is needed")
 
         if plt.get_fignums():

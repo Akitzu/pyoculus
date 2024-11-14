@@ -254,6 +254,9 @@ class ClinicSet:
         ]
 
     def reset(self):
+        """
+        remove all known clinics and start afresh. 
+        """
         self._clinics_list = []
         self.fundamental_segments = None
         self.nint_pair = None
@@ -314,7 +317,15 @@ class Manifold(BaseSolver):
 
     def choose(self, dir_1, dir_2, is_first_stable):
         """
-        Choose the stable and unstable directions.
+        Choose the stable and unstable directions to define your Manifold problem. 
+        Use Manifold.show_directions to help you choose here. 
+        This plot shows the fixed points and the stable eigenvector (and its negative) in green, the
+        unstable eigenvector (and it's negative) in red. 
+
+        You must choose directions away from the fixed point in which the manifolds
+        actually intersect, otherwise other manifold computations such
+        as clinic finding will fail.
+
 
         Args:
             dir_1 (str): '+' or '-' for the stable direction.
@@ -994,9 +1005,11 @@ class Manifold(BaseSolver):
                 #         mid_A[k] = np.matmul(invJacobian, np.array([self._problem.A(xyz)]).T).T[0][::2]
 
                 # Discretize the A.dl integral and sum it
-                areas[i] += np.einsum(
+                closing_integral += np.einsum(
                     "ij,ij->i", mid_A, np.ones((mid_A.shape[0], 1)) * dl
                 ).sum()
+                logger.debug(f"Closing integral {i} : {closing_integral}")
+                areas[i] += closing_integral
 
         self._areas = areas
         self._lagrangian_values = lagrangian_values
