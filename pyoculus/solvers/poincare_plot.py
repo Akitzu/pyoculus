@@ -232,28 +232,36 @@ class PoincarePlot(BaseSolver):
             self.compute(**kwargs, compute_iota=True)
 
         if isinstance(self._map, maps.CylindricalBfieldSection) or isinstance(self._map, maps.ToroidalBfieldSection):
-#            rho = self._windings[:, :, 0]
-#            theta = np.cumsum(self._windings[:, :, 1], axis=1)
-#            self._iota = np.zeros(rho.shape[0], dtype=np.float64)
-#
-#            # Uses the Reiman and Greenside least square fit optimization method
-#            for ii in range(rho.shape[0]):
-#                nlist = np.arange(self._windings.shape[1], dtype=np.float64)
-#                dzeta = self._map.dzeta
-#                leastfit = np.zeros(6, dtype=np.float64)
-#                leastfit[1] = np.sum((nlist * dzeta) ** 2)
-#                leastfit[2] = np.sum((nlist * dzeta))
-#                leastfit[3] = np.sum((nlist * dzeta) * theta[ii, :])
-#                leastfit[4] = np.sum(theta[ii, :])
-#                leastfit[5] = 1.0
-#
-#                self._iota[ii] = (leastfit[5] * leastfit[3] - leastfit[2] * leastfit[4]) / (
-#                    leastfit[5] * leastfit[1] - leastfit[2] * leastfit[2]
-#                )
+            
+            theta = np.empty((self.xs.shape[0], self._windings.shape[1] + 1))
+            if isinstance(self._map, maps.CylindricalBfieldSection):
+                thetas_0 = np.arctan2(self.xs[:, 1] - self._map.Z0, self.xs[:, 0] - self._map.R0)
+            else:
+                thetas_0 = self.xs[:, 1]
+
+            dtheta = np.cumsum(self._windings[:, :, 1], axis=1)
+            theta[:, 0] = thetas_0
+            theta[:, 1:] = dtheta + thetas_0[:, np.newaxis]
+
+            self._iota = np.zeros(self.xs.shape[0], dtype=np.float64)
+
+            # Uses the Reiman and Greenside least square fit optimization method
+            for ii in range(self.xs.shape[0]):
+                nlist = np.arange(theta.shape[1], dtype=np.float64)
+                dzeta = self._map.dzeta
+                leastfit = np.zeros(6, dtype=np.float64)
+                leastfit[1] = np.sum((nlist * dzeta) ** 2)
+                leastfit[2] = np.sum((nlist * dzeta))
+                leastfit[3] = np.sum((nlist * dzeta) * theta[ii, :])
+                leastfit[4] = np.sum(theta[ii, :])
+                leastfit[5] = 1.0
+
+                self._iota[ii] = (leastfit[5] * leastfit[3] - leastfit[2] * leastfit[4]) / (
+                    leastfit[5] * leastfit[1] - leastfit[2] * leastfit[2]
+                )
+        else:
             # return the average change in angle around the axis because the smart method above is not working
             self._iota = np.array([np.mean(self._windings[i,:,1])/(2*np.pi) for i in range(self._windings.shape[0])])
-        else:
-            raise ValueError("The map is not supported for computing the iota profile")
 
         self._iota_successful = True
 
