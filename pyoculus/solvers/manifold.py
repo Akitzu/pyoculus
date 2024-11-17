@@ -979,7 +979,7 @@ class Manifold(BaseSolver):
                 r_h_u, r_m_u = traj_h[0, :], traj_m[1, :]
 
             # Do the calculation
-            for rA, rB in zip([r_m_u, r_h_s], [r_h_u, r_m_s]):
+            for j, (rA, rB) in enumerate(zip([r_m_u, r_h_s], [r_h_u, r_m_s])):
                 # Create a segment between r2 and r1
                 gamma, dl = np.linspace(rA, rB, n_joining, retstep=True)
 
@@ -1005,10 +1005,10 @@ class Manifold(BaseSolver):
                 #         mid_A[k] = np.matmul(invJacobian, np.array([self._problem.A(xyz)]).T).T[0][::2]
 
                 # Discretize the A.dl integral and sum it
-                closing_integral += np.einsum(
+                closing_integral = np.einsum(
                     "ij,ij->i", mid_A, np.ones((mid_A.shape[0], 1)) * dl
                 ).sum()
-                logger.debug(f"Closing integral {i} : {closing_integral}")
+                logger.debug(f"Closing integral {i+1}, {j+1}/2 : {closing_integral}")
                 areas[i] += closing_integral
 
         self._areas = areas

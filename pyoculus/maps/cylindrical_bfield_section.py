@@ -232,8 +232,8 @@ class CylindricalBfieldSection(IntegratedMap):
         
         theta1 = output[4]
         rho1 = np.sqrt((output[0] - output[2]) ** 2 + (output[1] - output[3]) ** 2)
-        drhodtheta = np.array([rho1 - rho0, theta1 - theta0])
-        return drhodtheta
+        rhodtheta = np.array([rho1, theta1 - theta0])
+        return rhodtheta
 
     
     def dwinding(self, t, y0, y1=None):
