@@ -434,7 +434,7 @@ class FixedPoint(BaseSolver):
             )
 
             # Stop if the resolution is good enough
-            delta_x = x_winding - x - np.array([0., self._n*self.dzeta])
+            delta_x = x_winding - x - np.array([0., self._n*self._map.dzeta])
             if abs(delta_x[-1]) < tol:
                 succeeded = True
                 break

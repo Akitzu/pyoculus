@@ -29,7 +29,12 @@ class ToroidalBfieldSection(IntegratedMap):
         Returns: 
             
         """
-        return self.check_domain(self.winding(t, y0))
+        # Set the integrator
+        if self._integrator.rhs is not self._ode_rhs:
+            self._integrator.set_rhs(self._ode_rhs)
+
+        y_new = self._integrate(t, y0)
+        return self.check_domain(y_new)
 
     def df(self, t, y0):
         ic = np.array([*y0, 1.0, 0.0, 0.0, 1.0])
@@ -41,8 +46,12 @@ class ToroidalBfieldSection(IntegratedMap):
         return self._integrate(t, y0)
 
     def winding(self, t, y0, y1=None):
-        self._integrator.set_rhs(self._ode_rhs)
-        return self._integrate(t, y0)
+        # Set the integrator
+        if self._integrator.rhs is not self._ode_rhs:
+            self._integrator.set_rhs(self._ode_rhs)
+        
+        y_new = self._integrate(t, y0)
+        return np.array([y_new[0], y_new[1] - y0[1]])
     
     def dwinding(self, t, y0, y1=None):
         return self.df(t, y0)
