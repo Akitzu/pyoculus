@@ -653,7 +653,7 @@ class Manifold(BaseSolver):
 
         for i, dir in enumerate(["stable", "unstable"]):
             if dir == which or which == "both":
-                points = self._lfs[dir]
+                points = self.stable if dir == "stable" else self.unstable
                 points = points.T.flatten()
                 ax.plot(
                     points[::2][:final_index],
@@ -932,45 +932,47 @@ class Manifold(BaseSolver):
         """
         Compute the turnstile area by integrating the vector potential along the trajectory of the homo/hetero-clinics points.
         """
-        lagrangian_values = []
+        lagrangian_values = np.NaN * np.zeros(len(self.clinics)+1)
 
         # Could be put in the clinic trajectory directly. Open question.
         # Calculation of the lagrangian value (from the unstable to the stable fundamental segment)
-        for i, clinic in enumerate(self.clinics):
+        for i, clinic in enumerate([*self.clinics, self.clinics[0]]):
             x_s_0, x_u_0 = (
                 clinic.trajectory[-1 if i != 0 else -2, :],
-                clinic.trajectory[0, :],
+                clinic.trajectory[0 if i != len(self.clinics) else 1, :],
             )
-            n_bwd, n_fwd = clinic.nint_s, clinic.nint_u
 
-            intA_s = self._map.lagrangian(x_s_0, -n_bwd + 1 if i == 0 else -n_bwd)
-            intA_u = self._map.lagrangian(x_u_0, n_fwd)
+            n_bwd = clinic.nint_s if i != 0 else clinic.nint_s - 1
+            n_fwd = clinic.nint_u if i != len(self.clinics) else clinic.nint_u - 1
 
-            # x_t_s = self._map.f(- n_bwd + 1 if i==0 else -n_bwd, x_s_0)
-            # x_t_u = self._map.f(n_fwd, x_u_0)
+            # x_t_s = self._map.f(-n_bwd * self.fixedpoint_1.m, x_s_0)
+            # x_t_u = self._map.f(n_fwd * self.fixedpoint_1.m, x_u_0)
 
-            lagrangian_values.append(intA_u - intA_s)
+            intA_s = self._map.lagrangian(x_s_0, -n_bwd * self.fixedpoint_1.m)
+            intA_u = self._map.lagrangian(x_u_0, n_fwd * self.fixedpoint_1.m)
+            
+            lagrangian_values[i] = intA_u - intA_s
 
             logger.info(
-                f"Lagrangian value obtained ({(intA_s - intA_u):.3e}) for homo/hetero-clinic trajectory (eps_s, eps_u) : {clinic.eps_s, clinic.eps_u}"
+                f"Lagrangian value obtained ({(lagrangian_values[i]):.3e}) for homo/hetero-clinic trajectory (eps_s, eps_u) : {clinic.eps_s, clinic.eps_u}"
             )
 
         # Computation of the turnstile area
         areas = np.empty(len(self.clinics))
         shifted_indices = [
-            i for i in np.roll(np.arange(len(lagrangian_values), dtype=int), -1)
+            i for i in np.roll(np.arange(len(self.clinics), dtype=int), -1)
         ]
 
         # Loop on the L values : L_h current clinic point, L_m next clinic point (in term of >_u ordering)
         for i, shifted_i in enumerate(shifted_indices):
             # Area is the difference in the
-            areas[i] = lagrangian_values[i] - lagrangian_values[shifted_i]
+            areas[i] = lagrangian_values[i] - lagrangian_values[i+1]
 
             # Closure by joining integrals
             traj_h = self.clinics[i].trajectory
             traj_m = self.clinics[shifted_i].trajectory
 
-            # Get the correct point to join
+            # Get the correct points to join
             r_h_u, r_m_u = traj_h[0, :], traj_m[0, :]
             r_h_s, r_m_s = traj_h[-1, :], traj_m[-1, :]
             if i == 0:
@@ -978,9 +980,8 @@ class Manifold(BaseSolver):
             elif i == len(shifted_indices) - 1:
                 r_h_u, r_m_u = traj_h[0, :], traj_m[1, :]
 
-            # Do the calculation
-            for j, (rA, rB) in enumerate(zip([r_m_u, r_h_s], [r_h_u, r_m_s])):
-                # Create a segment between r2 and r1
+            for j, (rA, rB) in enumerate(zip([r_m_u, r_h_s], [r_h_u, r_m_s])):                
+                # Create a segment between r1 and r2
                 gamma, dl = np.linspace(rA, rB, n_joining, retstep=True)
 
                 # Evaluate A at the middle point between (x_i, x_{i+1})
@@ -993,17 +994,7 @@ class Manifold(BaseSolver):
                     )
                 ).T
                 mid_A = np.array([self._map._mf.A(r)[0::2] for r in mid_gamma])
-                # else:
-                #     mid_A = np.empty((mid_gamma.shape[0], 2))
-                #     for k, r in enumerate(mid_gamma):
-                #         xyz = np.array([
-                #             r[0] * np.cos(r[1]),
-                #             r[0] * np.sin(r[1]),
-                #             r[2]
-                #         ])
-                #         invJacobian = self._problem._inv_Jacobian(r[0], r[1], r[2])
-                #         mid_A[k] = np.matmul(invJacobian, np.array([self._problem.A(xyz)]).T).T[0][::2]
-
+         
                 # Discretize the A.dl integral and sum it
                 closing_integral = np.einsum(
                     "ij,ij->i", mid_A, np.ones((mid_A.shape[0], 1)) * dl
