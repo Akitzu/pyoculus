@@ -208,4 +208,4 @@ print("Outer area (flux devided by B^\phi_axis in Tesla): ", outer_manifold.turn
 # np.save("outer_areas_0229079.npy", outer_manifold.turnstile_areas)
 
 # Save the figure
-fig.savefig("figs/" + __file__ + ".png", dpi=300)
+fig.savefig("figs/simsopt_quasr_" + label + ".png", dpi=300)
