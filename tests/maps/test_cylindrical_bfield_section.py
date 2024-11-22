@@ -3,6 +3,7 @@ import numpy as np
 from pyoculus.maps.cylindrical_bfield_section import CylindricalBfieldSection
 from pyoculus.fields import AnalyticCylindricalBfield
 
+
 class TestCylindricalBfieldSection(unittest.TestCase):
 
     def setUp(self):
