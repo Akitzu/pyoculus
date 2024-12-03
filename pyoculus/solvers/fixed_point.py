@@ -314,6 +314,27 @@ class FixedPoint(BaseSolver):
             raise ValueError("Fixed point not found.")
         return np.linalg.eigvals(self.jacobians)
 
+    @property
+    def topological_index(self):
+        """
+        return the topological index of the fixed point
+        """
+        if not self.successful:
+            raise ValueError("Fixed point not found.")
+
+        return np.sign(self.GreenesResidues[0])
+
+    @property
+    def rotational_transform(self):
+        """
+        return the rotational transform if the fixed point is Elliptic
+        """
+        if not self.successful:
+            raise ValueError("Fixed point not found.")
+        if np.abs(np.trace(self.jacobians[0])) >= 2:
+            raise ValueError("rotational transform only defined for elliptic fixed point, this point is hyperbolic")
+        return np.arccos(np.trace(self.jacobians[0])/2)/(2*np.pi)
+
     """
     Solver methods.
 
