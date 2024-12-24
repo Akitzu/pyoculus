@@ -3,6 +3,7 @@ from .base_solver import BaseSolver
 from .fixed_point import FixedPoint
 from ..utils.plot import create_canvas
 from scipy.optimize import root, minimize
+from typing import Iterator, Literal
 
 # from functools import total_ordering
 from matplotlib.patches import FancyArrowPatch
@@ -16,18 +17,26 @@ logger = logging.getLogger(__name__)
 
 def eig(jacobian):
     """
-    Compute the stable and unstable eigenvalues and eigenvectors of the fixed point.
+    Compute stable and unstable eigenvalues/eigenvectors of a fixed point.
+
+    This function calculates the eigenvalues and eigenvectors of a given Jacobian matrix
+    and separates them into stable and unstable components based on their magnitudes.
 
     Args:
-        jacobian (np.array): Jacobian matrix of the fixed point.
+        jacobian (np.ndarray): A 2x2 Jacobian matrix at the fixed point.
 
     Returns:
-        tuple: A tuple containing four elements:
-            - lambda_s (float): The stable eigenvalue.
-            - vector_s (np.array): The stable eigenvector.
-            - lambda_u (float): The unstable eigenvalue.
-            - vector_u (np.array): The unstable eigenvector.
+        tuple:
+            lambda_s (float): The stable eigenvalue (:math:`\\vert\\lambda\\vert < 1`)
+            vector_s (np.ndarray): The corresponding stable eigenvector
+            lambda_u (float): The unstable eigenvalue (:math:`\\vert\\lambda\\vert > 1`)
+            vector_u (np.ndarray): The corresponding unstable eigenvector
+
+    Examples:
+        >>> J = np.array([[1.5, 0.5], [0.5, 2.0]])
+        >>> lambda_s, v_s, lambda_u, v_u = eig(J)
     """
+
     eigRes = np.linalg.eig(jacobian)
     eigenvalues = np.abs(eigRes[0])
 
@@ -48,7 +57,33 @@ def eig(jacobian):
 
 
 class Clinic:
-    def __init__(self, manifold, eps_s, eps_u, n_s, n_u):
+    """A class representing the trajectory of a homoclinic/heteroclinic point.
+
+    This class handles the computation and storage of a heteroclinic/homoclinic trajectory, which represent intersections between stable and unstable manifolds of fixed points.
+
+    Args:
+        manifold: The :class:`Manifold` object associated to the fixed points and map analyzed.
+        eps_s (float): Initial distance in the linear regime along stable manifold direction.
+        eps_u (float): Initial distance in the linear regime along unstable manifold direction.
+        n_s (int): Number of iterations to apply to the intersection closest to the stable fixed point.
+        n_u (int): Number of iterations to apply to the intersection closest to the unstable fixed point.
+
+    Attributes:
+        eps_s (float): Distance parameter along stable manifold.
+        eps_u (float): Distance parameter along unstable manifold.
+        nint_s (int): Number of stable iterations.
+        nint_u (int): Number of unstable iterations.
+        _fundamental_segments (dict): Fundamental domain bounds.
+        _trajectory (np.ndarray): Computed clinic orbit.
+        _path_s (np.ndarray): Stable manifold path.
+        _path_u (np.ndarray): Unstable manifold path.
+        _xend_s (np.ndarray): End point on stable manifold.
+        _xend_u (np.ndarray): End point on unstable manifold.
+    """
+
+    def __init__(
+        self, manifold: "Manifold", eps_s: float, eps_u: float, n_s: int, n_u: int
+    ) -> None:
         self._manifold = manifold
         self.eps_s = eps_s
         self.eps_u = eps_u
@@ -63,9 +98,15 @@ class Clinic:
 
     @property
     def trajectory(self):
+        """Get the complete trajectory of the clinic point.
+
+        Computes the trajectory by integrating along stable and unstable
+        manifolds if not already calculated.
+
+        Returns:
+            np.ndarray: Array containing the orbit from unstable to stable fixed point.
         """
-        gives the evolution of the clinic point from the unstable fixed point to the stable fixed point.
-        """
+
         if self._trajectory is not None:
             return self._trajectory
 
@@ -81,9 +122,13 @@ class Clinic:
 
         return self._trajectory
 
-    # The end points are the points that where found to be close in the clinic search
     @property
     def x_end_s(self):
+        """Get the endpoint on the stable manifold.
+
+        Returns:
+            np.ndarray: Coordinates of the end point on stable manifold.
+        """
         if self._xend_s is not None:
             return self._xend_s
         elif self._path_s is not None:
@@ -96,6 +141,11 @@ class Clinic:
 
     @property
     def x_end_u(self):
+        """Get the endpoint on the unstable manifold.
+
+        Returns:
+            np.ndarray: Coordinates of the end point on unstable manifold.
+        """
         if self._xend_u is not None:
             return self._xend_u
         elif self._path_u is not None:
@@ -106,33 +156,40 @@ class Clinic:
 
         return self._xend_u
 
-    # Fundamental segments
     @property
     def fundamental_segments(self):
+        """Get the fundamental domain boundaries.
+
+        Returns:
+            dict: Contains 'stable' and 'unstable' segment bounds.
+        """
         if self._fundamental_segments is None:
             bnd_s, bnd_u = self._fundamental_segments_from_eps()
             self._fundamental_segments = {"stable": bnd_s, "unstable": bnd_u}
         return self._fundamental_segments
 
-    def _fundamental_segments_from_eps(self):
-        """
-        Calculate the fundamental segment on the unstable and stable manifolds.
+    # Private methods
 
-        Args:
-            eps_s (float): Initial :math:`\\varepsilon_s` along the stable manifold direction.
-            eps_u (float): Initial :math:`\\varepsilon_u` along the unstable manifold direction.
+    def _fundamental_segments_from_eps(
+        self,
+    ) -> tuple[tuple[float, float], tuple[float, float]]:
+        """Calculate the fundamental segment on unstable and stable manifolds.
+
+        Computes the bounds of fundamental domains by evolving points along
+        the manifolds and measuring their distances from fixed points.
 
         Returns:
             tuple: A tuple containing two tuples:
-                - (eps_s, upperbound_s): The initial :math:`\\varepsilon_s` and the computed upper bound
-                for the stable manifold.
-                - (eps_u, upperbound_u): The initial guess and the computed upper bound
-                for the unstable manifold.
+                - (eps_s, upperbound_s): The initial ε_s and computed upper bound
+                  for the stable manifold.
+                - (eps_u, upperbound_u): The initial guess and computed upper bound
+                  for the unstable manifold.
         """
-
+        # Initial points along the manifolds
         r_s = self._manifold.rfp_s + self.eps_s * self._manifold.vector_s
         r_u = self._manifold.rfp_u + self.eps_u * self._manifold.vector_u
 
+        # Evolve the points along the manifolds
         # r_s_unevolved = self._map.f(+1*self.fixedpoint_1.m, r_s)
         # r_s_evolved   = self._map.f(-1*self.fixedpoint_1.m, r_s)
         r_s_evolved = self._manifold.integrate(r_s, 1, -1)[:, 1]
@@ -141,43 +198,87 @@ class Clinic:
         # r_u_evolved   = self._map.f(+1*self.fixedpoint_1.m, r_u)
         r_u_evolved = self._manifold.integrate(r_u, 1, +1)[:, 1]
 
+        # Measure the distance from the fixed points with usual two norm
         upperbound_s = np.linalg.norm(r_s_evolved - self._manifold.rfp_s)
         upperbound_u = np.linalg.norm(r_u_evolved - self._manifold.rfp_u)
 
         return (self.eps_s, upperbound_s), (self.eps_u, upperbound_u)
 
-    # def retrieve(self, )
-
-    # def plot(self, ax, **kwargs):
-    #     ax.plot(self.trajectory[:,0], self.trajectory[:,1], **kwargs)
-
 
 class ClinicSet:
-    """ """
+    """A collection of homoclinics/heteroclinics with unstable (:math:`>_u`) ordering.
 
-    def __init__(self, manifold):
+    This class manages multiple :class:`Clinic` objects, maintaining their ordering and ensuring
+    proper fundamental domain representation. It uses the first clinic added to manage the fundamental domain boundaries.
+
+    Args:
+        manifold: The :class:`Manifold` object associated to the fixed points and the map analyzed.
+
+    Attributes:
+        _clinics_list (list): List of Clinic objects.
+        fundamental_segments (dict): Fundamental domain boundaries.
+        nint_pair (tuple): Default iteration numbers (n_s, n_u).
+
+    Methods:
+        record_clinic: Add a new clinic point to the collection.
+        reset: Clear all stored clinics.
+
+    Examples:
+        >>> a_manifold = Manifold(...)
+        >>> clinic_set = ClinicSet(a_manifold)
+        >>> clinic_set.record_clinic(eps_s=0.1, eps_u=0.1, n_s=10, n_u=10)
+    """
+
+    DEFAULT_TOLERANCE = 1e-2
+    MAX_ITERATIONS = 20
+
+    def __init__(self, manifold: "Manifold") -> None:
         self._manifold = manifold
         self.reset()
 
-    def __getitem__(self, index):
-        return self._clinics_list[index]
-
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._clinics_list)
 
-    def __iter__(self):
-        self._index = 0
-        return self
+    @property
+    def size(self) -> int:
+        """Number of clinic points in the set."""
+        return len(self._clinics_list)
 
-    def __next__(self):
-        if self._index < len(self._clinics_list):
-            result = self._clinics_list[self._index]
-            self._index += 1
-            return result
-        else:
-            raise StopIteration
+    @property
+    def is_empty(self) -> bool:
+        """Check if the clinic set is empty."""
+        return len(self._clinics_list) == 0
 
-    def record_clinic(self, eps_s, eps_u, n_s, n_u, **kwargs):
+    # Make the class indexable
+    def __getitem__(self, index: int) -> Clinic:
+        return self._clinics_list[index]
+
+    # Make the class iterable
+    def __iter__(self) -> Iterator[Clinic]:
+        return iter(self._clinics_list)
+
+    # Public methods
+
+    def record_clinic(
+        self, eps_s: float, eps_u: float, n_s: int, n_u: int, **kwargs
+    ) -> None:
+        """Record a new clinic point in the fundamental domain.
+
+        Creates and stores a new :class:`Clinic` object after converting the given parameters
+        to their fundamental domain representation.
+
+        Args:
+            eps_s (float): Initial distance along stable manifold.
+            eps_u (float): Initial distance along unstable manifold.
+            n_s (int): Number of iterations for stable manifold.
+            n_u (int): Number of iterations for unstable manifold.
+            **kwargs: Additional keyword arguments:
+                tol (float, optional): Tolerance for comparing epsilon values. Defaults to 1e-2.
+
+        Note:
+            If this is the first clinic point, it establishes the fundamental domain boundaries.
+            Otherwise, parameters are converted to their fundamental domain representation.
+        """
         if not self._clinics_list:
             clinic = Clinic(self._manifold, eps_s, eps_u, n_s, n_u)
             self.fundamental_segments = clinic.fundamental_segments
@@ -194,7 +295,7 @@ class ClinicSet:
                 n_u + n_u_shift,
             )
 
-            tol = kwargs.get("tol", 1e-2)
+            tol = kwargs.get("tol", self.DEFAULT_TOLERANCE)
             if not np.any(
                 [
                     np.isclose(clinic.eps_u, other.eps_u, rtol=tol)
@@ -202,11 +303,52 @@ class ClinicSet:
                 ]
             ):
                 self._clinics_list.append(clinic)
-                self.order()
+                self._orderize()
             else:
                 logger.warning("Homo/heteroclinic already recorded, skipping...")
 
-    def _find_fundamental_eps(self, eps, which, **kwargs):
+    def reset(self) -> None:
+        """Reset the clinic set to its initial empty state.
+
+        Clears:
+            - All stored clinic points
+            - Fundamental segment boundaries
+            - Default iteration numbers (nint_pair)
+        """
+        self._clinics_list = []
+        self.fundamental_segments = None
+        self.nint_pair = None
+
+    # Private methods
+
+    def _orderize(self) -> None:
+        """Sorts the internal list of clinic points based on their eps_u values."""
+        self._clinics_list = [
+            self._clinics_list[i]
+            for i in np.argsort([x.eps_u for x in self._clinics_list])
+        ]
+
+    def _find_fundamental_eps(
+        self, eps: float, which: Literal["stable", "unstable"], **kwargs
+    ) -> tuple[float, int]:
+        """
+        Find the epsilon parameter lying within the fundamental segment (stable or unstable) of the ClinicSet for a given epsilon value.
+
+        Args:
+            eps (float): The initial epsilon value to convert.
+            which (str): Either "stable" or "unstable", which manifold eps lies on.
+            **kwargs: Additional keyword arguments:
+                max_iters (int, optional): Maximum number of iterations to find the fundamental eps.
+
+        Returns:
+            tuple: (fundamental_eps, n_shift)
+                - fundamental_eps (float): The equivalent eps in fundamental segment.
+                - n_shift (int): Number of iterations needed for the shift.
+
+        Raises:
+            ValueError: If which is neither "stable" nor "unstable".
+            RuntimeError: If fundamental epsilon is not found within max_iters iterations.
+        """
         if which == "stable":
             rfp, eigenvector, forward_dir = (
                 self._manifold.rfp_s,
@@ -220,7 +362,9 @@ class ClinicSet:
                 +1,
             )
         else:
-            raise ValueError("Invalid manifold selection.")
+            raise ValueError(
+                f"Invalid manifold selection: {which}. Must be 'stable' or 'unstable'"
+            )
 
         fund = self.fundamental_segments[which]
         r_cur = rfp + eps * eigenvector
@@ -231,7 +375,7 @@ class ClinicSet:
         forward_dir *= 1 if eps < fund[0] else -1
 
         # Set a maximum number of iterations
-        max_iterations = kwargs.get("max_iters", 20)
+        max_iterations = kwargs.get("max_iters", self.MAX_ITERATIONS)
         for _ in range(max_iterations):
             if fund[0] <= norm < fund[1]:
                 return norm, n_shift
@@ -240,30 +384,57 @@ class ClinicSet:
             n_shift -= 1 * forward_dir
             logger.debug(f"Current epsilon (from norm calculation): {norm}")
 
-        raise ValueError(
+        raise RuntimeError(
             "Failed to find a solution within the maximum number of iterations"
         )
 
-    def order(self):
-        """
-        Order the homo/hetero-clinic points with the induced linear ordering of the unstable manifold >_u.
-        """
-        self._clinics_list = [
-            self._clinics_list[i]
-            for i in np.argsort([x.eps_u for x in self._clinics_list])
-        ]
-
-    def reset(self):
-        """
-        remove all known clinics and start afresh. 
-        """
-        self._clinics_list = []
-        self.fundamental_segments = None
-        self.nint_pair = None
-
 
 class Manifold(BaseSolver):
-    """ """
+    """Class for computing and analyzing a tangle composed of one stable and one unstable manifold of fixed points.
+
+    This class handles the computation of stable and unstable manifolds for fixed points, including finding homoclinic/heteroclinic intersections and calculating the turnstile flux of the tangle.
+
+    Args:
+        map (maps.base_map): The map defining the dynamical system.
+        fixedpoint_1 (FixedPoint): First fixed point to consider.
+        fixedpoint_2 (FixedPoint, optional): Second fixed point to consider if the manifolds go from one to the other.
+        dir1 (str, optional): Direction ('+' or '-') for first manifold.
+        dir2 (str, optional): Direction ('+' or '-') for second manifold.
+        is_first_stable (bool, optional): Whether the first fixed point direction captures the stable manifold departure.
+
+    Attributes:
+        fixedpoint_1 (FixedPoint): First fixed point.
+        fixedpoint_2 (FixedPoint): Second fixed point.
+        rfp_s (np.ndarray): Stable fixed point coordinates.
+        rfp_u (np.ndarray): Unstable fixed point coordinates.
+        vector_s (np.ndarray): Stable eigenvector.
+        vector_u (np.ndarray): Unstable eigenvector.
+        lambda_s (float): Stable eigenvalue.
+        lambda_u (float): Unstable eigenvalue.
+        stable (np.array): Stable manifold points.
+        unstable (np.array): Unstable manifold points.
+        clinics (ClinicSet): Set of homoclinic/heteroclinic intersections.
+        turnstile_areas (np.array): Turnstile areas of the tangle.
+
+    Methods:
+        choose: Choose the stable and unstable directions for the manifold.
+        show_directions: Plot the fixed points and their stable/unstable directions.
+        show_current_directions: Plot the current stable and unstable directions.
+        error_linear_regime: Metric to evaluate if a point is in the linear regime of a fixed point.
+        start_config: Compute a starting configuration for the manifold drawing.
+        find_epsilon: Find the epsilon that lies in the linear regime.
+        compute_manifold: Compute the stable or unstable manifold.
+        compute: Compute the stable and unstable manifolds.
+        plot: Plot the stable and unstable manifolds.
+        find_N: Find the number of times the map needs to be applied for the stable and unstable points to cross.
+        find_clinic_single: Find a single homoclinic/heteroclinic intersection.
+        find_clinic: Find all homoclinic/heteroclinic intersections.
+        compute_turnstile_areas: Compute the turnstile areas of the tangle.
+
+    Raises:
+        TypeError: If fixed points are not FixedPoint instances.
+        ValueError: If fixed points are not successfully computed.
+    """
 
     def __init__(
         self,
@@ -273,16 +444,7 @@ class Manifold(BaseSolver):
         dir1: str = None,
         dir2: str = None,
         is_first_stable: bool = None,
-    ):
-        """
-        Initialize the Manifold class.
-
-        Args:
-            map (maps.base_map): The map to use for the computation.
-            fixedpoint_1 (FixedPoint): first fixed point
-            fixedpoint_2 (FixedPoint, optional): second fix point if not homoclinic manifold. Defaults to None.
-        """
-
+    ) -> None:
         # Check that the fixed points are correct FixedPoint instances
         if not isinstance(fixedpoint_1, FixedPoint):
             raise TypeError("Fixed point must be an instance of FixedPoint class")
@@ -315,24 +477,20 @@ class Manifold(BaseSolver):
         # Initialize the BaseSolver
         super().__init__(map)
 
-    def choose(self, dir_1, dir_2, is_first_stable):
-        """
-        Choose the stable and unstable directions to define your Manifold problem. 
-        Use Manifold.show_directions to help you choose here. 
-        This plot shows the fixed points and the stable eigenvector (and its negative) in green, the
-        unstable eigenvector (and it's negative) in red. 
+    def choose(
+        self, dir_1: Literal["+", "-"], dir_2: Literal["+", "-"], is_first_stable: bool
+    ) -> None:
+        """Choose manifold stable and unstable directions to define your :class:`Manifold` problem.
 
-        You must choose directions away from the fixed point in which the manifolds
-        actually intersect, otherwise other manifold computations such
-        as clinic finding will fail.
+        You must choose directions away from the fixed point in which the manifolds actually intersect. The good orientation is the one for which you could create the manifold by going away from the fixed point. Be carefull to this point, otherwise other manifold computations such as clinic finding will fail.
 
+        Hint: Use :meth:`Manifold.show_directions` to help you choose here. This plot shows the fixed points and the stable eigenvector (and its negative) in green, the unstable eigenvector (and it's negative) in red.
 
         Args:
             dir_1 (str): '+' or '-' for the stable direction.
             dir_2 (str): '+' or '-' for the unstable direction.
             first_stable (bool): Whether the first fixed point is a stable direction.
         """
-
         if is_first_stable:
             fp_s, fp_u = self.fixedpoint_1, self.fixedpoint_2
         else:
@@ -355,27 +513,29 @@ class Manifold(BaseSolver):
         self._lfs = {"stable": None, "unstable": None}
 
     @classmethod
-    def show_directions(cls, fp_1, fp_2, **kwargs):
-        """
+    def show_directions(
+        cls, fp_1: FixedPoint, fp_2: FixedPoint, **kwargs
+    ) -> tuple[plt.Figure, plt.Axes]:
+        """Plot fixed points and their stable/unstable directions.
+
         Helper function to plot the fixed points and their stable and unstable direction. Usefull to look at which direction need to be considered for the inner and outer manifolds before creating a class and analyzed them.
 
         Args:
             fp_1 (FixedPoint): First fixed point.
             fp_2 (FixedPoint): Second fixed point.
-            **kwargs: Additional optional keyword arguments.
-                - pcolors (list): Colors for the fixed points.
-                - vcolors (list): Colors for the eigenvectors.
-                - vscale (int): Scale for the eigenvectors (default is 18).
-                - dvtext (float): Additional distance for the text as a fraction of the eigenvector (default is 0.005).
+            **kwargs: Optional visualization parameters:
+                pcolors (list): Colors for fixed points.
+                vcolors (list): Colors for eigenvectors.
+                vscale (int): Scale for eigenvectors.
+                dvtext (float): Text distance as fraction.
 
         Returns:
-            tuple: A tuple containing the figure and the axis.
+            tuple: (figure, axis) matplotlib objects.
         """
-
         # Defaults
         pcolors = kwargs.get("pcolors", ["tab:blue", "tab:orange"])
         vcolors = kwargs.get("vcolors", ["tab:green", "tab:red"])
-        vscale = kwargs.get("scale", 18)
+        vscale = kwargs.get("vscale", 18)
         dvtext = kwargs.get("dvtext", 0.005)
 
         # Set the figure and ax
@@ -464,9 +624,25 @@ class Manifold(BaseSolver):
     def show_current_directions(self, **kwargs):
         pass
 
-    def error_linear_regime(self, epsilon, rfp, eigenvector, direction=1):
-        """
-        Metric to evaluate if the point rfp + epsilon * eigenvector is in the linear regime of the fixed point.
+    def error_linear_regime(
+        self,
+        epsilon: float,
+        rfp: np.ndarray,
+        eigenvector: np.ndarray,
+        direction: int = 1,
+    ) -> float:
+        """Calculate error in linear regime approximation.
+
+        Metric to estimate if the point rfp + epsilon * eigenvector is in the linear regime of rfp point.
+
+        Args:
+            epsilon (float): Distance from fixed point.
+            rfp (np.ndarray): Fixed point coordinates.
+            eigenvector (np.ndarray): Eigenvector to check.
+            direction (int, optional): Integration direction. Defaults to 1.
+
+        Returns:
+            float: Error metric for linear approximation.
         """
         # Initial point and evolution
         rEps = rfp + epsilon * eigenvector
@@ -477,6 +653,7 @@ class Manifold(BaseSolver):
         norm_eps_dir = np.linalg.norm(eps_dir)
         eps_dir_norm = eps_dir / norm_eps_dir
 
+        # Use the dot product to see if: cos(angle btw eps_dir_norm and eigenvector) is close to 1
         return np.abs(1 - np.dot(eps_dir_norm, eigenvector))
 
     ### Computation of the manifolds
@@ -932,7 +1109,7 @@ class Manifold(BaseSolver):
         """
         Compute the turnstile area by integrating the vector potential along the trajectory of the homo/hetero-clinics points.
         """
-        lagrangian_values = np.NaN * np.zeros(len(self.clinics)+1)
+        lagrangian_values = np.NaN * np.zeros(len(self.clinics) + 1)
 
         # Could be put in the clinic trajectory directly. Open question.
         # Calculation of the lagrangian value (from the unstable to the stable fundamental segment)
@@ -950,7 +1127,7 @@ class Manifold(BaseSolver):
 
             intA_s = self._map.lagrangian(x_s_0, -n_bwd * self.fixedpoint_1.m)
             intA_u = self._map.lagrangian(x_u_0, n_fwd * self.fixedpoint_1.m)
-            
+
             lagrangian_values[i] = intA_u - intA_s
 
             logger.info(
@@ -966,7 +1143,7 @@ class Manifold(BaseSolver):
         # Loop on the L values : L_h current clinic point, L_m next clinic point (in term of >_u ordering)
         for i, shifted_i in enumerate(shifted_indices):
             # Area is the difference in the
-            areas[i] = lagrangian_values[i] - lagrangian_values[i+1]
+            areas[i] = lagrangian_values[i] - lagrangian_values[i + 1]
 
             # Closure by joining integrals
             traj_h = self.clinics[i].trajectory
@@ -980,7 +1157,7 @@ class Manifold(BaseSolver):
             elif i == len(shifted_indices) - 1:
                 r_h_u, r_m_u = traj_h[0, :], traj_m[1, :]
 
-            for j, (rA, rB) in enumerate(zip([r_m_u, r_h_s], [r_h_u, r_m_s])):                
+            for j, (rA, rB) in enumerate(zip([r_m_u, r_h_s], [r_h_u, r_m_s])):
                 # Create a segment between r1 and r2
                 gamma, dl = np.linspace(rA, rB, n_joining, retstep=True)
 
@@ -994,7 +1171,7 @@ class Manifold(BaseSolver):
                     )
                 ).T
                 mid_A = np.array([self._map._mf.A(r)[0::2] for r in mid_gamma])
-         
+
                 # Discretize the A.dl integral and sum it
                 closing_integral = np.einsum(
                     "ij,ij->i", mid_A, np.ones((mid_A.shape[0], 1)) * dl
