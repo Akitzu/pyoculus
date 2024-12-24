@@ -13,7 +13,7 @@ class TestPoincarePlot(unittest.TestCase):
             self.R = 5.
             self.Z = 0.
             self.sf = 1.2
-            self.shear = .5
+            self.shear = 1.
             self.tol = 1e-10
             self.ntraj = 10
             self.mf = AnalyticCylindricalBfield(R=self.R, Z=self.Z, sf=self.sf, shear=self.shear)
@@ -48,7 +48,7 @@ class TestPoincarePlot(unittest.TestCase):
             test the helper classmethods
             """
             xs, iotas = self.poincare_plot.compute_iota(npts=60)
-            toybox_expectation_q = self.sf + self.shear * self.rhos**2
+            toybox_expectation_q = self.sf + self.shear / 2 * self.rhos**2
             toybox_expectation_iota = 1/toybox_expectation_q
             np.testing.assert_array_almost_equal(iotas, toybox_expectation_iota, decimal=5)
 
