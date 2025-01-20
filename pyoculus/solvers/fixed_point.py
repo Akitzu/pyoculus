@@ -65,6 +65,20 @@ class FixedPoint(BaseSolver):
             raise ValueError("Fixed point not found with winding number.")
         else:
             return self._m
+    
+    @m.setter
+    def m(self, m):
+        """
+        set m to use maps that cannot be found with winding number
+        """
+        if not self.successful:
+            raise ValueError("Fixed point not found.")
+        elif self._found_by_iota:
+            raise ValueError("Fixed point already found with winding number, what are you doing?")
+        self._found_by_iota = True
+        self._m = m
+
+    
 
     ## Findings fixed points methods
 

@@ -1,7 +1,7 @@
 import pyoculus.maps as maps
 from .base_solver import BaseSolver
 from .fixed_point import FixedPoint
-from ..utils.plot import create_canvas
+from ..utils.plot import create_canvas, clean_bigsteps
 from scipy.optimize import root, minimize
 from typing import Iterator, Literal
 
@@ -112,10 +112,10 @@ class Clinic:
 
         path_u = self._manifold.integrate(
             self._manifold.rfp_u + self.eps_u * self._manifold.vector_u, self.nint_u, +1
-        )[0]
+        )[:, 0, :]
         path_s = self._manifold.integrate(
             self._manifold.rfp_s + self.eps_s * self._manifold.vector_s, self.nint_s, -1
-        )[0]
+        )[:, 0, :]
 
         # self._path_u, self._path_s = path_u.T, path_s.T
         self._trajectory = np.concatenate((path_u, path_s))
@@ -192,11 +192,11 @@ class Clinic:
         # Evolve the points along the manifolds
         # r_s_unevolved = self._map.f(+1*self.fixedpoint_1.m, r_s)
         # r_s_evolved   = self._map.f(-1*self.fixedpoint_1.m, r_s)
-        r_s_evolved = self._manifold.integrate(r_s, 1, -1)[1] 
+        r_s_evolved = self._manifold.integrate(r_s, 1, -1)[1, 0] 
 
         # r_u_unevolved = self._map.f(-1*self.fixedpoint_1.m, r_u)
         # r_u_evolved   = self._map.f(+1*self.fixedpoint_1.m, r_u)
-        r_u_evolved = self._manifold.integrate(r_u, 1, +1)[1]
+        r_u_evolved = self._manifold.integrate(r_u, 1, +1)[1, 0]
 
         # Measure the distance from the fixed points with usual two norm
         upperbound_s = np.linalg.norm(r_s_evolved - self._manifold.rfp_s)
@@ -539,7 +539,8 @@ class Manifold(BaseSolver):
         self.vector_u *= signs[1]
 
         # Initialize the manifolds
-        self._lfs = {"stable": None, "unstable": None}
+        self._stable_trajectory = None
+        self._unstable_trajectory = None
 
     @classmethod
     def show_directions(
@@ -678,7 +679,7 @@ class Manifold(BaseSolver):
         rz_path = self.integrate(rEps, 1, direction)
 
         # Direction of the evolution
-        eps_dir = rz_path[:, 1] - rz_path[:, 0]
+        eps_dir = rz_path[0, 0, :] - rz_path[1, 0, :]
         norm_eps_dir = np.linalg.norm(eps_dir)
         eps_dir_norm = eps_dir / norm_eps_dir
 
@@ -709,7 +710,7 @@ class Manifold(BaseSolver):
         rz_path = self.integrate(rEps, 1, direction)
 
         # Direction of the evolution
-        eps_dir = rz_path[:, 1] - rz_path[:, 0]
+        eps_dir = rz_path[0, 0, :] - rz_path[1, 0, :]
         norm_eps_dir = np.linalg.norm(eps_dir)
         eps_dir_norm = eps_dir / norm_eps_dir
 
@@ -786,27 +787,33 @@ class Manifold(BaseSolver):
         neps, nint = kwargs.get("neps", 40), kwargs.get("nint", 6)
         RZs = self.start_config(eps, rfp, lambda_, vector, neps, goes)
         logger.info(f"Computing {which} manifold...")
-        self._lfs[which] = self.integrate(RZs, nintersect=nint, direction=goes)
+        manifoldpoints = self.integrate(RZs, nintersect=nint, direction=goes)
+        orderedmanifoldpoints = np.concatenate(manifoldpoints)  # put points in order: first intersections, second intersections, etc)
 
-        return self._lfs[which]
+        if which == "stable":
+            self._stable_trajectory = orderedmanifoldpoints
+        else:  
+            self._unstable_trajectory = orderedmanifoldpoints
+
+        return orderedmanifoldpoints
 
     @property
     def stable(self):
-        if self._lfs["stable"] is None:
+        if self._stable_trajectory is None:
             logger.warning(
                 "Stable manifold not computed. Using the computation method."
             )
-            self.compute_manifold(1e-3, True)
-        return self._lfs["stable"]
+            self.compute_manifold(1e-5, True)
+        return self._stable_trajectory
 
     @property
     def unstable(self):
-        if self._lfs["unstable"] is None:
+        if self._unstable_trajectory is None:
             logger.warning(
                 "Unstable manifold not computed. Using the computation method."
             )
-            self.compute_manifold(1e-3, False)
-        return self._lfs["unstable"]
+            self.compute_manifold(1e-5, False)
+        return self._unstable_trajectory
 
     def compute(self, eps_s=None, eps_u=None, **kwargs):
         """
@@ -845,10 +852,22 @@ class Manifold(BaseSolver):
         self.compute_manifold("stable", eps_s, **kwargs_s)
         self.compute_manifold("unstable", eps_u, **kwargs_u)
 
-        return self._lfs["stable"], self._lfs["unstable"]
+        return self._stable_trajectory, self._unstable_trajectory
 
-    def plot(self, which="both", **kwargs):
-        """ """
+    def plot(self, which="both", stepsize_limit=None, **kwargs):
+        """
+        Plot the stable and/or unstable manifolds.
+
+        kwargs:
+        which (str): which manifold to plot. Can be 'stable', 'unstable' or 'both'.
+        stepsize_limit = 
+
+        Other kwargs are givent to the plot. 
+
+        Specific extra plots: 
+        *rm_points* (int): remove the last *rm_points* points of the manifold.
+
+        """
         fig, ax, kwargs = create_canvas(**kwargs)
 
         colors = kwargs.pop("colors", ["green", "red"])
@@ -860,10 +879,11 @@ class Manifold(BaseSolver):
         for i, dir in enumerate(["stable", "unstable"]):
             if dir == which or which == "both":
                 points = self.stable if dir == "stable" else self.unstable
-                points = points.T.flatten()
+                if stepsize_limit is not None:
+                    points = clean_bigsteps(points, threshold=stepsize_limit)
                 ax.plot(
-                    points[::2][:final_index],
-                    points[1::2][:final_index],
+                    points[:,0][:final_index],
+                    points[:,1][:final_index],
                     fmt,
                     label=f"{dir} manifold",
                     color=colors[i],
@@ -872,7 +892,39 @@ class Manifold(BaseSolver):
                 )
 
         return fig, ax
+    
+    def plot_manifold_copies(self, which='both', stepsize_limit=None, **kwargs):
+        """
+        plot the images of the manifolds as they appear arount the other islands
+        of the chain, using the periodicity of the fixed points.
+        """
+        fig, ax, kwargs = create_canvas(**kwargs)
 
+        colors = kwargs.pop("colors", ["green", "red"])
+        markersize = kwargs.pop("markersize", 2)
+        fmt = kwargs.pop("fmt", "-o")
+        rm_points = kwargs.pop("rm_points", 0)
+        final_index = -rm_points - 1
+
+        number_of_copies = self.fixedpoint_1.m - 1
+        for i, dir in enumerate(["stable", "unstable"]):
+            if dir == which or which == "both":
+                points = self.stable if dir == "stable" else self.unstable
+                points = points[:final_index]
+                for _ in range(number_of_copies):
+                    points = self._map.f_many(1, points)
+                    if stepsize_limit is not None: 
+                        points = clean_bigsteps(points, threshold=stepsize_limit)
+                    ax.plot(
+                        points[:,0],
+                        points[:,1],
+                        fmt,
+                        label=f"{dir} manifold",
+                        color=colors[i],
+                        markersize=markersize,
+                        **kwargs,
+                    )
+    
     ### Homo/Hetero-clinic methods
 
     def find_N(self, eps_s: float, eps_u: float):
@@ -1227,7 +1279,7 @@ class Manifold(BaseSolver):
         t = self.fixedpoint_1.m * direction
         res = []
         res.append(x_many)
-        for _ in nintersect:
+        for _ in range(nintersect):
             x_many = self._map.f_many(t, x_many)
             res.append(x_many)
         return np.array(res)
