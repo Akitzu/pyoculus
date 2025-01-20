@@ -1,20 +1,36 @@
-project('pyoculus', 'c', version : '1.0.01',  meson_version: '>= 0.64.0',
+project('pyoculus', 'c', version : '0.4.01',  meson_version: '>= 0.64.0',
 )
 
 add_languages('fortran', native: false)
 
 fortran_compiler = meson.get_compiler('fortran')
+message('fortran compiler id is ' + fortran_compiler.get_id())
 
 
 f90flags = []
 if fortran_compiler.get_id() == 'gcc'
     f90flags += '-ffree-line-length-none'
+    message('adding -ffree-line-length-flag')
 endif
 
 f90flags += '-O3'
-add_project_arguments(f90flags, language: 'fortran')
+add_global_arguments(f90flags, language: 'fortran')
+    
 
 py3 = import('python').find_installation(pure: false)
+py_dep = py3.dependency()
+
+incdir_numpy = run_command(py3,
+  ['-c', 'import os; os.chdir(".."); import numpy; print(numpy.get_include())'],
+  check : true
+).stdout().strip()
+
+incdir_f2py = run_command(py3,
+    ['-c', 'import os; os.chdir(".."); import numpy.f2py; print(numpy.f2py.get_include())'],
+    check : true
+).stdout().strip()
+
+inc_np = include_directories(incdir_numpy, incdir_f2py)
 
 sourcefiles = files(
     'pyoculus/maps/SPECfortran/pyvariables.f90',
@@ -26,44 +42,20 @@ sourcefiles = files(
 
 module_name = 'pyoculus_spec_fortran_module'
 
-# Get Python version and system info
-python_version = py3.language_version().split('.')
-py_suffix = 'cpython-@0@@1@-@2@-@3@'.format(python_version[0], python_version[1], host_machine.cpu_family(), host_machine.system())
 
-if host_machine.system() == 'darwin'
-    py_suffix = 'cpython-@0@@1@-darwin'.format(python_version[0], python_version[1])
-    ext = '.so'
-elif host_machine.system() == 'windows'
-    py_suffix = 'cp@0@@1@-win_amd64'.format(python_version[0], python_version[1])
-    ext = '.pyd'
-elif host_machine.system() == 'linux'
-    py_suffix = 'cpython-@0@@1@-@2@-linux-gnu'.format(python_version[0], python_version[1], host_machine.cpu_family())
-    ext = '.so'
-else
-    py_suffix = ''
-    ext = '.so'  # Default to .so for unknown systems
-endif
-
-output_name = module_name+ '.' + py_suffix + ext
-message('trying to generate a compiled library called: ' + output_name)
-
-
-f2py_target = custom_target(module_name,
-    input : sourcefiles,
-    output : output_name,
-    command : [
-        py3,
-        '-m', 'numpy.f2py',
-        '-c',
-        '-m', module_name,
-        '@INPUT@',
-        '--opt=' + ' '.join(f90flags),
-    ],
-    depend_files : sourcefiles,
-    install : true,
-    install_dir : py3.get_install_dir() 
+pyoculus_spec_fortran_module_source = custom_target('pyoculus_spec_fortran_module.c',
+  input : sourcefiles,  
+  output : [module_name+'module.c', module_name+'-f2pywrappers2.f90'],
+  command : [py3, '-m', 'numpy.f2py', '@INPUT@', '-m', module_name, '--lower']
 )
 
+py3.extension_module(module_name, 
+  [sourcefiles, pyoculus_spec_fortran_module_source],
+  incdir_f2py / 'fortranobject.c',
+  include_directories: inc_np,
+  dependencies : py_dep,
+  install : true
+)
 
 py3.install_sources(
    'pyoculus/__init__.py',
