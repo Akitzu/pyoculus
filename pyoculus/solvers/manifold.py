@@ -112,13 +112,13 @@ class Clinic:
 
         path_u = self._manifold.integrate(
             self._manifold.rfp_u + self.eps_u * self._manifold.vector_u, self.nint_u, +1
-        )
+        )[0]
         path_s = self._manifold.integrate(
             self._manifold.rfp_s + self.eps_s * self._manifold.vector_s, self.nint_s, -1
-        )
+        )[0]
 
-        self._path_u, self._path_s = path_u.T, path_s.T
-        self._trajectory = np.concatenate((path_u, path_s.T[::-1][1:].T), axis=1).T
+        # self._path_u, self._path_s = path_u.T, path_s.T
+        self._trajectory = np.concatenate((path_u, path_s))
 
         return self._trajectory
 
@@ -192,11 +192,11 @@ class Clinic:
         # Evolve the points along the manifolds
         # r_s_unevolved = self._map.f(+1*self.fixedpoint_1.m, r_s)
         # r_s_evolved   = self._map.f(-1*self.fixedpoint_1.m, r_s)
-        r_s_evolved = self._manifold.integrate(r_s, 1, -1)[:, 1]
+        r_s_evolved = self._manifold.integrate(r_s, 1, -1)[1] 
 
         # r_u_unevolved = self._map.f(-1*self.fixedpoint_1.m, r_u)
         # r_u_evolved   = self._map.f(+1*self.fixedpoint_1.m, r_u)
-        r_u_evolved = self._manifold.integrate(r_u, 1, +1)[:, 1]
+        r_u_evolved = self._manifold.integrate(r_u, 1, +1)[1]
 
         # Measure the distance from the fixed points with usual two norm
         upperbound_s = np.linalg.norm(r_s_evolved - self._manifold.rfp_s)
@@ -388,6 +388,25 @@ class ClinicSet:
             "Failed to find a solution within the maximum number of iterations"
         )
 
+    def order(self):
+        """
+        Order the homo/hetero-clinic points with the induced linear ordering of the unstable manifold >_u.
+        """
+        self._clinics_list = [
+            self._clinics_list[i]
+            for i in np.argsort([x.eps_u for x in self._clinics_list])
+        ]
+
+    def reset(self):
+        """
+        remove all known clinics and start afresh. 
+        """
+        self._clinics_list = []
+        self.fundamental_segments = None
+        self.nint_pair = None
+
+
+
 
 class Manifold(BaseSolver):
     """Class for computing and analyzing a tangle composed of one stable and one unstable manifold of fixed points.
@@ -445,6 +464,16 @@ class Manifold(BaseSolver):
         dir2: str = None,
         is_first_stable: bool = None,
     ) -> None:
+        """
+        Initialize the Manifold class by providing two fixed points and specifying if the first fixedpoint is stable. If only one fixed point is specified, a homoclinic connection is assumed. 
+        Directions are specified with the string '+' or '-' to indicate which eigenvectors of the fixed points to follow (remember that if $v$ is an eingenvector, $-v$ is as well). 
+
+        Args:
+            map (maps.base_map): The map to use for the computation.
+            fixedpoint_1 (FixedPoint): first fixed point
+            fixedpoint_2 (FixedPoint, optional): second fix point if not homoclinic manifold. Defaults to None.
+        """
+
         # Check that the fixed points are correct FixedPoint instances
         if not isinstance(fixedpoint_1, FixedPoint):
             raise TypeError("Fixed point must be an instance of FixedPoint class")
@@ -1187,24 +1216,41 @@ class Manifold(BaseSolver):
     ### Integration methods
 
     def integrate(self, x_many, nintersect, direction=1):
-        """ """
+        """
+        Integrate a set of points x_many for nintersect times in the direction specified.
+        Robust to integration failures and has fixed return shape. 
+
+        Returns an array of shape (nintersect, len(x_many), _map.dimension).
+        """
 
         x_many = np.atleast_2d(x_many)
-
-        x_path = np.zeros((self._map.dimension * x_many.shape[0], nintersect + 1))
-        x_path[:, 0] = x_many.flatten()
-
         t = self.fixedpoint_1.m * direction
+        res = []
+        res.append(x_many)
+        for _ in nintersect:
+            x_many = self._map.f_many(t, x_many)
+            res.append(x_many)
+        return np.array(res)
+    
 
-        for i, x in enumerate(x_many):
-            for j in range(nintersect):
-                try:
-                    x_new = self._map.f(t, x)
-                except:
-                    logger.error(f"Integration of point {x} failed.")
-                    break
-
-                x_path[2 * i : 2 * i + self._map.dimension, j + 1] = x_new
-                x = x_new
-
-        return x_path
+#        # used to return [dimension*len(x_many) , nintersect + 1]
+#        x_path = np.full((self._map.dimension * x_many.shape[0], nintersect + 1), np.nan)
+#        x_path[:, 0] = x_many.flatten()
+#
+#        t = self.fixedpoint_1.m * direction
+#
+#        for i, x in enumerate(x_many):
+#            for j in range(nintersect):
+#                try:
+#                    x_new = self._map.f(t, x)
+#                except:
+#                    logger.error(f"Integration of point {x} failed.")
+#                    break
+#
+#                x_path[2 * i : 2 * i + self._map.dimension, j + 1] = x_new
+#                x = x_new
+#
+#        #return x_path
+#
+#    
+#
