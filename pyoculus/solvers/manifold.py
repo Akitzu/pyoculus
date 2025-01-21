@@ -95,6 +95,121 @@ class Clinic:
         self._path_u = None
         self._xend_s = None
         self._xend_u = None
+    
+    @classmethod
+    def from_guess(cls, manifold: "Manifold", eps_s: float, eps_u: float, n_s: int, n_u: int, **kwargs):
+        """
+        Search a homo/hetero-clinic point.
+
+        This function attempts to find the intersection point of the stable and unstable manifolds by iteratively adjusting the provided epsilon guesses using scipy root-finding algorithm.
+
+        Args:
+            guess_eps_s (float): Initial guess for the stable manifold epsilon.
+            guess_eps_u (float): Initial guess for the unstable manifold epsilon.
+            **kwargs: Additional keyword arguments.
+                - root_args (dict): Arguments to pass to the root-finding function.
+                - ERR (float): Error tolerance for verifying the linear regime (default: 1e-3).
+                - n_s (int): Number of times the map needs to be applied for the stable manifold.
+                - n_u (int): Number of times the map needs to be applied for the unstable manifold.
+
+        Returns:
+            tuple: A tuple containing the found epsilon values for the stable and unstable manifolds (eps_s, eps_u).
+        """
+        
+        logger.debug(f"Using n_s, n_u - {n_s}, {n_u}")
+
+        # Updating the default root finding parameters
+        root_kwargs = {"jac": False}
+        root_kwargs.update(kwargs.get("root_args", {}))
+        use_jac = root_kwargs.get("jac")
+
+        rfp_s = manifold.rfp_s
+        rfp_u = manifold.rfp_u
+        vector_s = manifold.vector_s
+        vector_u = manifold.vector_u
+        map_multiple = manifold.fixedpoint_1.m
+
+        # Verifying that epsilons lie in linear regime
+        ERR = kwargs.pop("ERR", 1e-3)
+
+        stable_error = manifold.error_linear_regime(eps_s, rfp_s, manifold.vector_s, direction=-1)
+        if (stable_error > ERR):
+            raise ValueError("Stable epsilon guess is not in the linear regime, error is {stable_error}")
+        unstable_error =  manifold.error_linear_regime(eps_u, rfp_u, manifold.vector_u, direction=+1)
+        if (unstable_error > ERR):
+            raise ValueError("Unstable epsilon guess is not in the linear regime.")
+
+
+        # Evolution function for the root finding without and with jacobian
+        def evolution_no_jac(eps, n_s, n_u):
+            eps_s, eps_u = eps
+            r_s = rfp_s + eps_s * vector_s
+            r_u = rfp_u + eps_u * vector_u
+
+            r_s_evolved = manifold._map.f(-1 * n_s * map_multiple, r_s)
+            r_u_evolved = manifold._map.f(n_u * map_multiple, r_u)
+
+            return (r_s_evolved, r_u_evolved, r_s_evolved - r_u_evolved)
+
+        def evolution_with_jac(eps, n_s, n_u):
+            eps_s, eps_u = eps
+            r_s = rfp_s + eps_s * vector_s
+            r_u = rfp_u + eps_u * vector_u
+
+            jac_s = manifold._map.df(-1 * n_s * map_multiple, r_s)
+            r_s_evolved = manifold._map.f(-1 * n_s * map_multiple, r_s)
+
+            jac_u = manifold._map.df(n_u * map_multiple, r_u)
+            r_u_evolved = manifold._map.f(n_u * map_multiple, r_u)
+
+            return (
+                r_s_evolved,
+                r_u_evolved,
+                r_s_evolved - r_u_evolved,
+                np.array([jac_s @ vector_s, -jac_u @ vector_u]),
+            )
+
+        # Root finding
+        def residual(logeps, n_s, n_u):
+            eps_s, eps_u = np.exp(logeps)
+            logger.debug(f"Current epsilon pair (eps_s, eps_u) : {eps_s, eps_u}")
+
+            # if not in the fundamental segments then it should get back there, to work on maybe...
+
+            if use_jac:
+                _, _, diff, r_jac = evolution_with_jac([eps_s, eps_u], n_s, n_u)
+                diff_jac = r_jac * np.array([eps_s, eps_u])
+            else:
+                _, _, diff = evolution_no_jac([eps_s, eps_u], n_s, n_u)
+
+            logger.debug(f"Current difference : {diff}")
+
+            if use_jac:
+                return diff, diff_jac
+            else:
+                return diff
+
+        root_obj = root(
+            residual,
+            np.log([eps_s, eps_u]),
+            args=(n_s, n_u),
+            **root_kwargs,
+        )
+
+        # Checking status and logging the result
+        logger.info(f"Root search status : {root_obj.message}")
+        logger.debug(f"Root search object : {root_obj}")
+
+        if not root_obj.success:
+            raise ValueError("Homo/Heteroclinic search was not successful.")
+
+        eps_s, eps_u = np.exp(root_obj.x)
+
+        logger.info(
+            f"Success! Found epsilon pair (eps_s, eps_u) : {eps_s:.3e}, {eps_u:.3e} gives a difference of {root_obj.fun}."
+        )
+
+        return cls(manifold, eps_s, eps_u, n_s, n_u)
 
     @property
     def trajectory(self):
@@ -226,7 +341,7 @@ class ClinicSet:
     Examples:
         >>> a_manifold = Manifold(...)
         >>> clinic_set = ClinicSet(a_manifold)
-        >>> clinic_set.record_clinic(eps_s=0.1, eps_u=0.1, n_s=10, n_u=10)
+        >>> clinic_set.record_clinic(myclinic)
     """
 
     DEFAULT_TOLERANCE = 1e-2
@@ -260,7 +375,7 @@ class ClinicSet:
     # Public methods
 
     def record_clinic(
-        self, eps_s: float, eps_u: float, n_s: int, n_u: int, **kwargs
+        self, clinic: Clinic, **kwargs
     ) -> None:
         """Record a new clinic point in the fundamental domain.
 
@@ -279,33 +394,41 @@ class ClinicSet:
             If this is the first clinic point, it establishes the fundamental domain boundaries.
             Otherwise, parameters are converted to their fundamental domain representation.
         """
+
+        # test if self._clinic_list is empty
         if not self._clinics_list:
-            clinic = Clinic(self._manifold, eps_s, eps_u, n_s, n_u)
             self.fundamental_segments = clinic.fundamental_segments
-            self.nint_pair = (n_s, n_u)
+            self.nint_pair = (clinic.nint_s, clinic.nint_u)
             self._clinics_list.append(clinic)
         else:
-            fundamental_eps_s, n_s_shift = self._find_fundamental_eps(eps_s, "stable")
-            fundamental_eps_u, n_u_shift = self._find_fundamental_eps(eps_u, "unstable")
-            clinic = Clinic(
-                self._manifold,
-                fundamental_eps_s,
-                fundamental_eps_u,
-                n_s + n_s_shift,
-                n_u + n_u_shift,
-            )
-
             tol = kwargs.get("tol", self.DEFAULT_TOLERANCE)
-            if not np.any(
-                [
-                    np.isclose(clinic.eps_u, other.eps_u, rtol=tol)
-                    for other in self._clinics_list
-                ]
-            ):
+            fundamental_eps_s, n_s_shift = self._find_fundamental_eps(clinic.eps_s, "stable", tol=tol)
+            fundamental_eps_u, n_u_shift = self._find_fundamental_eps(clinic.eps_u, "unstable", tol=tol)
+            if n_s_shift != 0 or n_u_shift != 0:
+                logger.warning(
+                    f"Shifted clinic by ({n_s_shift}, {n_u_shift}) iterations to the fundamental domain."
+                )
+                # calculate a new clinic from the shifted values to ensure it is proper. 
+                clinic = Clinic.from_guess(self._manifold, fundamental_eps_s, fundamental_eps_u, clinic.nint_s + n_s_shift, clinic.nint_u + n_u_shift)
+
+            if self._no_clinics_similar(clinic, tol):
+                if not self._test_in_fundamental_segment(clinic.eps_s, "stable", tol) or not self._test_in_fundamental_segment(clinic.eps_u, "unstable", tol):
+                    raise ValueError("in recalculating shifted clinic it escaped the fundamental domain.")
                 self._clinics_list.append(clinic)
                 self._orderize()
             else:
                 logger.warning("Homo/heteroclinic already recorded, skipping...")
+    
+    def _no_clinics_similar(self, clinic, tol) -> bool:
+        """
+        Returns True if no clinics in the list are similar
+        """
+        stable_epsilon_test = not(np.any([np.isclose(clinic.eps_s, other.eps_s, rtol=tol) for other in self._clinics_list ]))  # not any isclose
+        unstable_epsilon_test = not(np.any([np.isclose(clinic.eps_u, other.eps_u, rtol=tol) for other in self._clinics_list ]))  # not any isclose
+        return stable_epsilon_test and unstable_epsilon_test  # none is close
+        
+
+
 
     def reset(self) -> None:
         """Reset the clinic set to its initial empty state.
@@ -327,9 +450,20 @@ class ClinicSet:
             self._clinics_list[i]
             for i in np.argsort([x.eps_u for x in self._clinics_list])
         ]
+    
+    def _test_in_fundamental_segment(self, eps: float, which: Literal["stable", "unstable"], tol : float
+    ) -> bool:
+        """
+        test an epsilon is in the fundamental segment of the first clinic in the set (plusminus relative tolerance)
+        """
+        thissegment = self.fundamental_segments[which]
+        return thissegment[0]* (1 - tol) < eps < thissegment[1] *(1 + tol)
+
+
+
 
     def _find_fundamental_eps(
-        self, eps: float, which: Literal["stable", "unstable"], **kwargs
+        self, eps: float, which: Literal["stable", "unstable"], tol, **kwargs
     ) -> tuple[float, int]:
         """
         Find the epsilon parameter lying within the fundamental segment (stable or unstable) of the ClinicSet for a given epsilon value.
@@ -367,22 +501,31 @@ class ClinicSet:
             )
 
         fund = self.fundamental_segments[which]
+        if fund[0] <= eps < fund[1]: # Already in the fundamental segment
+            return eps, 0
+
         r_cur = rfp + eps * eigenvector
-        norm = eps
+        eps_approx = eps
         n_shift = 0
 
-        # If the eps is less then the lower bound, then the direction should be forward otherwise backward
-        forward_dir *= 1 if eps < fund[0] else -1
+        # If the eps is less then the lower bound, then the direction should be the correct direction for the type of manifold, otherwise the opposite direction
+        if eps_approx < fund[0]:
+            map_dir = forward_dir
+            increase_n = -1 # if the eps is less than the lower bound, then we to map forward and use less steps
+        elif eps > fund[1]:
+            map_dir = -1 * forward_dir
+            increase_n = +1  # if the eps is greater than the upper bound, then we to map backward and use more steps
 
         # Set a maximum number of iterations
         max_iterations = kwargs.get("max_iters", self.MAX_ITERATIONS)
         for _ in range(max_iterations):
-            if fund[0] <= norm < fund[1]:
-                return norm, n_shift
-            r_cur = self._manifold._map.f(-1 * self._manifold.fixedpoint_1.m, r_cur)
-            norm = np.linalg.norm(r_cur - rfp)
-            n_shift -= 1 * forward_dir
-            logger.debug(f"Current epsilon (from norm calculation): {norm}")
+            if fund[0]*(1 - tol) <= eps_approx < fund[1]*(1 + tol):  # within segment plusminus relative tolerance
+                logger.debug(f"Found the fundamental segment for {which} manifold with {n_shift} steps.")
+                return eps_approx, n_shift
+            r_cur = self._manifold._map.f(map_dir * self._manifold.fixedpoint_1.m, r_cur)
+            eps_approx = np.linalg.norm(r_cur - rfp)
+            n_shift += increase_n  
+            logger.debug(f"Current epsilon (from norm calculation): {eps_approx}, fundamental segment is between {fund[0]} and {fund[1]}")
 
         raise RuntimeError(
             "Failed to find a solution within the maximum number of iterations"
@@ -710,7 +853,7 @@ class Manifold(BaseSolver):
         rz_path = self.integrate(rEps, 1, direction)
 
         # Direction of the evolution
-        eps_dir = rz_path[0, 0, :] - rz_path[1, 0, :]
+        eps_dir = rz_path[1, 0, :] - rz_path[0, 0, :]
         norm_eps_dir = np.linalg.norm(eps_dir)
         eps_dir_norm = eps_dir / norm_eps_dir
 
@@ -969,7 +1112,7 @@ class Manifold(BaseSolver):
         #     raise ValueError("Could not find N")
         return n_s, n_u
 
-    def find_clinic_single(self, guess_eps_s, guess_eps_u, **kwargs):
+    def find_clinic_single(self, guess_eps_s, guess_eps_u, n_s=None, n_u=None, reset_clinics=False, **kwargs):
         """
         Search a homo/hetero-clinic point.
 
@@ -988,116 +1131,24 @@ class Manifold(BaseSolver):
             tuple: A tuple containing the found epsilon values for the stable and unstable manifolds (eps_s, eps_u).
         """
 
-        # Updating the default root finding parameters
-        root_kwargs = {"jac": False}
-        root_kwargs.update(kwargs.get("root_args", {}))
-        use_jac = root_kwargs.get("jac")
-
-        # Verifying that epsilons lie in linear regime
-        ERR = kwargs.pop("ERR", 1e-3)
-
-        if (
-            self.error_linear_regime(
-                guess_eps_s, self.rfp_s, self.vector_s, direction=-1
-            )
-            > ERR
-        ):
-            raise ValueError("Stable epsilon guess is not in the linear regime.")
-
-        if (
-            self.error_linear_regime(
-                guess_eps_u, self.rfp_u, self.vector_u, direction=+1
-            )
-            > ERR
-        ):
-            raise ValueError("Unstable epsilon guess is not in the linear regime.")
 
         # Set the number of times the map needs to be applied (times the poloidal mode m)
-        n_s, n_u = kwargs.pop("n_s", None), kwargs.pop("n_u", None)
         if n_s is None or n_u is None:
-            n_s, n_u = self.find_N(guess_eps_s, guess_eps_u)
-        logger.debug(f"Using n_s, n_u - {n_s}, {n_u}")
+            n_s, n_u = manifold.find_N(eps_s, eps_u)
+        
+        newclinic = Clinic.from_guess(self, guess_eps_s, guess_eps_u, n_s, n_u, **kwargs)
 
-        # Logging the search initial configuration
-        self._search_history = []
-
-        # Evolution function for the root finding without and with jacobian
-        def evolution_no_jac(eps, n_s, n_u):
-            eps_s, eps_u = eps
-            r_s = self.rfp_s + eps_s * self.vector_s
-            r_u = self.rfp_u + eps_u * self.vector_u
-
-            r_s_evolved = self._map.f(-1 * n_s * self.fixedpoint_1.m, r_s)
-            r_u_evolved = self._map.f(n_u * self.fixedpoint_1.m, r_u)
-
-            return (r_s_evolved, r_u_evolved, r_s_evolved - r_u_evolved)
-
-        def evolution_with_jac(eps, n_s, n_u):
-            eps_s, eps_u = eps
-            r_s = self.rfp_s + eps_s * self.vector_s
-            r_u = self.rfp_u + eps_u * self.vector_u
-
-            jac_s = self._map.df(-1 * n_s * self.fixedpoint_1.m, r_s)
-            r_s_evolved = self._map.f(-1 * n_s * self.fixedpoint_1.m, r_s)
-
-            jac_u = self._map.df(n_u * self.fixedpoint_1.m, r_u)
-            r_u_evolved = self._map.f(n_u * self.fixedpoint_1.m, r_u)
-
-            return (
-                r_s_evolved,
-                r_u_evolved,
-                r_s_evolved - r_u_evolved,
-                np.array([jac_s @ self.vector_s, -jac_u @ self.vector_u]),
-            )
-
-        # Root finding
-        def residual(logeps, n_s, n_u):
-            eps_s, eps_u = np.exp(logeps)
-            logger.debug(f"Current epsilon pair (eps_s, eps_u) : {eps_s, eps_u}")
-
-            # if not in the fundamental segments then it should get back there, to work on maybe...
-
-            if use_jac:
-                _, _, diff, r_jac = evolution_with_jac([eps_s, eps_u], n_s, n_u)
-                diff_jac = r_jac * np.array([eps_s, eps_u])
-            else:
-                _, _, diff = evolution_no_jac([eps_s, eps_u], n_s, n_u)
-
-            logger.debug(f"Current difference : {diff}")
-            self._search_history.append(diff)
-
-            if use_jac:
-                return diff, diff_jac
-            else:
-                return diff
-
-        root_obj = root(
-            residual,
-            np.log([guess_eps_s, guess_eps_u]),
-            args=(n_s, n_u),
-            **root_kwargs,
-        )
-
-        # Checking status and logging the result
-        logger.info(f"Root search status : {root_obj.message}")
-        logger.debug(f"Root search object : {root_obj}")
-
-        if not root_obj.success:
-            raise ValueError("Homo/Heteroclinic search was not successful.")
-
-        eps_s, eps_u = np.exp(root_obj.x)
-
-        logger.info(
-            f"Success! Found epsilon pair (eps_s, eps_u) : {eps_s:.3e}, {eps_u:.3e} gives a difference of {root_obj.fun}."
-        )
 
         # Recording the homo/hetero-clinic point
-        self.clinics.record_clinic(eps_s, eps_u, n_s, n_u)
+        if reset_clinics:
+            self.clinics.reset()
 
-        return eps_s, eps_u
+        self.clinics.record_clinic(newclinic)
+
+        return None
 
     def find_clinics(
-        self, first_guess_eps_s, first_guess_eps_u, n_points=None, **kwargs
+        self, first_guess_eps_s, first_guess_eps_u, n_points=None, reset_clinics=True, **kwargs
     ):
         """
         Args:
@@ -1109,7 +1160,7 @@ class Manifold(BaseSolver):
             n_points = 2 * self.fixedpoint_1.m
 
         # Reset the clinic search
-        if kwargs.get("reset", True):
+        if reset_clinics == True:
             self.clinics.reset()
 
         logger.info(
