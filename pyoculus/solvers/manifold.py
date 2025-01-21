@@ -679,7 +679,7 @@ class Manifold(BaseSolver):
         rz_path = self.integrate(rEps, 1, direction)
 
         # Direction of the evolution
-        eps_dir = rz_path[0, 0, :] - rz_path[1, 0, :]
+        eps_dir = rz_path[1, 0, :] - rz_path[0, 0, :]
         norm_eps_dir = np.linalg.norm(eps_dir)
         eps_dir_norm = eps_dir / norm_eps_dir
 
