@@ -101,19 +101,6 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         # Call the CylindricalBfield constructor
         super().__init__(Nfp=1)
 
-    @classmethod
-    def without_axis(
-        cls, R, Z, sf, shear, perturbations_args=list(), guess=None, finderargs=dict(), **kwargs
-    ):
-        """Create an instance of the class without knowing the magnetic axis. The axis is found by creating a temporary instance and calling the CylindricalBfield.find_axis method.
-        The arguments are the same as for the constructor with the addition of a guess position (default : [R,Z]) and the kwargs for the find_axis method.
-        """
-        if guess is None:
-            guess = [R, Z]
-
-        instance = cls(R, Z, sf, shear, perturbations_args, **kwargs)
-        instance.find_axis(guess, **finderargs)
-        return instance
 
     @property
     def amplitudes(self):
