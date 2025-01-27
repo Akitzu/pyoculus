@@ -50,7 +50,7 @@ class ScipyODEIntegrator(BaseIntegrator):
             params["type"] = "dopri5"  # set default to RK45
 
         if "rtol" not in params.keys():
-            params["rtol"] = 1e-7  # set to default value
+            params["rtol"] = 1e-10  # set to default value
         self.rtol = params["rtol"]
 
         if "nsteps" not in params.keys():
