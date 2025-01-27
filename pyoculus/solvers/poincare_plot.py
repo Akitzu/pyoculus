@@ -341,9 +341,8 @@ class PoincarePlot(BaseSolver):
         for x_mapped in self._hits:
             ax.scatter(x_mapped[:, 0], x_mapped[:, 1], **kwargs)
 
-        ax.set_xlabel(xlabel, fontsize=20)
-        ax.set_ylabel(ylabel, fontsize=20)
-        ax.tick_params(axis="both", which="major", labelsize=16)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
         ax.set_aspect("equal")
 
         if xlim is not None:
@@ -386,9 +385,8 @@ class PoincarePlot(BaseSolver):
 
         ax.plot(self.rho, self.iota, **kwargs)
 
-        ax.set_xlabel(r'$\rho$', fontsize=20)
-        ax.set_ylabel(r"$\iota\!\!$-", fontsize=20)
-        ax.tick_params(axis="both", which="major", labelsize=16)
+        ax.set_xlabel(r'$\rho$')
+        ax.set_ylabel(r"$\iota\!\!$-")
 
         if xlim is not None:
             ax.set_xlim(xlim)
@@ -410,7 +408,10 @@ class PoincarePlot(BaseSolver):
             fig, ax: The figure and axis of the plot.
         """
         if not self._iota_successful:
-            raise Exception("A successful call of compute_iota() is needed")
+            try: 
+                self.compute_iota()
+            except:
+                raise Exception("A successful call of compute_iota() is needed")
 
         if plt.get_fignums():
             fig = plt.gcf()
@@ -426,9 +427,8 @@ class PoincarePlot(BaseSolver):
 
         ax.plot(self.rho, 1 / self.iota, **kwargs)
 
-        ax.set_xlabel(r'$\rho$', fontsize=20)
-        ax.set_ylabel(r"$q$", fontsize=20)
-        ax.tick_params(axis="both", which="major", labelsize=16)
+        ax.set_xlabel(r'$\rho$')
+        ax.set_ylabel(r"$q$")
 
         if xlim is not None:
             ax.set_xlim(xlim)
