@@ -1263,7 +1263,7 @@ class Manifold(BaseSolver):
         #     raise ValueError("Could not find N")
         return n_s, n_u
 
-    def find_clinic_single(self, guess_eps_s, guess_eps_u, n_s=None, n_u=None, reset_clinics=False, **kwargs):
+    def find_clinic_single(self, guess_eps_s, guess_eps_u, n_s=None, n_u=None, reset_clinics=False, nretry=1, **kwargs):
         """
         Search a homo/hetero-clinic point.
 
@@ -1272,11 +1272,16 @@ class Manifold(BaseSolver):
         Args:
             guess_eps_s (float): Initial guess for the stable manifold epsilon.
             guess_eps_u (float): Initial guess for the unstable manifold epsilon.
-            **kwargs: Additional keyword arguments.
-                - root_args (dict): Arguments to pass to the root-finding function.
-                - ERR (float): Error tolerance for verifying the linear regime (default: 1e-3).
-                - n_s (int): Number of times the map needs to be applied for the stable manifold.
-                - n_u (int): Number of times the map needs to be applied for the unstable manifold.
+        *kwargs*: Additional keyword arguments.
+            - n_s (int): Number of times the map needs to be applied for the stable manifold.
+            - n_u (int): Number of times the map needs to be applied for the unstable manifold.
+            - reset_clinics: replace all clinics and make this clinic the fundamental segment. 
+            - nretry: retry by jittering the epsilon guesses n times
+        **kwargs
+            - root_args (dict): Arguments to pass to the root-finding function.
+                suggested: {'jac':True/False} integrated jacobian or FD for step
+                {'options':{'factor':1e-3}} takes smaller steps when jac is ill.
+            - ERR (float): Error tolerance for verifying the linear regime (default: 1e-3).
 
         Returns:
             tuple: A tuple containing the found epsilon values for the stable and unstable manifolds (eps_s, eps_u).
@@ -1287,8 +1292,26 @@ class Manifold(BaseSolver):
         if n_s is None or n_u is None:
             n_s, n_u = self.find_N(guess_eps_s, guess_eps_u)
         
-        newclinic = Clinic.from_guess(self, guess_eps_s, guess_eps_u, n_s, n_u, **kwargs)
-
+        # find the clinic, retry with a different guess if it fails
+        this_eps_s = guess_eps_s
+        this_eps_u = guess_eps_u
+        newclinic = None
+        for _ in range(nretry):
+            try:
+                newclinic = Clinic.from_guess(self, this_eps_s, this_eps_u, n_s, n_u, **kwargs)
+                break
+            except Exception as e:
+                logger.warning(f"Failed to find clinic: {e}")
+                stable_jitter = 1 + np.random.uniform(2*self.lambda_s, 1/(2*self.lambda_s))
+                unstable_jitter = 1 + np.random.uniform(2/(self.lambda_u), self.lambda_u/2)
+                this_eps_s = guess_eps_s * stable_jitter
+                this_eps_u = guess_eps_u * unstable_jitter
+                logger.warning(f"Failed to find clinic: {e}, re-trying with eps_s={this_eps_s}, eps_u={this_eps_u}")
+        
+        # if the clinic is not found, raise an error
+        if newclinic is None:
+            raise ValueError(f"Failed to find clinic after retrying {nretry} times.")
+        
         # Recording the homo/hetero-clinic point
         if reset_clinics:
             self.clinics.reset()
@@ -1466,6 +1489,7 @@ class Manifold(BaseSolver):
         Compute the lagrangian value for a clinic trajectory, one map at a time.
         Skip the last point because that maps out of the fundamental segment. 
         """
+        logger.debug(f"starting Lagrangian integration for trajectory of length {len(trajectory)}")
         clinic_points = trajectory
         lagrangians = []
         for point in clinic_points[:-1]:
