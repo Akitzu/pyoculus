@@ -922,6 +922,7 @@ class Manifold(BaseSolver):
             np.log(epsilon + norm_eps_dir) / np.log(eigenvalue),
             neps,
             base=eigenvalue,
+            endpoint=False
         )
 
         Rs = rfp[0] + eps * eps_dir_norm[0]
@@ -1049,6 +1050,12 @@ class Manifold(BaseSolver):
         }
         if kwargs:
             logger.warning(f"Unused keyword arguments: {kwargs}")
+        
+        if eps_s is None and not self.clinics.is_empty:
+            eps_s = self.clinics.stable_epsilons[0]
+        if eps_u is None and not self.clinics.is_empty:
+            eps_u = self.clinics.unstable_epsilons[0]
+
 
         # Compute the manifolds
         self.compute_manifold("stable", eps_s, **kwargs_s)
