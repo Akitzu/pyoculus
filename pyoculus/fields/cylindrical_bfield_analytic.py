@@ -177,6 +177,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
     def _initialize_perturbations(self, index=None):
         """Initialize the perturbations functions and the gradient. Also updates the total field and its gradient."""
+        self._jitted_perturbations = []
 
         if index is not None:
             indices = [index]
@@ -245,10 +246,13 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         ) == len(self.perturbations_args):
             return self._jited_perturbations
         else:
-            self._jited_perturbations = [
-                jit(lambda rr: pertdic["amplitude"] * self._perturbations[i](rr))
-                for i, pertdic in enumerate(self.perturbations_args)
-            ]
+            self._jited_perturbations = []
+            for i in range(len(self.perturbations_args)):
+                self._jited_perturbations.append(
+                    jit(
+                        lambda rr, i=i: self.perturbations_args[i]["amplitude"]  # NO! LAZY PYTHON NO!
+                        * self._perturbations[i](rr)
+                    ))
             return self._jited_perturbations
 
     # BfieldProblem methods implementation
@@ -340,7 +344,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
         return fig, ax
 
-    def plot_perturbation_vector(self, locations, **kwargs):
+    def plot_perturbation_vector(self, locations, normed=True, **kwargs):
         """Plot the perturbation vector field at the provided locations."""
         
         fig, ax, kwargs = create_canvas(**kwargs)
@@ -355,13 +359,15 @@ class AnalyticCylindricalBfield(CylindricalBfield):
                 if pertdic["type"] != "circular-current-loop":
                     Bs += np.array([bfuncts[i]([R, 0.0, Z]) for R, Z in locations])
 
-            norms = np.linalg.norm(Bs, axis=1)
+            if normed:
+                norms = np.linalg.norm(Bs, axis=1)
+                Bs /= norms[:, np.newaxis]
 
             ax.quiver(
                 locations[:, 0],
                 locations[:, 1],
-                Bs[:, 0] / np.linalg.norm(Bs, axis=1),
-                Bs[:, 2] / np.linalg.norm(Bs, axis=1),
+                Bs[:, 0],
+                Bs[:, 2],
                 alpha=alpha,
                 linewidth=0.5,
                 **kwargs
