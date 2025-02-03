@@ -433,7 +433,7 @@ class ClinicSet:
 
     def record_clinic(
         self, clinic: Clinic, **kwargs
-    ) -> None:
+    ) -> bool:
         """Record a new clinic point in the fundamental domain.
 
         Creates and stores a new :class:`Clinic` object after converting the given parameters
@@ -446,6 +446,9 @@ class ClinicSet:
             n_u (int): Number of iterations for unstable manifold.
             **kwargs: Additional keyword arguments:
                 tol (float, optional): Tolerance for comparing epsilon values. Defaults to 1e-2.
+        
+        Returns: 
+            bool: True if the clinic was successfully added, False otherwise.
 
         Note:
             If this is the first clinic point, it establishes the fundamental domain boundaries.
@@ -457,6 +460,7 @@ class ClinicSet:
             self.fundamental_segments = clinic.fundamental_segments
             self.nint_pair = (clinic.nint_s, clinic.nint_u)
             self._clinics_list.append(clinic)
+            return True
         else:
             tol = kwargs.get("tol", self.DEFAULT_TOLERANCE)
             fundamental_eps_s, n_s_shift = self._find_fundamental_eps(clinic.eps_s, "stable", tol=tol)
@@ -473,8 +477,10 @@ class ClinicSet:
                     raise ValueError("in recalculating shifted clinic it escaped the fundamental domain.")
                 self._clinics_list.append(clinic)
                 self._orderize()
+                return True
             else:
                 logger.warning("Homo/heteroclinic already recorded, skipping...")
+                return False
     
     def _no_clinics_similar(self, clinic, tol) -> bool:
         """
@@ -1327,7 +1333,7 @@ class Manifold(BaseSolver):
 
         return None
     
-    def find_other_clinic(self, shift_in_stable:float, shift_in_unstable:float=None, **kwargs):
+    def find_other_clinic(self, shift_in_stable:float, shift_in_unstable:float=None, nretry =1, **kwargs):
         """
         Find another clinic trajectory if the Manifold already has a fundamental segment. 
         Starts the clinic trajectory finding with one less total step by shifting the 
@@ -1340,6 +1346,7 @@ class Manifold(BaseSolver):
         """
         if self.clinics.is_empty:
             raise ValueError('Need to have one clinic first before finding others')
+        clinicnum = self.clinics.size
         total_number_of_points = self.clinics.total_number_of_points - 1
         n_s = total_number_of_points//2
         n_u = total_number_of_points - n_s
@@ -1352,8 +1359,28 @@ class Manifold(BaseSolver):
         unstable_segment = self.clinics.unstable_segment
         eps_u = unstable_segment[0] + shift_in_unstable * (unstable_segment[1] - unstable_segment[0])
 
-        newclinic = Clinic.from_guess(self, eps_s, eps_u, n_s, n_u, **kwargs)
-        self.clinics.record_clinic(newclinic)
+        this_eps_s = eps_s
+        this_eps_u = eps_u
+        newclinic = None
+        for _ in range(nretry):
+            try:
+                newclinic = Clinic.from_guess(self, this_eps_s, this_eps_u, n_s, n_u, **kwargs)
+                newclinic = Clinic.from_guess(self, eps_s, eps_u, n_s, n_u, **kwargs)
+                self.clinics.record_clinic(newclinic)
+                if self.clinics.size == clinicnum + 1:
+                    break
+            except Exception as e:
+                logger.warning(f"Failed to find other clinic: {e}")
+                newshift = np.random.random()
+                this_eps_s = stable_segment[0] + newshift * (stable_segment[1] - stable_segment[0])
+                this_eps_u = unstable_segment[0] + newshift * (unstable_segment[1] - unstable_segment[0])
+                logger.warning(f"Failed to find clinic: {e}, re-trying with eps_s={this_eps_s}, eps_u={this_eps_u}")
+        
+        # if the clinic is not found, raise an error
+        if newclinic is None:
+            raise ValueError(f"Failed to find clinic after retrying {nretry} times.")
+        if self.clinics.size != clinicnum + 1:
+            raise ValueError(f"Failed to find new clinic after retrying {nretry} times.")
 
     def find_clinics(
         self, first_guess_eps_s, first_guess_eps_u, n_points=None, reset_clinics=True, **kwargs
