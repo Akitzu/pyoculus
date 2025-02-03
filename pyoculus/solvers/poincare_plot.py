@@ -341,9 +341,6 @@ class PoincarePlot(BaseSolver):
         for x_mapped in self._hits:
             ax.scatter(x_mapped[:, 0], x_mapped[:, 1], **kwargs)
 
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.set_aspect("equal")
 
         if xlim is not None:
             ax.set_xlim(xlim)
