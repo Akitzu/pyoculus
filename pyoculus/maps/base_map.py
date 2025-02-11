@@ -143,7 +143,7 @@ class BaseMap(ABC):
             try: 
                 res.append(self.f(t, row))
             except: 
-                res.append(np.fill(self.dimension, np.nan))
+                res.append(np.full(self.dimension, np.nan))
         return np.array(res)
     
     # def distance(self, x, y):

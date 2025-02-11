@@ -47,6 +47,7 @@ class CylindricalBfieldSection(IntegratedMap):
         # Find the magnetic axis if not provided
         self.R0 = R0
         self.Z0 = Z0
+        self._axis = None
 
         if R0 is None or Z0 is None:
             self.find_axis(**finderargs)
@@ -74,8 +75,22 @@ class CylindricalBfieldSection(IntegratedMap):
         axisfinder.find(1, guess, **kwargs)
         if axisfinder.successful:
             self.R0, self.Z0 = axisfinder.coords[0]
+            self._axis = axisfinder.coords[0]
         else:
             raise ValueError("The magnetic axis could not be found.")
+    
+    @property 
+    def axis(self):
+        """
+        Returns the coordinates of the magnetic axis.
+        """
+        if self._axis is None:
+            axis = solvers.FixedPoint(self)
+            axis.find(1, [self.R0, self.Z0])
+            self._axis = axis
+            if not np.allclose(self._axis.coords[0], [self.R0, self.Z0], atol=1e-4):
+                raise ValueError("The map axis coordinates are not close to the actual axis.")
+        return self._axis
 
     ## BaseMap methods
 
@@ -152,6 +167,27 @@ class CylindricalBfieldSection(IntegratedMap):
 
         df = cache_res[t][2:6].reshape(2, 2).T
         return np.copy(df)
+    
+    def to_rhotheta(self, y, y0=None):
+        """
+        Converts the cylindrical coordinates to polar coordinates centered around the magnetic axis.
+        """
+        #ensure y is a 2D array:
+        y = np.array(y)
+        if y0 is None:
+            y0 = np.array([self.R0, self.Z0])
+        rho = np.linalg.norm(y - y0, axis=-1)
+        theta = np.arctan2(y[1] - y0[1], y[0] - y0[0])
+        return np.array([rho, theta])
+    
+    def to_RZ(self, rt):
+        """
+        Converts the polar coordinates centered around the magnetic axis to cylindrical coordinates.
+        """
+        rt = np.array(rt)
+        R = rt[0] * np.cos(rt[1]) + self.R0
+        Z = rt[0] * np.sin(rt[1]) + self.Z0
+        return np.array([R, Z])
         
         
 
@@ -195,7 +231,7 @@ class CylindricalBfieldSection(IntegratedMap):
         Args:
             t (float): The number of periods to integrate.
             y0 (array): The starting point of the field line.
-            y1 (array, optional): The ending point of the field line. If not provided, the magnetic axis is used.
+            y1 (array, optional): Another field line around which winding is to be calculated. If not provided, the magnetic axis is used.
         
         Returns:
             np.ndarray: The radius difference between initial and final point and winding number between the two field lines.
@@ -208,7 +244,6 @@ class CylindricalBfieldSection(IntegratedMap):
         if y1 is None:
             y1 = np.array([self.R0, self.Z0])
         theta0 = np.arctan2(y0[1] - y1[1], y0[0] - y1[0])
-        rho0 = np.sqrt((y0[0] - y1[0]) ** 2 + (y0[1] - y1[1]) ** 2)
         
         
         # Check if the result is in the cache and use it if possible

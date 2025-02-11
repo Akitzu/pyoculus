@@ -403,36 +403,53 @@ class FixedPoint(BaseSolver):
 
         return root(fun, guess, **kwargs).x
 
-    def _newton_method_winding(self, guess, x_axis, niter=100, tol=1e-10):
-        x = np.array(guess, dtype=np.float64)
-        x_axis = np.array(x_axis, dtype=np.float64)
+    def _newton_method_winding(self, guess, xaxis=None, niter=100, tol=1e-10):
+        """
+        Newton's method to find the fixed point using the change in total
+        winding, based on a toroidal coordinate system located on the
+        axis. 
+        Guess should be provided in the coordinates natural to the map, 
+        and will be converted to toroidal internally.
+        """
+        x = np.array(guess)
 
         self.history.append(x.copy())
         succeeded = False
+        target_dtheta = self._n * self._map.dzeta
 
         for i in range(niter):
             logger.info(f"Newton {i} - x : {x}")
 
-            dW = self._map.dwinding(self.t, x)
-            x_winding = self._map.winding(self.t, x)
+            dW = self._map.dwinding(self.t, x, xaxis)
+            x_winding = self._map.winding(self.t, x, xaxis)
             logger.info(
                 f"Newton {i} - x_winding : {x_winding}"
             )
 
+            if isinstance(self._map, maps.ToroidalBfieldSection):
+                rhotheta = x
+            elif isinstance(self._map, maps.CylindricalBfieldSection):
+                rhotheta = self._map.to_rhotheta(x)
+
             # Stop if the resolution is good enough
-            delta_x = x_winding - x - np.append(np.zeros(self._map.dimension - 1), self._n * self._map.dzeta)
+            delta_x = np.array([x_winding[0] - rhotheta[0], x_winding[-1] - target_dtheta])
+            logger.info(f"Newton {i} - delta_x_rhodtheta : {delta_x}")
             if abs(delta_x[-1]) < tol:
                 succeeded = True
                 break
 
             # Newton's step
             step = np.linalg.solve(dW - np.eye(self._map.dimension), -1 * delta_x)
-            x_new = self._map.check_domain(x + step)
+            rhotheta_new = self._map.check_domain(rhotheta + step)
 
             # Update the variables
-            logger.info(f"Newton {i} - step: {x_new-x}")
-            x = x_new
-            logger.info(f"Newton {i} - x_new: {x_new}")
+            logger.info(f"Newton {i} - step: {step}")
+            
+            if isinstance(self._map, maps.ToroidalBfieldSection):
+                x = rhotheta_new
+            elif isinstance(self._map, maps.CylindricalBfieldSection):
+                x = self._map.to_RZ(rhotheta_new)
+                logger.info(f"Newton {i} coordinate_transform - x_new: {x}")
 
             if not self._map.in_domain(x):
                 logger.info(f"Newton {i} - out of domain")
