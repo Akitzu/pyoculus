@@ -852,8 +852,47 @@ class Manifold(BaseSolver):
 
         return fig, ax
 
-    def show_current_directions(self, **kwargs):
-        pass
+    def show_current_directions(self, vscale=1/5, vcolors=None, **kwargs):
+        """Plot the current stable and unstable directions.
+
+        Args:
+            **kwargs: Optional visualization parameters:
+                vcolors (list): Colors for eigenvectors.
+                vscale (int): Scale for the eigenvectors.
+                dvtext (float): Text distance as fraction.
+
+        Returns:
+            tuple: (figure, axis) matplotlib objects.
+        """
+        # Defaults
+
+        # Set the figure and ax
+        fig, ax, kwargs = create_canvas(**kwargs)
+        if vcolors is None: 
+            vcolors = ["xkcd:royal blue", "xkcd:magenta"]
+
+        s_arrow = FancyArrowPatch(
+            self.rfp_s,
+            self.rfp_s + self.vector_s * vscale,
+            arrowstyle="-|>",
+            color=vcolors[0],
+            mutation_scale=10,
+        )
+        u_arrow = FancyArrowPatch(
+            self.rfp_u,
+            self.rfp_u + self.vector_u * vscale,
+            arrowstyle="-|>",
+            color=vcolors[1],
+            mutation_scale=10,
+        )
+
+        # Add the arrows to the plot
+        ax.add_patch(u_arrow)
+        ax.add_patch(s_arrow)
+
+                
+
+        
     
     @property
     def first_epsilons(self):
