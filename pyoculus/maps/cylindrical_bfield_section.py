@@ -3,6 +3,51 @@ from ..fields.cylindrical_bfield import CylindricalBfield
 import pyoculus.solvers as solvers
 import numpy as np
 
+# Try to import numba and define a decorator
+try:
+    import numba
+    njit = numba.njit
+except ImportError:
+    # Define a no-op decorator if numba is not available
+    def njit(func):
+        return func
+    
+@njit
+def _jitted_f_RZ_tangent(y, Bfield, dBdRphiZ):
+    """
+    Returns the right-hand side (RHS) of the ODE with the calculation of the differential evolution. For an explanation, one could look at [S.R. Hudson](https://w3.pppl.gov/~shudson/Oculus/ga00aa.pdf).
+
+    Args:
+        y (array): The current :math:`R, Z` and :math:`d\\textbf{RZ}/dRZ` matrix. y = [dR/dphi, dZ/dphi, dR/dR_i, dZ/dR_i, dR/dZ_i, dZ/dZ_i] where i stands for the initial point in the phi0 plane (not the axis).
+    Returns:
+        array: 
+    """
+    dRZ = y[-4:].reshape(2, 2).T
+    # dRZ = [[y[2], y[4]], [y[3], y[5]]]
+
+    # R, Z evolution as in _rhs_RZ
+    dRdphi = Bfield[0] / Bfield[1]
+    dZdphi = Bfield[2] / Bfield[1]
+
+    # Matrix of the derivatives of (B^R/B^phi, B^Z/B^phi) with respect to (R, Z)
+    M00 = (
+        dBdRphiZ[0, 0] / Bfield[1] - Bfield[0] / Bfield[1] ** 2 * dBdRphiZ[1, 0]
+    )
+    M01 = (
+        dBdRphiZ[0, 2] / Bfield[1] - Bfield[0] / Bfield[1] ** 2 * dBdRphiZ[1, 2]
+    )
+    M10 = (
+        dBdRphiZ[2, 0] / Bfield[1] - Bfield[2] / Bfield[1] ** 2 * dBdRphiZ[1, 0]
+    )
+    M11 = (
+        dBdRphiZ[2, 2] / Bfield[1] - Bfield[2] / Bfield[1] ** 2 * dBdRphiZ[1, 2]
+    )
+    M = np.array([[M00, M01], [M10, M11]], dtype=np.float64)
+
+    dRZ = M @ dRZ
+
+    return np.array([dRdphi, dZdphi, dRZ[0, 0], dRZ[1, 0], dRZ[0, 1], dRZ[1, 1]])
+
 class CylindricalBfieldSection(IntegratedMap):
     """
     Map given by following the a magnetic field in cylindrical system :math:`(R, \\phi, Z)` and recording the intersections with symmetry planes :math:`\\phi = \\phi_0, \\phi_0 + T, ...`.
@@ -189,8 +234,6 @@ class CylindricalBfieldSection(IntegratedMap):
         Z = rt[0] * np.sin(rt[1]) + self.Z0
         return np.array([R, Z])
         
-        
-
     def lagrangian(self, y0, t):
         """
         Set Meiss's Lagrangiat for the magnetic field.
@@ -221,8 +264,6 @@ class CylindricalBfieldSection(IntegratedMap):
                     cache_res[t0 - 1] = self._integrate(-1, cache_res[t0])
         
         return np.copy(cache_res[t][2])
-
-        
 
     def winding(self, t, y0, y1=None):
         """
@@ -412,43 +453,12 @@ class CylindricalBfieldSection(IntegratedMap):
         Args:
             phi (float): The current cylindrical angle :math:`\\phi`.
             y (array): The current :math:`R, Z` and :math:`d\\textbf{RZ}/dRZ` matrix. y = [dR/dphi, dZ/dphi, dR/dR_i, dZ/dR_i, dR/dZ_i, dZ/dZ_i] where i stands for the initial point in the phi0 plane (not the axis).
-            *args: Additional parameters for the magnetic field calculation.
         Returns:
             array: 
         """
-        R, Z, *dRZ = y
-        # dRZ = [[y[2], y[4]], [y[3], y[5]]]
-        dRZ = np.array(dRZ, dtype=np.float64).reshape(2, 2).T
-        M = np.zeros([2, 2], dtype=np.float64)
-
-        rphiz = np.array([R, phi, Z])
-
+        rphiz = np.array([y[0], phi, y[1]])
         Bfield, dBdRphiZ = self._mf.dBdX(rphiz, *args)
-
-        Bfield = np.array(Bfield, dtype=np.float64)
-        dBdRphiZ = np.array(dBdRphiZ, dtype=np.float64)
-
-        # R, Z evolution as in _rhs_RZ
-        dRdphi = Bfield[0] / Bfield[1]
-        dZdphi = Bfield[2] / Bfield[1]
-
-        # Matrix of the derivatives of (B^R/B^phi, B^Z/B^phi) with respect to (R, Z)
-        M[0, 0] = (
-            dBdRphiZ[0, 0] / Bfield[1] - Bfield[0] / Bfield[1] ** 2 * dBdRphiZ[1, 0]
-        )
-        M[0, 1] = (
-            dBdRphiZ[0, 2] / Bfield[1] - Bfield[0] / Bfield[1] ** 2 * dBdRphiZ[1, 2]
-        )
-        M[1, 0] = (
-            dBdRphiZ[2, 0] / Bfield[1] - Bfield[2] / Bfield[1] ** 2 * dBdRphiZ[1, 0]
-        )
-        M[1, 1] = (
-            dBdRphiZ[2, 2] / Bfield[1] - Bfield[2] / Bfield[1] ** 2 * dBdRphiZ[1, 2]
-        )
-
-        dRZ = np.matmul(M, dRZ)
-
-        return np.array([dRdphi, dZdphi, dRZ[0, 0], dRZ[1, 0], dRZ[0, 1], dRZ[1, 1]])
+        return _jitted_f_RZ_tangent(y, Bfield, dBdRphiZ)
 
     # dLangrangian ODE RHS
 
@@ -498,11 +508,14 @@ class Cache:
     def __init__(self, size=None):
         """
         Initializes the Cache object.
+        Entries are dictionaries whose keys are a hash of the starting points, and the type of result (simple integraiton or gradient-based integration).
+        the dictionaries are of the form {t: result} where t is the time period and result is the result of the integration t times from the starting point associated with the key. 
 
         Args:
-            size (int, optional): The maximum size of the cache. Defaults to 512.
+            size (int, optional): The maximum size of the cache (number of trajectories to store
+            for fast re-computing). Defaults to 4045.
         """
-        self.size = size if size is not None else 512
+        self.size = size if size is not None else 4046
         self.cache = {}
 
     def retrieve(self, y0, what):
