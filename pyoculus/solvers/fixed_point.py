@@ -285,7 +285,7 @@ class FixedPoint(BaseSolver):
         self.Jacobian = self._map.df(self.t, x_fp)
         self.GreenesResidue = 0.25 * (2.0 - np.trace(self.Jacobian))
         if self._found_by_iota:
-            self.MeanResidue[i] = np.power(
+            self.MeanResidue = np.power(
                 np.abs(self.GreenesResidue) / 0.25, 1 / float(self._m)
             )
         # Initial condition
