@@ -3,7 +3,8 @@ from .base_solver import BaseSolver
 from .fixed_point import FixedPoint
 from ..utils.plot import create_canvas, clean_bigsteps
 from scipy.optimize import root, minimize
-from typing import Iterator, Literal
+from typing import Iterator, Literal, Union
+from numpy.typing import NDArray
 
 # from functools import total_ordering
 from matplotlib.patches import FancyArrowPatch
@@ -613,13 +614,21 @@ class Manifold(BaseSolver):
 
     This class handles the computation of stable and unstable manifolds for fixed points, including finding homoclinic/heteroclinic intersections and calculating the turnstile flux of the tangle.
 
+    We need to resolve some duplicity to determine the direction in which to follow the manifolds of each x-point (M*v=e.v. * v => M*-v = -e.v. * v), this is done with the 'dir' keywords. 
+
     Args:
         map (maps.base_map): The map defining the dynamical system.
         fixedpoint_1 (FixedPoint): First fixed point to consider.
         fixedpoint_2 (FixedPoint, optional): Second fixed point to consider if the manifolds go from one to the other.
-        dir1 (str, optional): Direction ('+' or '-') for first manifold.
-        dir2 (str, optional): Direction ('+' or '-') for second manifold.
-        is_first_stable (bool, optional): Whether the first fixed point direction captures the stable manifold departure.
+        dir1 (str, optional): Direction 
+                       if type == str, can be ('+' or '-') to multiply eigenvector of the Jacobian. 
+                       if type == float, approximate angle (with respect of the x-axis) of the manifold to follow
+                       if type == np.ndarray, the (approximate) vector of the manifold to follow
+        dir2 (str, optional): Direction 
+                       if type == str, can be ('+' or '-') for the second manifold.
+                       if type == float, approximate angle (with respect of the x-axis) of the manifold to follow
+                       if type == np.ndarray, the (approximate) vector of the manifold to follow
+        first_stable (bool, optional): Whether to follow the stable or unstable manifold departing from the first fixed point. Defaults to True.
 
     Attributes:
         fixedpoint_1 (FixedPoint): First fixed point.
@@ -660,9 +669,9 @@ class Manifold(BaseSolver):
         map: maps.base_map,
         fixedpoint_1: FixedPoint,
         fixedpoint_2: FixedPoint = None,
-        dir1: str = None,
+        dir1: Union[str, float, NDArray] = None,
         dir2: str = None,
-        is_first_stable: bool = None,
+        first_stable: bool = None,
     ) -> None:
         """
         Initialize the Manifold class by providing two fixed points and specifying if the first fixedpoint is stable. If only one fixed point is specified, a homoclinic connection is assumed. 
@@ -695,10 +704,14 @@ class Manifold(BaseSolver):
             self.fixedpoint_2 = fixedpoint_1
 
         # Setting the fast and slow directions
-        if dir1 is None or dir2 is None or is_first_stable is None:
-            logger.warning("No choice of direction was made. Proceeding with default.")
-            dir1, dir2, is_first_stable = "+", "+", True
-        self.choose(dir1, dir2, is_first_stable)
+        if dir1 is None:
+            dir1 = fixedpoint_2.coords[0] - fixedpoint_1.coords[0]
+        if dir2 is None:
+            dir2 = fixedpoint_1.coords[0] - fixedpoint_2.coords[0]
+        if first_stable is None:
+            first_stable = True
+
+        self.choose(dir1, dir2, first_stable)
 
         # Initialize the clinic set
         self.clinics = ClinicSet(self)
@@ -708,7 +721,7 @@ class Manifold(BaseSolver):
         super().__init__(map)
 
     def choose(
-        self, dir_1: Literal["+", "-"], dir_2: Literal["+", "-"], is_first_stable: bool
+        self, dir_1: Union[Literal["+", "-"], float, NDArray], dir_2: Union[Literal["+", "-"], float, NDArray], first_stable: bool
     ) -> None:
         """Choose manifold stable and unstable directions to define your :class:`Manifold` problem.
 
@@ -719,27 +732,43 @@ class Manifold(BaseSolver):
         Args:
             dir_1 (str): '+' or '-' for the stable direction.
             dir_2 (str): '+' or '-' for the unstable direction.
-            first_stable (bool): Whether the first fixed point is a stable direction.
+            first_stable  (bool): Whether to follow the stable or unstable manifold from the first point.
         """
-        if is_first_stable:
-            fp_s, fp_u = self.fixedpoint_1, self.fixedpoint_2
+        if first_stable:
+            self.fp_s = self.fixedpoint_1
+            self.fp_u = self.fixedpoint_2
+            stabledir = dir_1
+            unstabledir = dir_2
         else:
-            fp_s, fp_u = self.fixedpoint_2, self.fixedpoint_1
+            self.fp_u = self.fixedpoint_1
+            self.fp_s = self.fixedpoint_2
+            stabledir = dir_2
+            unstabledir = dir_1
 
-        signs = [(-1) ** int(d == "-") for d in dir_1 + dir_2]
-
-        # Choose the fixed points and their directions
-        self.rfp_s = fp_s.coords[0]
-        self.lambda_s, self.vector_s, _, _ = eig(fp_s.jacobians[0])
-
-        self.rfp_u = fp_u.coords[0]
-        _, _, self.lambda_u, self.vector_u = eig(fp_u.jacobians[0])
-
-        # Assign the fixed points and their directions
-        self.vector_s *= signs[0]
-        self.vector_u *= signs[1]
-
-        # Initialize the manifolds
+        # deal with the stable fixed point first:
+        self.rfp_s = self.fp_s.coords[0]
+        self.lambda_s, self.vector_s, _, _ = eig(self.fp_s.Jacobian)  # algorithm can give either positive or negative
+        if type(stabledir) == str and stabledir in ["+", "-"]:
+            self.vector_s *= (-1) ** int(stabledir == "-")  # negate if minus provided
+        elif isinstance(stabledir, float):
+            self.vector_s *= (-1)**int(np.dot(self.vector_s, np.array([np.cos(stabledir), np.sin(stabledir)])) < 0)  # negate if dot negative
+        elif isinstance(stabledir, np.ndarray) and len(stabledir) == 2:
+            self.vector_s *= (-1)**int(np.dot(self.vector_s, stabledir) < 0)  # negate if dot negative
+        else:
+            raise ValueError("Invalid dir_1 given, either '+'/'-', float or len-2 array")
+        
+        # deal with the unstable fixed point
+        self.rfp_u = self.fp_u.coords[0]
+        _, _, self.lambda_u, self.vector_u = eig(self.fp_u.Jacobian)
+        if type(unstabledir) == str and unstabledir in ["+", "-"]:
+            self.vector_u *= (-1) ** int(unstabledir == "-") # negate if minus provided
+        elif isinstance(unstabledir, float):
+            self.vector_u *= (-1)**int(np.dot(self.vector_u, np.array([np.cos(unstabledir), np.sin(unstabledir)])) < 0) # negate if dot negative
+        elif isinstance(unstabledir, np.ndarray) and len(unstabledir) == 2:
+            self.vector_u *= (-1)**int(np.dot(self.vector_u, unstabledir) < 0) # negate if dot negative
+        else:
+            raise ValueError("Invalid dir_2 given, either '+'/'-', float or len-2 array")
+        
         self._stable_trajectory = None
         self._unstable_trajectory = None
 
@@ -774,9 +803,9 @@ class Manifold(BaseSolver):
 
         # Choose the fixed points and their directions
         rfp_1 = fp_1.coords[0]
-        _, p1_vector_s, _, p1_vector_u = eig(fp_1.jacobians[0])
+        _, p1_vector_s, _, p1_vector_u = eig(fp_1.Jacobian)
         rfp_2 = fp_2.coords[0]
-        _, p2_vector_s, _, p2_vector_u = eig(fp_2.jacobians[0])
+        _, p2_vector_s, _, p2_vector_u = eig(fp_2.Jacobian)
 
         # Plot the fixed points
         ax.scatter(
@@ -877,6 +906,7 @@ class Manifold(BaseSolver):
             arrowstyle="-|>",
             color=vcolors[0],
             mutation_scale=10,
+            **kwargs
         )
         u_arrow = FancyArrowPatch(
             self.rfp_u,
@@ -884,6 +914,7 @@ class Manifold(BaseSolver):
             arrowstyle="-|>",
             color=vcolors[1],
             mutation_scale=10,
+            **kwargs
         )
 
         # Add the arrows to the plot
@@ -1431,7 +1462,7 @@ class Manifold(BaseSolver):
         shift = kwargs.pop("shift", 0)
 
         if n_points is None:
-            n_points = 2 * self.fixedpoint_1.m
+            n_points = 2 
 
         # Reset the clinic search
         if reset_clinics == True:

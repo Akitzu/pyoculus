@@ -96,8 +96,8 @@ class FixedPoint(BaseSolver):
         Returns:
             FixedPoint.OutputData: the output data of the fixed point search
                 - coords: the coordinates of the fixed point
-                - jacobians: the Jacobians of the fixed point
-                - GreenesResidues: the Greene's Residue of the fixed point
+                - Jacobian: the Jacobian of the fixed point
+                - GreenesResidue: the Greene's Residue of the fixed point
         """
 
         # Check the iteration number is correct
@@ -169,9 +169,9 @@ class FixedPoint(BaseSolver):
         Returns:
             FixedPoint.OutputData: the output data of the fixed point search
                 - coords: the coordinates of the fixed point
-                - jacobians: the Jacobians of the fixed point
-                - GreenesResidues: the Greene's Residue of the fixed point
-                - MeanResidues: --
+                - Jacobian: the Jacobian of the fixed point
+                - GreenesResidue: the Greene's Residue of the fixed point
+                - MeanResidue: --
         """
 
         # Setup the x_axis if not provided
@@ -282,40 +282,27 @@ class FixedPoint(BaseSolver):
             is_winding (bool)
         """
 
-        # Initialize the data arrays
-        self.coords = np.zeros(
-            shape=(self.t + 1, self._map.dimension), dtype=np.float64
-        )
-        self.jacobians = np.zeros(
-            shape=(self.t + 1, self._map.dimension, self._map.dimension),
-            dtype=np.float64,
-        )
-        self.GreenesResidues = np.zeros(self.t + 1, dtype=np.float64)
+        self.Jacobian = self._map.df(self.t, x_fp)
+        self.GreenesResidue = 0.25 * (2.0 - np.trace(self.Jacobian))
         if self._found_by_iota:
-            self.MeanResidues = np.zeros(self.t + 1, dtype=np.float64)
-        
+            self.MeanResidue[i] = np.power(
+                np.abs(self.GreenesResidue) / 0.25, 1 / float(self._m)
+            )
         # Initial condition
+        self.coords = np.zeros((self.t + 1, self._map.dimension))
         self.coords[0] = x_fp
-
-        # Compute the rest of the data
         for i in range(0, self.t + 1):
             if i > 0:
                 self.coords[i] = self._map.f(1, self.coords[i - 1])
-            
-            self.jacobians[i] = self._map.df(self.t, self.coords[i])
-            self.GreenesResidues[i] = 0.25 * (2.0 - np.trace(self.jacobians[i]))
-            if self._found_by_iota:
-                self.MeanResidues[i] = np.power(
-                    np.abs(self.GreenesResidues[i]) / 0.25, 1 / float(self._m)
-                )
+
 
         # Create an output
-        rdata = FixedPoint.OutputData()
+        rdata = FixedPoint.OutputData()  # dummy holder class (legacy)
         rdata.coords = self.coords.copy()
-        rdata.jacobians = self.jacobians.copy()
-        rdata.GreenesResidues = self.GreenesResidues.copy()
+        rdata.Jacobian = self.Jacobian.copy()
+        rdata.GreenesResidue = self.GreenesResidue.copy()
         if self._found_by_iota:
-            rdata.MeanResidues = self.MeanResidues.copy()
+            rdata.MeanResidue = self.MeanResidue.copy()
 
         return rdata
     
@@ -326,7 +313,7 @@ class FixedPoint(BaseSolver):
         """
         if not self.successful:
             raise ValueError("Fixed point not found.")
-        return np.linalg.eigvals(self.jacobians)
+        return np.linalg.eigvals(self.Jacobian)
 
     @property
     def topological_index(self):
@@ -336,7 +323,7 @@ class FixedPoint(BaseSolver):
         if not self.successful:
             raise ValueError("Fixed point not found.")
 
-        return np.sign(self.GreenesResidues[0])
+        return np.sign(self.GreenesResidue)
 
     @property
     def rotational_transform(self):
@@ -345,9 +332,9 @@ class FixedPoint(BaseSolver):
         """
         if not self.successful:
             raise ValueError("Fixed point not found.")
-        if np.abs(np.trace(self.jacobians[0])) >= 2:
+        if np.abs(np.trace(self.Jacobian)) >= 2:
             raise ValueError("rotational transform only defined for elliptic fixed point, this point is hyperbolic")
-        return np.arccos(np.trace(self.jacobians[0])/2)/(2*np.pi)
+        return np.arccos(np.trace(self.Jacobian)/2)/(2*np.pi)
 
     """
     Solver methods.
@@ -528,13 +515,13 @@ class FixedPoint(BaseSolver):
         fig, ax, kwargs = create_canvas(**kwargs)
 
         if kwargs.get("marker", None) is None:
-            if self.GreenesResidues[0] > 1:
+            if self.GreenesResidue > 1:
                 # Alternating hyperbolic fixed point
                 kwargs["marker"] = "s"
-            elif self.GreenesResidues[0] < 0:
+            elif self.GreenesResidue < 0:
                 # Hyperbolic fixed point
                 kwargs["marker"] = "X"
-            elif self.GreenesResidues[0] < 1:
+            elif self.GreenesResidue < 1:
                 # Elliptic fixed point
                 kwargs["marker"] = "o"
         

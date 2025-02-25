@@ -142,15 +142,15 @@ class FluxSurfaceGR(BaseSolver):
         greenes_list = np.zeros(len(self.fixedpoints), dtype=np.float64)
 
         for ii, fp in enumerate(self.fixedpoints):
-            greenes_list[ii] = fp.GreenesResidues[0]
+            greenes_list[ii] = fp.GreenesResidue
 
         xlist_Mackay = xlist_greene[1:]
         Mackay_list = np.zeros(len(self.fixedpoints) - 1, dtype=np.float64)
 
         for ii in range(len(self.fixedpoints) - 1):
             Mackay_list[ii] = (
-                self.fixedpoints[ii].GreenesResidues[0]
-                + gamma * self.fixedpoints[ii + 1].GreenesResidues[0]
+                self.fixedpoints[ii].GreenesResidue
+                + gamma * self.fixedpoints[ii + 1].GreenesResidue
             ) / (1.0 + gamma)
 
         fig, ax, kwargs = create_canvas(**kwargs)
