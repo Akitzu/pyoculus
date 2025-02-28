@@ -109,6 +109,7 @@ class FixedPoint(BaseSolver):
         self.t = t
         self.history = []
         x_fp = None
+        self._successful = False
 
         # Check the guess is correct
         if guess is None:
@@ -202,6 +203,7 @@ class FixedPoint(BaseSolver):
         self.t = m
         self.history = []
         x_fp = None
+        self._successful = False
 
         # Check the guess is right
         if guess is None:
