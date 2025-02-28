@@ -921,9 +921,6 @@ class Manifold(BaseSolver):
         ax.add_patch(u_arrow)
         ax.add_patch(s_arrow)
 
-                
-
-        
     
     @property
     def first_epsilons(self):
@@ -1575,11 +1572,11 @@ class Manifold(BaseSolver):
             int1 = np.sum(self._compute_lagrangian_in_sections(traj1))
             int2 = np.sum(self._compute_lagrangian_in_sections(traj2)) # this integral shold be in opposite direction, it will be subtracted. 
 
-            close_1_RZs = np.linspace(traj1[-1], traj2[-1], n_joining)
+            close_1_RZs = np.linspace(traj1[-1], traj2[-1], n_joining, endpoint=True)
             closing_integral_1 = self._AdL_integral_points(close_1_RZs, is_closed=False)
             logger.debug(f"Closing integral of turnstile {turnstilenum} stable end: {closing_integral_1}")
             
-            close_2_RZs = np.linspace(traj2[0], traj1[0], n_joining)
+            close_2_RZs = np.linspace(traj2[0], traj1[0], n_joining, endpoint=True)
             closing_integral_2 = self._AdL_integral_points(close_2_RZs, is_closed=False)
             logger.debug(f"Closing integral of turnstile {turnstilenum} unstable end: {closing_integral_2}")
 

@@ -15,6 +15,7 @@ from ..utils.plot import create_canvas
 from scipy.optimize import root
 import numpy as np
 from numpy.typing import ArrayLike
+from typing import Union
 import logging
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ class FixedPoint(BaseSolver):
 
     ## Findings fixed points methods
 
-    def find(self, t : float | int, guess : ArrayLike = None, nrestart : int = 0, method : str = "newton", **kwargs):
+    def find(self, t : Union[float,  int], guess : ArrayLike = None, nrestart : int = 0, method : str = "newton", **kwargs):
         """
         Tries to find a fixed point of the map applied :math:`t` times.
 
