@@ -150,7 +150,14 @@ class CylindricalBfieldSection(IntegratedMap):
             self._integrator.set_rhs(self._rhs_RZ)
 
         if type(t) is not int:
-            return self._integrate(t, y0)
+            cache_res = self.cache.retrieve(y0, "f_noninteger")
+            if cache_res is not None and t in cache_res:
+                return cache_res[t]
+            else:
+                ic = [*y0]
+                res = self._integrate(t, ic)
+                self.cache.save(y0, 'f_noninteger', t, res)
+                return res
         
         # Check if the result is in the cache and use it if possible
         cache_res = self.cache.retrieve(y0, "f")
@@ -180,8 +187,17 @@ class CylindricalBfieldSection(IntegratedMap):
             self._integrator.set_rhs(self._rhs_RZ_tangent)
         
         if type(t) is not int:
+            cache_res = self.cache.retrieve(y0, "df_noninteger")
+            if cache_res is not None and t in cache_res:
+                return cache_res[t]
+            else: 
                 ic = [*y0, 1., 0., 0., 1.]
-                return self._integrate(t, ic)
+                integrand = self._integrate(t, ic)
+                f = integrand[:2]
+                df = integrand[2:6].reshape(2, 2).T
+                self.cache.save(y0, 'f_noninteger', t, f)
+                self.cache.save(y0, 'df_noninteger', t, df)
+                return df
 
         # Check if the result is in the cache and use it if possible
         cache_res = self.cache.retrieve(y0, "df")
@@ -496,9 +512,21 @@ class CylindricalBfieldSection(IntegratedMap):
 class Cache:
     """
     A cache to store the results of integrations. 
-    Entries are catalogue by the starting point of the field line and the type of result.
-    the cache will return a dictionary of {t: result} where t is the time period and result is the result of the integration t times. 
-
+    Entries are catalogued by the starting point of the field line and the type of result.
+    the cache will return a dictionary of {t: result} where t is the time period and result is the result of the integration t times.
+    The cache is limited in size and will remove the oldest entry if the limit is reached.
+    The keys are a hash of the starting position and a string specifying the type of result. These are not specified in the cache itself, but
+    by the functions that use the cache. 
+    Currently implemented types are: 
+    (y0, 'f') for the field line position at time t
+    (y0, 'df') for the jacobian of the field line position at time t
+    (y0, 'f_noninteger') for the field line position at time t for non-integer t
+    (y0, 'df_noninteger') for the jacobian of the field line position at time t for non-integer t
+    (y0, 'lagrangian') for the lagrangian form at time t
+    (y0, 'winding') for the winding number at time t
+    (y0, 'dwinding') for the jacobian of the winding number at time t
+    [Note: the cache entries are based on *starting* point of a trajectory, so calculations starting at an intermediate point of a previous trajectory will not be retrieved from the cache.]
+    non-integer integrations are always computed from phi=0, and do not continue from a previous result.
 
     Attributes:
         size (int): The maximum size of the cache.
