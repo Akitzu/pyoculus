@@ -12,7 +12,7 @@ Contains the class for finding fixed points of a map.
 from .base_solver import BaseSolver
 import pyoculus.maps as maps
 from ..utils.plot import create_canvas
-from scipy.optimize import root
+from scipy.optimize import root, root_scalar
 import numpy as np
 from numpy.typing import ArrayLike
 from typing import Union
@@ -26,7 +26,7 @@ class FixedPoint(BaseSolver):
     Class to find fixed points of a map, i.e. points that satisfy :math:`f^t(x) = x`.
     """
 
-    def __init__(self, map):
+    def __init__(self, map):  #,  t : Union[float,  int]=1, guess : ArrayLike = None, nrestart : int = 0, method : str = "newton",):
         # if constraints is None:
         #     constraints = np.NaN * np.ones(map.dimension)
         # elif len(constraints) != map.dimension:
@@ -36,7 +36,14 @@ class FixedPoint(BaseSolver):
         # self._constraints = constraints
     
         self._found_by_iota = False
+#        self.t = t
+#        self._guess = guess
+#        self._nrestart = nrestart
+#        self._method = method
+        self._n = None
+        self._m = None
         super().__init__(map)
+        
 
     ## Properties
 
@@ -62,8 +69,6 @@ class FixedPoint(BaseSolver):
     def m(self):
         if not self.successful:
             raise ValueError("Fixed point not found.")
-        elif not self._found_by_iota:
-            raise ValueError("Fixed point not found with winding number.")
         else:
             return self._m
     
@@ -74,8 +79,6 @@ class FixedPoint(BaseSolver):
         """
         if not self.successful:
             raise ValueError("Fixed point not found.")
-        elif self._found_by_iota:
-            raise ValueError("Fixed point already found with winding number, what are you doing?")
         self._found_by_iota = True
         self._m = m
 
@@ -91,7 +94,7 @@ class FixedPoint(BaseSolver):
             t: the number of iterations of the map
             guess: the initial guess of the fixed point
             nrestarts: the maximum number of restart with different random initial conditions
-            method: the method to use to find the fixed point, default is 'newton'
+            method: the method to use to find the fixed point, default is 'newton'. 
             **kwargs: additional arguments for the method
 
         Returns:
@@ -99,6 +102,18 @@ class FixedPoint(BaseSolver):
                 - coords: the coordinates of the fixed point
                 - Jacobian: the Jacobian of the fixed point
                 - GreenesResidue: the Greene's Residue of the fixed point
+        
+        Notes:
+            There are several methods implemented, 
+            *newton* is a simple Newton's method implemented in this class. it evaluates the full map.  
+            *scipy.root* uses the scipy root method to find the fixed point without derivative evaluation, it also finds the point using only a half-map forwards and backwards, which should help with convergence to very unstable fixed points
+            *scipy.derivs* is the same as root, but also uses the calculated derivatives.
+            *scipy.1D* is a 1D solver that finds the fixed point on a symmetry plane using a 1D bisection method and looking a zero in the difference in Z in the half-maps (defalut solver is brentq, specified by the keyword scipy_method="..")
+            
+            For IntegratedMaps, often best results are obtained with 'scipy.root', which does not use derivatives. This is because 
+            the derivative evaluation is often more expensive than several map evaluations and most scipy solvers internally construct a jacobian from the evaluations.
+            For s 
+
         """
 
         # Check the iteration number is correct
@@ -107,6 +122,7 @@ class FixedPoint(BaseSolver):
 
         # Setup the search
         self.t = t
+        self._m = t
         self.history = []
         x_fp = None
         self._successful = False
@@ -124,6 +140,12 @@ class FixedPoint(BaseSolver):
             method_fun = self._newton_method
         elif method == "scipy.root":
             method_fun = self._scipy_root
+        elif method == "scipy.derivs":
+            method_fun = self._scipy_derivs
+        elif method == "scipy.1D":
+            method_fun = self._scipy_1d_symmetry
+#        elif method == "scipy.stellsym.2D":
+#            method_fun = self.scipy_stellsym_2d
         else:
             raise ValueError(f"Method {method} is not implemented.")
         self._method = method
@@ -291,12 +313,8 @@ class FixedPoint(BaseSolver):
             self.MeanResidue = np.power(
                 np.abs(self.GreenesResidue) / 0.25, 1 / float(self._m)
             )
-        # Initial condition
-        self.coords = np.zeros((self.t + 1, self._map.dimension))
-        self.coords[0] = x_fp
-        for i in range(0, self.t + 1):
-            if i > 0:
-                self.coords[i] = self._map.f(1, self.coords[i - 1])
+        
+        self.coords = np.array([self._map.f(i, x_fp) for i in range(self.t + 1)])  # uses cache
 
 
         # Create an output
@@ -385,13 +403,99 @@ class FixedPoint(BaseSolver):
 
     def _scipy_root(self, guess, **kwargs):
         """
-        Wrapper around the scipy root method to find the fixed point. For more details, see the scipy documentation.
+        Use the scipy root method to find the fixed point. 
+        Finds the minimum of :math:f^{t/2}-f^{-t/2} as it should be better behaved. 
         """
+        scipy_method = kwargs.pop("scipy_method", "hybr")
 
         def fun(x):
-            return self._map.f(self.t, x) - x
+            logger.info(f"Newton - xx : {x}")
+            return self._map.f(self.t/2, x) - self._map.f(-self.t/2, x)
+        
+        self._scipy_root_res = root(fun, guess, method=scipy_method, **kwargs)
 
-        return root(fun, guess, **kwargs).x
+        return np.copy(self._scipy_root_res.x)
+    
+    def _scipy_derivs(self, guess, **kwargs):
+        """
+        find the fixed point by mapping half the period forward, half the period backwards. 
+        :math:`f^{t/2}(x) = f^{-t/2}(x)`
+        """
+
+        scipy_method = kwargs.pop("scipy_method", "hybr")
+        def fun(x):
+            logger.info(f"Newton - xx : {x}")
+            forwardjac = self._map.df(self.t/2, x)
+            forwardf = self._map.f(self.t/2, x)
+            backwardjac = self._map.df(-self.t/2, x)
+            backwardf = self._map.f(-self.t/2, x)
+
+            return forwardf - backwardf, (forwardjac - backwardjac)
+
+        self._scipy_root_res = root(fun, guess, jac=True, method=scipy_method, **kwargs)
+        return np.copy(self._scipy_root_res.x)
+    
+    def _scipy_1d_symmetry(self, guess, **kwargs):
+        """
+        use a 1d solver to find the fixed point in a symmetry plane. 
+        In stellarator symmetric devices, it is guaranteed there is a fixed point on Z=0.
+        R is varied and a zero of the Z component of the half map difference is found.
+
+        With bracketing functions it is useful to add a bracket_infinity_sign keyword +- 1, to choose 
+        if a failed evaluation should return positive or negative infinity. (sign of the return must be opposite
+        on each limit of the bracket)
+    
+        """
+        if guess[-1] != 0.:
+            raise ValueError("1d finding only works on the Z=0 line")
+        if not (self._map.phi0 == 0. or np.isclose(self._map.phi0 / self._map.dzeta, 0.5)):
+            raise ValueError("1d finding only works on a symmetry plane")
+        scipy_method = kwargs.pop("scipy_method", "brentq")
+        
+        bracket = kwargs.pop("bracket", None)
+        bracket_infinity_sign = np.sign(kwargs.pop("bracket_infinity", -1))  # sign of the infinity to return when the map is not calculated
+        if scipy_method in ["toms748", "ridder", "brentq", "brenth", "bisect"]:
+            if bracket is None:
+                bracket = guess[0] * np.array([0.99, 1.01])
+                logger.info(f"Newton - bracket not given for method that requires it, using 1 percent margin, bracket = {bracket}")
+        
+        def fun(R):
+            logger.info(f"Newton - xx : {R}")
+            try:
+                diff = (self._map.f(self.t/2, np.append(R, 0.)) - self._map.f(-self.t/2, np.append(R, 0.)))
+                zdiff = diff[-1]
+            except Exception as e:
+                logger.info(f"Newton - failed at xx {R}: {e}")
+                zdiff = np.inf*bracket_infinity_sign
+
+            logger.info(f"Newton - zdiff : {zdiff}")
+            return zdiff
+
+        self._scipy_root_res = root_scalar(fun, x0=guess[0], method=scipy_method, bracket=bracket, **kwargs)
+        return np.array([self._scipy_root_res.root, 0])
+
+#    def scipy_stellsym_2d(self, guess, **kwargs):
+#        """
+#        use a 2d solver to find a fixed point in a symmetry plane not on the Z=0 line. 
+#        In general, the halfmap forwards equals the half-map backwards, but in stellarator symmetric devices
+#        the halfmap backwards is also the halfmap forwards from its stellarator-symmetric point, but flipped in Z.
+#        Currently unable to formulate the exact problem to solve, but I believe a fixed point can be found
+#        using only quarter-map integration
+#        """
+#        if not (self._map.phi0 == 0. or np.isclose(self._map.phi0 / self._map.dzeta, 0.5)):
+#            raise ValueError("1d finding only works on a symmetry plane")
+#        
+#        def fun(x):
+#            logger.info(f"scipy_stellsym_2d - xx : {x}")
+#            flipz = np.array([1, -1])
+#            quartermap = self._map.f(self.t/4, x)
+#            diff = self._map.f(self.t/4, x)*flipz - self._map.f(-self.t/4, x * flipz)
+#            logger.info(f"scipy_stellsym_2d - diff : {x}")
+#            return diff
+#        
+#        self._scipy_root_res = root(fun, guess, **kwargs)
+#        return np.copy(self._scipy_root_res.x)
+
 
     def _newton_method_winding(self, guess, xaxis=None, niter=100, tol=1e-10):
         """
