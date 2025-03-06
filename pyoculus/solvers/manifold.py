@@ -424,6 +424,28 @@ class ClinicSet:
         return [clinic.eps_u for clinic in self._clinics_list] + [self.unstable_segment[1]]
     
     @property
+    def stable_shifts(self):
+        """
+        return the stable shifts of the clinics
+        """
+        if self.is_empty:
+            return []
+        epsilons = self.stable_epsilons
+        epsilon_range = epsilons[-1] - epsilons[0]
+        return [(thiseps - epsilons[0])/epsilon_range for thiseps in epsilons[1:-1]]
+    
+    @property
+    def unstable_shifts(self):
+        """
+        return the unstable shifts of the clinics (excluding the clinic defining the fundamental section)
+        """
+        if self.is_empty:
+            return []
+        epsilons = self.unstable_epsilons
+        epsilon_range = epsilons[-1] - epsilons[0]
+        return [(thiseps - epsilons[0])/epsilon_range for thiseps in epsilons[1:-1]]
+    
+    @property
     def first_epsilons(self):
         """
         return the stable and unstable epsilons of the first clinic in the set
@@ -702,12 +724,14 @@ class Manifold(BaseSolver):
         else:
             self.fixedpoint_1 = fixedpoint_1
             self.fixedpoint_2 = fixedpoint_1
+            dir1 = '+'
+            dir2 = '+'
 
         # Setting the fast and slow directions
         if dir1 is None:
-            dir1 = fixedpoint_2.coords[0] - fixedpoint_1.coords[0]
+            dir1 = self.fixedpoint_2.coords[0] - self.fixedpoint_1.coords[0]
         if dir2 is None:
-            dir2 = fixedpoint_1.coords[0] - fixedpoint_2.coords[0]
+            dir2 = self.fixedpoint_1.coords[0] - self.fixedpoint_2.coords[0]
         if first_stable is None:
             first_stable = True
 
@@ -1079,7 +1103,7 @@ class Manifold(BaseSolver):
             logger.warning(
                 "Stable manifold not computed. Using the computation method."
             )
-            self.compute_manifold('stable', 1e-5, True)
+            self.compute_manifold('stable', 1e-5)
         return self._stable_trajectory
 
     @property
@@ -1088,7 +1112,7 @@ class Manifold(BaseSolver):
             logger.warning(
                 "Unstable manifold not computed. Using the computation method."
             )
-            self.compute_manifold('unstable', 1e-5, False)
+            self.compute_manifold('unstable', 1e-5)
         return self._unstable_trajectory
 
     def compute(self, eps_s=None, eps_u=None, **kwargs):
