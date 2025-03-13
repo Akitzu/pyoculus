@@ -1605,6 +1605,7 @@ class Manifold(BaseSolver):
             logger.debug(f"Closing integral of turnstile {turnstilenum} unstable end: {closing_integral_2}")
 
             turnstile_areas.append(int1 + closing_integral_1 - int2 + closing_integral_2)
+            logger.info(f"Turnstile area {turnstilenum} computed: {turnstile_areas[-1]}")
 
         self._areas = np.array(turnstile_areas)
         return self._areas
