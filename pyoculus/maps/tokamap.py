@@ -137,10 +137,13 @@ class TokaMap(BaseMap):
             for _ in range(t):
                 y = self._f(y)
             return y
-        if t<0: 
+        elif t<0: 
             for _ in range(abs(t)):
                 y = self._f_rev(y)
             return y
+        else:
+            return y
+
     
     def df(self, t, y0):
         """
