@@ -314,7 +314,7 @@ class FixedPoint(BaseSolver):
                 np.abs(self.GreenesResidue) / 0.25, 1 / float(self._m)
             )
         
-        self.coords = np.array([self._map.f(i, x_fp) for i in range(self.t + 1)])  # uses cache
+        self.coords = np.array([np.asarray(self._map.f(i, x_fp)) for i in range(self.t + 1)])  # uses cache (cast to np array if analytic map returns other)
 
 
         # Create an output
