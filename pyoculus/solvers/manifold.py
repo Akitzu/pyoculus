@@ -96,7 +96,7 @@ class Clinic:
         self._path_u = None
         self._xend_s = None
         self._xend_u = None
-    
+
     @classmethod
     def from_guess(cls, manifold: "Manifold", eps_s: float, eps_u: float, n_s: int, n_u: int, **kwargs):
         """
@@ -116,7 +116,7 @@ class Clinic:
         Returns:
             tuple: A tuple containing the found epsilon values for the stable and unstable manifolds (eps_s, eps_u).
         """
-        
+
         logger.debug(f"Using n_s, n_u - {n_s}, {n_u}")
 
         # Updating the default root finding parameters
@@ -307,7 +307,7 @@ class Clinic:
         # Evolve the points along the manifolds
         # r_s_unevolved = self._map.f(+1*self.fixedpoint_1.m, r_s)
         # r_s_evolved   = self._map.f(-1*self.fixedpoint_1.m, r_s)
-        r_s_evolved = self._manifold.integrate(r_s, 1, -1)[1, 0] 
+        r_s_evolved = self._manifold.integrate(r_s, 1, -1)[1, 0]
 
         # r_u_unevolved = self._map.f(-1*self.fixedpoint_1.m, r_u)
         # r_u_evolved   = self._map.f(+1*self.fixedpoint_1.m, r_u)
@@ -348,7 +348,7 @@ class ClinicSet:
         >>> clinic_set.record_clinic(myclinic)
     """
 
-    DEFAULT_TOLERANCE = 1e-2
+    DEFAULT_TOLERANCE = 1e-4
     MAX_ITERATIONS = 20
 
     def __init__(self, manifold: "Manifold") -> None:
@@ -367,7 +367,7 @@ class ClinicSet:
     def is_empty(self) -> bool:
         """Check if the clinic set is empty."""
         return len(self._clinics_list) == 0
-    
+
     # Make the class indexable
     def __getitem__(self, index: int) -> Clinic:
         return self._clinics_list[index]
@@ -386,7 +386,7 @@ class ClinicSet:
             logger.warning('No clinics in the set, returning 0')
             return 0
         return sum(self.nint_pair)
-    
+
     @property
     def stable_segment(self):
         """
@@ -404,7 +404,7 @@ class ClinicSet:
         if not self.is_empty:
             return self.fundamental_segments["unstable"]
         else: return None
-    
+
     @property
     def stable_epsilons(self):
         """
@@ -413,7 +413,7 @@ class ClinicSet:
         if self.is_empty:
             return []
         return [clinic.eps_s for clinic in self._clinics_list] + [self.stable_segment[1]]
-    
+
     @property
     def unstable_epsilons(self):
         """
@@ -422,7 +422,7 @@ class ClinicSet:
         if self.is_empty:
             return []
         return [clinic.eps_u for clinic in self._clinics_list] + [self.unstable_segment[1]]
-    
+
     @property
     def stable_shifts(self):
         """
@@ -433,7 +433,7 @@ class ClinicSet:
         epsilons = self.stable_epsilons
         epsilon_range = epsilons[-1] - epsilons[0]
         return [(thiseps - epsilons[0])/epsilon_range for thiseps in epsilons[1:-1]]
-    
+
     @property
     def unstable_shifts(self):
         """
@@ -444,7 +444,7 @@ class ClinicSet:
         epsilons = self.unstable_epsilons
         epsilon_range = epsilons[-1] - epsilons[0]
         return [(thiseps - epsilons[0])/epsilon_range for thiseps in epsilons[1:-1]]
-    
+
     @property
     def first_epsilons(self):
         """
@@ -469,8 +469,8 @@ class ClinicSet:
             n_u (int): Number of iterations for unstable manifold.
             **kwargs: Additional keyword arguments:
                 tol (float, optional): Tolerance for comparing epsilon values. Defaults to 1e-2.
-        
-        Returns: 
+
+        Returns:
             bool: True if the clinic was successfully added, False otherwise.
 
         Note:
@@ -492,7 +492,7 @@ class ClinicSet:
                 logger.warning(
                     f"Shifted clinic by ({n_s_shift}, {n_u_shift}) iterations to the fundamental domain."
                 )
-                # calculate a new clinic from the shifted values to ensure it is proper. 
+                # calculate a new clinic from the shifted values to ensure it is proper.
                 clinic = Clinic.from_guess(self._manifold, fundamental_eps_s, fundamental_eps_u, clinic.nint_s + n_s_shift, clinic.nint_u + n_u_shift)
 
             if self._no_clinics_similar(clinic, tol):
@@ -504,15 +504,15 @@ class ClinicSet:
             else:
                 logger.warning("Homo/heteroclinic already recorded, skipping...")
                 return False
-    
+
     def _no_clinics_similar(self, clinic, tol) -> bool:
         """
         Returns True if no clinics in the list are similar
         """
-        stable_epsilon_test = not(np.any([np.isclose(clinic.eps_s, other.eps_s, rtol=tol) for other in self._clinics_list ]))  # not any isclose
-        unstable_epsilon_test = not(np.any([np.isclose(clinic.eps_u, other.eps_u, rtol=tol) for other in self._clinics_list ]))  # not any isclose
+        stable_epsilon_test = not(np.any([np.isclose(clinic.eps_s, other.eps_s, rtol=tol, atol=1e-12) for other in self._clinics_list ]))  # not any isclose
+        unstable_epsilon_test = not(np.any([np.isclose(clinic.eps_u, other.eps_u, rtol=tol, atol=1e-12) for other in self._clinics_list ]))  # not any isclose
         return stable_epsilon_test and unstable_epsilon_test  # none is close
-        
+
     def reset(self) -> None:
         """Reset the clinic set to its initial empty state.
 
@@ -533,7 +533,7 @@ class ClinicSet:
             self._clinics_list[i]
             for i in np.argsort([x.eps_u for x in self._clinics_list])
         ]
-    
+
     def _test_in_fundamental_segment(self, eps: float, which: Literal["stable", "unstable"], tol : float
     ) -> bool:
         """
@@ -604,7 +604,7 @@ class ClinicSet:
                 return eps_approx, n_shift
             r_cur = self._manifold._map.f(map_dir * self._manifold.fixedpoint_1.m, r_cur)
             eps_approx = np.linalg.norm(r_cur - rfp)
-            n_shift += increase_n  
+            n_shift += increase_n
             logger.debug(f"Current epsilon (from norm calculation): {eps_approx}, fundamental segment is between {fund[0]} and {fund[1]}")
 
         raise RuntimeError(
@@ -622,7 +622,7 @@ class ClinicSet:
 
     def reset(self):
         """
-        remove all known clinics and start afresh. 
+        remove all known clinics and start afresh.
         """
         self._clinics_list = []
         self.fundamental_segments = None
@@ -636,17 +636,17 @@ class Manifold(BaseSolver):
 
     This class handles the computation of stable and unstable manifolds for fixed points, including finding homoclinic/heteroclinic intersections and calculating the turnstile flux of the tangle.
 
-    We need to resolve some duplicity to determine the direction in which to follow the manifolds of each x-point (M*v=e.v. * v => M*-v = -e.v. * v), this is done with the 'dir' keywords. 
+    We need to resolve some duplicity to determine the direction in which to follow the manifolds of each x-point (M*v=e.v. * v => M*-v = -e.v. * v), this is done with the 'dir' keywords.
 
     Args:
         map (maps.base_map): The map defining the dynamical system.
         fixedpoint_1 (FixedPoint): First fixed point to consider.
         fixedpoint_2 (FixedPoint, optional): Second fixed point to consider if the manifolds go from one to the other.
-        dir1 (str, optional): Direction 
-                       if type == str, can be ('+' or '-') to multiply eigenvector of the Jacobian. 
+        dir1 (str, optional): Direction
+                       if type == str, can be ('+' or '-') to multiply eigenvector of the Jacobian.
                        if type == float, approximate angle (with respect of the x-axis) of the manifold to follow
                        if type == np.ndarray, the (approximate) vector of the manifold to follow
-        dir2 (str, optional): Direction 
+        dir2 (str, optional): Direction
                        if type == str, can be ('+' or '-') for the second manifold.
                        if type == float, approximate angle (with respect of the x-axis) of the manifold to follow
                        if type == np.ndarray, the (approximate) vector of the manifold to follow
@@ -696,8 +696,8 @@ class Manifold(BaseSolver):
         first_stable: bool = None,
     ) -> None:
         """
-        Initialize the Manifold class by providing two fixed points and specifying if the first fixedpoint is stable. If only one fixed point is specified, a homoclinic connection is assumed. 
-        Directions are specified with the string '+' or '-' to indicate which eigenvectors of the fixed points to follow (remember that if $v$ is an eingenvector, $-v$ is as well). 
+        Initialize the Manifold class by providing two fixed points and specifying if the first fixedpoint is stable. If only one fixed point is specified, a homoclinic connection is assumed.
+        Directions are specified with the string '+' or '-' to indicate which eigenvectors of the fixed points to follow (remember that if $v$ is an eingenvector, $-v$ is as well).
 
         Args:
             map (maps.base_map): The map to use for the computation.
@@ -780,7 +780,7 @@ class Manifold(BaseSolver):
             self.vector_s *= (-1)**int(np.dot(self.vector_s, stabledir) < 0)  # negate if dot negative
         else:
             raise ValueError("Invalid dir_1 given, either '+'/'-', float or len-2 array")
-        
+
         # deal with the unstable fixed point
         self.rfp_u = self.fp_u.coords[0]
         _, _, self.lambda_u, self.vector_u = eig(self.fp_u.Jacobian)
@@ -792,7 +792,7 @@ class Manifold(BaseSolver):
             self.vector_u *= (-1)**int(np.dot(self.vector_u, unstabledir) < 0) # negate if dot negative
         else:
             raise ValueError("Invalid dir_2 given, either '+'/'-', float or len-2 array")
-        
+
         self._stable_trajectory = None
         self._unstable_trajectory = None
 
@@ -921,7 +921,7 @@ class Manifold(BaseSolver):
 
         # Set the figure and ax
         fig, ax, kwargs = create_canvas(**kwargs)
-        if vcolors is None: 
+        if vcolors is None:
             vcolors = ["xkcd:royal blue", "xkcd:magenta"]
 
         s_arrow = FancyArrowPatch(
@@ -945,7 +945,7 @@ class Manifold(BaseSolver):
         ax.add_patch(u_arrow)
         ax.add_patch(s_arrow)
 
-    
+
     @property
     def first_epsilons(self):
         """
@@ -1092,7 +1092,7 @@ class Manifold(BaseSolver):
 
         if which == "stable":
             self._stable_trajectory = orderedmanifoldpoints
-        else:  
+        else:
             self._unstable_trajectory = orderedmanifoldpoints
 
         return orderedmanifoldpoints
@@ -1147,7 +1147,7 @@ class Manifold(BaseSolver):
         }
         if kwargs:
             logger.warning(f"Unused keyword arguments: {kwargs}")
-        
+
         if eps_s is None and not self.clinics.is_empty:
             eps_s = self.clinics.stable_epsilons[0]
         if eps_u is None and not self.clinics.is_empty:
@@ -1159,16 +1159,16 @@ class Manifold(BaseSolver):
         self.compute_manifold("unstable", eps_u, **kwargs_u)
 
         return self._stable_trajectory, self._unstable_trajectory
-    
+
     def get_lobe_boundary(self, lobe_number, neps=40, which_section: int= 1):
         """
         Compute the boundary of the lobe with the given number (counted from the unstable manifold).
 
-        The Manifold class must have a computed at least one clinic, preferrably all of them. 
-        The boundary of the lobe is computed by mapping the part of the fundamental section of the unstable 
-        manifold between two clinic trajecories lobe_number times, and 
+        The Manifold class must have a computed at least one clinic, preferrably all of them.
+        The boundary of the lobe is computed by mapping the part of the fundamental section of the unstable
+        manifold between two clinic trajecories lobe_number times, and
         mapping the section of the stable manifold between two clinictrajectories in the reverse direction
-        (clinic_points-lobe_number) times. 
+        (clinic_points-lobe_number) times.
 
         which_section determines which of the two sections of the fundamental domain to use.
         """
@@ -1179,7 +1179,7 @@ class Manifold(BaseSolver):
 
         total_number_of_points = self.clinics.total_number_of_points
         total_epsilons = len(self.clinics)+1
-        
+
         unstable_fundamental_epsilons = self.clinics.unstable_epsilons
         unstable_start = unstable_fundamental_epsilons[which_section-1]
         unstable_end = unstable_fundamental_epsilons[which_section]
@@ -1206,24 +1206,24 @@ class Manifold(BaseSolver):
         )
         stable_vectorsteps = np.outer(stable_epsilons, self.vector_s)
         stable_points = self.rfp_s + stable_vectorsteps
-        
+
         stable_part_of_lobe = self.integrate(stable_points, total_number_of_points - lobe_number-1, -1)[-1, :, :]
         return stable_part_of_lobe, unstable_part_of_lobe
-    
+
     def plot_lobe_boundary(self, lobe_number, neps=40, which_section: int= 1, **kwargs):
         """
         Plot the boundary of the lobe with the given number (counted from the unstable manifold).
 
-        The Manifold class must have a computed at least one clinic, preferrably all of them. 
-        The boundary of the lobe is computed by mapping the part of the fundamental section of the unstable 
-        manifold between two clinic trajecories lobe_number times, and 
+        The Manifold class must have a computed at least one clinic, preferrably all of them.
+        The boundary of the lobe is computed by mapping the part of the fundamental section of the unstable
+        manifold between two clinic trajecories lobe_number times, and
         mapping the section of the stable manifold between two clinictrajectories in the reverse direction
-        (clinic_points-lobe_number) times. 
+        (clinic_points-lobe_number) times.
         """
         stable_part_of_lobe, unstable_part_of_lobe = self.get_lobe_boundary(lobe_number, neps, which_section)
         fig, ax, kwargs = create_canvas(**kwargs)
 
-        boundary_points = np.concatenate([unstable_part_of_lobe, stable_part_of_lobe])  # put points in order including clinic points. Nonething adds axis. 
+        boundary_points = np.concatenate([unstable_part_of_lobe, stable_part_of_lobe])  # put points in order including clinic points. Nonething adds axis.
 
         ax.plot(boundary_points[:,0], boundary_points[:,1], **kwargs)
         return fig, ax
@@ -1232,14 +1232,14 @@ class Manifold(BaseSolver):
         """
         Plot the filled lobe with the given number (counted from the unstable manifold).
 
-        The Manifold class must have a computed at least one clinic, preferrably all of them. 
-        The boundary of the lobe is computed by mapping the part of the fundamental section of the unstable 
-        manifold between two clinic trajecories lobe_number times, and 
+        The Manifold class must have a computed at least one clinic, preferrably all of them.
+        The boundary of the lobe is computed by mapping the part of the fundamental section of the unstable
+        manifold between two clinic trajecories lobe_number times, and
         mapping the section of the stable manifold between two clinictrajectories in the reverse direction
-        (clinic_points-lobe_number) times. 
+        (clinic_points-lobe_number) times.
         """
         stable_part_of_lobe, unstable_part_of_lobe = self.get_lobe_boundary(lobe_number, neps, which_section)
-        boundary_points = np.concatenate([unstable_part_of_lobe, stable_part_of_lobe])  
+        boundary_points = np.concatenate([unstable_part_of_lobe, stable_part_of_lobe])
         fig, ax, kwargs = create_canvas(**kwargs)
         # Set default value for lw if not provided
         if 'lw' not in kwargs:
@@ -1247,7 +1247,7 @@ class Manifold(BaseSolver):
 
         ax.fill(boundary_points[:,0], boundary_points[:,1], **kwargs)
         return fig, ax
-        
+
 
 
 
@@ -1258,11 +1258,11 @@ class Manifold(BaseSolver):
 
         kwargs:
         which (str): which manifold to plot. Can be 'stable', 'unstable' or 'both'.
-        stepsize_limit = 
+        stepsize_limit =
 
-        Other kwargs are givent to the plot. 
+        Other kwargs are givent to the plot.
 
-        Specific extra plots: 
+        Specific extra plots:
         *rm_points* (int): remove the last *rm_points* points of the manifold.
 
         """
@@ -1290,7 +1290,7 @@ class Manifold(BaseSolver):
                 )
 
         return fig, ax
-    
+
     def plot_manifold_copies(self, which='both', stepsize_limit=None, **kwargs):
         """
         plot the images of the manifolds as they appear arount the other islands
@@ -1311,7 +1311,7 @@ class Manifold(BaseSolver):
                 points = points[:final_index]
                 for _ in range(number_of_copies):
                     points = self._map.f_many(1, points)
-                    if stepsize_limit is not None: 
+                    if stepsize_limit is not None:
                         points = clean_bigsteps(points, threshold=stepsize_limit)
                     ax.plot(
                         points[:,0],
@@ -1322,7 +1322,7 @@ class Manifold(BaseSolver):
                         markersize=markersize,
                         **kwargs,
                     )
-    
+
     ### Homo/Hetero-clinic methods
 
     def find_N(self, eps_s: float, eps_u: float):
@@ -1379,7 +1379,7 @@ class Manifold(BaseSolver):
         *kwargs*: Additional keyword arguments.
             - n_s (int): Number of times the map needs to be applied for the stable manifold.
             - n_u (int): Number of times the map needs to be applied for the unstable manifold.
-            - reset_clinics: replace all clinics and make this clinic the fundamental segment. 
+            - reset_clinics: replace all clinics and make this clinic the fundamental segment.
             - nretry: retry by jittering the epsilon guesses n times
         **kwargs
             - root_args (dict): Arguments to pass to the root-finding function.
@@ -1395,7 +1395,7 @@ class Manifold(BaseSolver):
         # Set the number of times the map needs to be applied (times the poloidal mode m)
         if n_s is None or n_u is None:
             n_s, n_u = self.find_N(guess_eps_s, guess_eps_u)
-        
+
         # find the clinic, retry with a different guess if it fails
         this_eps_s = guess_eps_s
         this_eps_u = guess_eps_u
@@ -1411,11 +1411,11 @@ class Manifold(BaseSolver):
                 this_eps_s = guess_eps_s * stable_jitter
                 this_eps_u = guess_eps_u * unstable_jitter
                 logger.warning(f"Failed to find clinic: {e}, re-trying with eps_s={this_eps_s}, eps_u={this_eps_u}")
-        
+
         # if the clinic is not found, raise an error
         if newclinic is None:
             raise ValueError(f"Failed to find clinic after retrying {nretry} times.")
-        
+
         # Recording the homo/hetero-clinic point
         if reset_clinics:
             self.clinics.reset()
@@ -1423,17 +1423,17 @@ class Manifold(BaseSolver):
         self.clinics.record_clinic(newclinic)
 
         return None
-    
+
     def find_other_clinic(self, shift_in_stable:float, shift_in_unstable:float=None, nretry =1, **kwargs):
         """
-        Find another clinic trajectory if the Manifold already has a fundamental segment. 
-        Starts the clinic trajectory finding with one less total step by shifting the 
-        start points 
+        Find another clinic trajectory if the Manifold already has a fundamental segment.
+        Starts the clinic trajectory finding with one less total step by shifting the
+        start points
         Args:
         shift_in_stable: point in the stable fundamental segment to start the search from, 0 is from the same point
-         as the first trajectory, 1 is shifted to the end. 
-        shift_in_unstable (optional): point in the unstable fundamental segment to start the search from, 
-        if not given same as shift_in_stable. 
+         as the first trajectory, 1 is shifted to the end.
+        shift_in_unstable (optional): point in the unstable fundamental segment to start the search from,
+        if not given same as shift_in_stable.
         """
         if self.clinics.is_empty:
             raise ValueError('Need to have one clinic first before finding others')
@@ -1443,12 +1443,12 @@ class Manifold(BaseSolver):
         n_u = total_number_of_points - n_s
 
         stable_segment = self.clinics.stable_segment
-        eps_s = stable_segment[0] + shift_in_stable * (stable_segment[1] - stable_segment[0])
+        eps_s = stable_segment[0] + np.sqrt(shift_in_stable) * (stable_segment[1] - stable_segment[0])
 
         if shift_in_unstable is None:
-            shift_in_unstable = shift_in_stable
+            shift_in_unstable = 1-shift_in_stable
         unstable_segment = self.clinics.unstable_segment
-        eps_u = unstable_segment[0] + shift_in_unstable * (unstable_segment[1] - unstable_segment[0])
+        eps_u = unstable_segment[0] + np.sqrt(shift_in_unstable) * (unstable_segment[1] - unstable_segment[0])
 
         this_eps_s = eps_s
         this_eps_u = eps_u
@@ -1466,7 +1466,7 @@ class Manifold(BaseSolver):
                 this_eps_s = stable_segment[0] + newshift * (stable_segment[1] - stable_segment[0])
                 this_eps_u = unstable_segment[0] + newshift * (unstable_segment[1] - unstable_segment[0])
                 logger.warning(f"Failed to find clinic: {e}, re-trying with eps_s={this_eps_s}, eps_u={this_eps_u}")
-        
+
         # if the clinic is not found, raise an error
         if newclinic is None:
             raise ValueError(f"Failed to find clinic after retrying {nretry} times.")
@@ -1483,7 +1483,7 @@ class Manifold(BaseSolver):
         shift = kwargs.pop("shift", 0)
 
         if n_points is None:
-            n_points = 2 
+            n_points = 2
 
         # Reset the clinic search
         if reset_clinics == True:
@@ -1525,8 +1525,8 @@ class Manifold(BaseSolver):
         #     logger.warning("Number of clinic points is not the expected one.")
 
     def plot_clinics(self, **kwargs):
-        """ 
-        Plot the clinic trajectories. 
+        """
+        Plot the clinic trajectories.
         """
         markers = kwargs.get(
             "markers", ["o", "s", "*", "P", "p", "X", "D", "d", "^", "v", "<", ">"]
@@ -1564,29 +1564,29 @@ class Manifold(BaseSolver):
             raise NotImplementedError(
                 "Turnstile area computation only implemented for CylindricalBfieldSection for now."
             )
-        
+
     def _turnstile_areas_cylbfieldsection(self, n_joining=100):
         """
         Compute the turnstile area by integrating the vector potential along the trajectory
-        of the clinics defined in the manifold. 
+        of the clinics defined in the manifold.
         """
         if len(self.clinics) < 2:
             raise ValueError("Need at least two clinics to compute the turnstile area.")
 
-        #create the integration trajectories for the clinics. each has to have the same number of elements, and the endpoints will be used for closing integrals. 
-        # Since the first clinic defines the fundamental segment, and is one mapping longer, the first integral skips the last point of this trajectory, 
+        #create the integration trajectories for the clinics. each has to have the same number of elements, and the endpoints will be used for closing integrals.
+        # Since the first clinic defines the fundamental segment, and is one mapping longer, the first integral skips the last point of this trajectory,
         #and returns over the next clinic. The last clinic is the same as the first, but the first point is skipped.
 
         integration_trajectories = []
         for num in range(len(self.clinics) + 1):
-            if num == 0: 
+            if num == 0:
                 integration_trajectories.append(self.clinics[num].trajectory[:-1])
             elif num == len(self.clinics):
                 integration_trajectories.append(self.clinics[0].trajectory[1:])
-            else: 
+            else:
                 integration_trajectories.append(self.clinics[num].trajectory)
 
-        # compute the integrals of the above-defined sections 
+        # compute the integrals of the above-defined sections
         #lagrangians = [self._compute_lagrangian_in_sections(traj) for traj in integration_trajectories]
 
         turnstile_areas = []
@@ -1594,12 +1594,12 @@ class Manifold(BaseSolver):
             traj1 = integration_trajectories[turnstilenum]
             traj2 = integration_trajectories[turnstilenum+1]
             int1 = np.sum(self._compute_lagrangian_in_sections(traj1))
-            int2 = np.sum(self._compute_lagrangian_in_sections(traj2)) # this integral shold be in opposite direction, it will be subtracted. 
+            int2 = np.sum(self._compute_lagrangian_in_sections(traj2)) # this integral shold be in opposite direction, it will be subtracted.
 
             close_1_RZs = np.linspace(traj1[-1], traj2[-1], n_joining, endpoint=True)
             closing_integral_1 = self._AdL_integral_points(close_1_RZs, is_closed=False)
             logger.debug(f"Closing integral of turnstile {turnstilenum} stable end: {closing_integral_1}")
-            
+
             close_2_RZs = np.linspace(traj2[0], traj1[0], n_joining, endpoint=True)
             closing_integral_2 = self._AdL_integral_points(close_2_RZs, is_closed=False)
             logger.debug(f"Closing integral of turnstile {turnstilenum} unstable end: {closing_integral_2}")
@@ -1609,11 +1609,11 @@ class Manifold(BaseSolver):
 
         self._areas = np.array(turnstile_areas)
         return self._areas
-        
+
     def _compute_lagrangian_in_sections(self, trajectory):
         """
         Compute the lagrangian value for a clinic trajectory, one map at a time.
-        Skip the last point because that maps out of the fundamental segment. 
+        Skip the last point because that maps out of the fundamental segment.
         """
         logger.debug(f"starting Lagrangian integration for trajectory of length {len(trajectory)}")
         clinic_points = trajectory
@@ -1621,21 +1621,21 @@ class Manifold(BaseSolver):
         for point in clinic_points[:-1]:
             lagrangians.append(self._map.lagrangian(point, self.fixedpoint_1.m))
         return np.array(lagrangians)
-    
+
     def _AdL_integral_points(self, gamma, dl=None, is_closed=False):
         """
-        approximate the integral of A.dl along a set of of points using a midpoint rule. 
-        the path is given by gamma, and dl is the distance between two points. 
-        If is_closed is True, the last point is connected to the first point. 
+        approximate the integral of A.dl along a set of of points using a midpoint rule.
+        the path is given by gamma, and dl is the distance between two points.
+        If is_closed is True, the last point is connected to the first point.
 
-        gamma is a path in the section, an Nx2 array. 
+        gamma is a path in the section, an Nx2 array.
         """
         if is_closed:
             gamma = np.vstack((gamma, gamma[0]))
 
         if dl is None:
             dl = np.diff(gamma, axis=0)
-        
+
         midpoints = (gamma[:-1] + gamma[1:]) / 2
         midpointsRphiz = np.vstack(
             (
@@ -1733,7 +1733,7 @@ class Manifold(BaseSolver):
     def integrate(self, x_many, nintersect, direction=1):
         """
         Integrate a set of points x_many for nintersect times in the direction specified.
-        Robust to integration failures and has fixed return shape. 
+        Robust to integration failures and has fixed return shape.
 
         Returns an array of shape (nintersect, len(x_many), _map.dimension).
         """
@@ -1746,7 +1746,7 @@ class Manifold(BaseSolver):
             x_many = self._map.f_many(t, x_many)
             res.append(x_many)
         return np.array(res)
-    
+
 
 #        # used to return [dimension*len(x_many) , nintersect + 1]
 #        x_path = np.full((self._map.dimension * x_many.shape[0], nintersect + 1), np.nan)
@@ -1767,5 +1767,5 @@ class Manifold(BaseSolver):
 #
 #        #return x_path
 #
-#    
+#
 #
