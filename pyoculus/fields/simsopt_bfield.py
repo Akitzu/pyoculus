@@ -2,46 +2,56 @@ from .cylindrical_bfield import CylindricalBfield
 import pyoculus.utils.cyl_cart_transform as cct
 from typing import Union
 import numpy as np
+from typing import TYPE_CHECKING
 
 import logging
 logger = logging.getLogger(__name__)
 
-try:
+if TYPE_CHECKING:
     from simsopt.field import MagneticField, InterpolatedField, BiotSavart
     from simsopt.geo import SurfaceXYZFourier, SurfaceClassifier
-except ImportError as e:
-    logger.warning("Could not import simsopt. Some functionalities will not be available.")
-    raise e
+
 
 class SimsoptBfield(CylindricalBfield):
     """
     
     """
     
-    def __init__(self, Nfp : int, mf : MagneticField, interpolate: Union[bool, InterpolatedField] = False, **kwargs):
+    def __init__(self, Nfp : int, mf : "MagneticField", interpolate: Union[bool, "InterpolatedField"] = False, **kwargs):
+        """
+        Create a SimsoptBfield, Pyoculus's bridge to the simsopt MagneticField object. 
+        
+        Args: 
+        Nfp (int): The number of field periods. Default is 1. This parameter defines the periodicity of the magnetic field (:math:`T = 2*\\pi/n_\\text{fp}`).
+        mf (MagneticField): A simsopt MagneticField object.
+        interpolate (bool or InterpolatedField): If True, the field will be interpolated. If an InterpolatedField object is passed, it will be used as the interpolating field.
+        **kwargs: Additional parameters to be passed to the InterpolatedField constructor if interpolate is True. This should contain a kwarg 'surf' which is the boundary of the interpolated region. 
+        """
         
         super().__init__(Nfp)
-
-        if not isinstance(mf, MagneticField):
-            raise ValueError("mf must be a MagneticField object")
 
         self._mf = mf
         self._interpolating = False
 
         if interpolate:
             self._interpolating = True
-            if isinstance(interpolate, InterpolatedField):
+            if type(interpolate)-__name__ == "InterpolatedField":
                 self._mf_B = interpolate
             else:
+                from simsopt.geo import SurfaceClassifier
+                from simsopt.field import InterpolatedField
                 surf = kwargs.get('surf', None)
+                deltah = kwargs.get('deltah', 0.05)
+                degree = kwargs.get('degree', 3)
+                stellsym = kwargs.get('stellsym', True)
+                skyping = kwargs.get('skyping', skip)
                 if surf is None:
-                    surf = surf_from_coils(mf.coils, **kwargs)
+                    raise ValueError("If interpolate is True, a surf object (limit of interpolatedfield) must be passed as a kwarg.")
 
                 p = kwargs.get('p', 2)
                 h = kwargs.get('h', 0.03)
                 self.surfclassifier = SurfaceClassifier(surf, h=h, p=p)
 
-                deltah = kwargs.get('deltah', 0.05)
                 def skip(rs, phis, zs):
                     rphiz = np.asarray([rs, phis, zs]).T.copy()
                     dists = self.surfclassifier.evaluate_rphiz(rphiz)
@@ -55,11 +65,8 @@ class SimsoptBfield(CylindricalBfield):
                 phirange = (0, 2 * np.pi / Nfp, n * 2)
                 zrange = (0, np.max(zs), n // 2)
 
-                degree = kwargs.get('degree', 3)
-                stellsym = kwargs.get('stellsym', True)
-                skyping = kwargs.get('skyping', skip)
                 
-                self._mf_B = InterpolatedField(
+                from simsopt.geo self._mf_B = InterpolatedField(
                     mf,
                     degree,
                     rrange,
@@ -75,6 +82,7 @@ class SimsoptBfield(CylindricalBfield):
 
     @classmethod
     def from_coils(cls, coils, Nfp, **kwargs):
+        from simsopt.field import BiotSavart
         mf = BiotSavart(coils)
         return cls(Nfp, mf, **kwargs)
 
@@ -118,50 +126,39 @@ class SimsoptBfield(CylindricalBfield):
         return cct.vec_cart2cyl(A_cart, *rphiz)
 
 
-    # def B_many(self, x1arr, x2arr, x3arr, input1D=True):
-    #     if input1D:
-    #         xyz = np.array([x1arr, x2arr, x3arr], dtype=np.float64).T
-    #     else:
-    #         xyz = np.meshgrid(x1arr, x2arr, x3arr)
-    #         xyz = np.array(
-    #             [xyz[0].flatten(), xyz[1].flatten(), xyz[2].flatten()], dtype=np.float64
-    #         ).T
-
-    #     xyz = np.ascontiguousarray(xyz, dtype=np.float64)
-    #     self._mf_B.set_points(xyz)
-
-    #     return self._mf_B.B()    
-
-def surf_from_coils(coils, **kwargs):
-    logger.info(f"Using surf_from_coils with parameters: {kwargs}")
-    logger.warning("Using surf_from_coild can result in weird surfaces. Use with caution.")
-    
-    mpol = kwargs.get('mpol', 3)
-    ntor = kwargs.get('ntor', 3)
-    stellsym = kwargs.get('stellsym', False)
-    nfp = kwargs.get('nfp', 1)
-
-    ncoils = kwargs.get('ncoils', None)
-    
-    nphi, ntheta = len(coils), len(coils[0].curve.gamma())
-    qpts_theta = np.linspace(0, 1, ntheta, endpoint=False)
-    qpts_phi = np.linspace(0, 1, nphi, endpoint=False)
-
-    surf = SurfaceXYZFourier(
-        mpol=mpol,
-        ntor=ntor,
-        stellsym=stellsym,
-        nfp=nfp,
-        quadpoints_phi=qpts_phi,
-        quadpoints_theta=qpts_theta
-    )
-    centroids = np.array([np.mean(coil.curve.gamma(), axis=0) for coil in coils])
-
-    phis = np.arctan2(centroids[:, 1], centroids[:, 0])
-    indices = np.argsort(phis)
-    gamma_curves = [coils[i].curve.gamma() for i in indices]
-    if ncoils is not None:
-        gamma_curves = np.stack([gamma if (i // ncoils) % 2 != 0 else gamma[::-1] for i, gamma in enumerate(gamma_curves)])
-    surf.least_squares_fit(gamma_curves)
-
-    return surf
+#def surf_from_coils(coils, **kwargs):
+#    """
+#    not very robust way of trying to fit a surface that intersects the coils. 
+#    """
+#    logger.info(f"Using surf_from_coils with parameters: {kwargs}")
+#    logger.warning("Using surf_from_coild can result in weird surfaces. Use with caution.")
+#    
+#    mpol = kwargs.get('mpol', 3)
+#    ntor = kwargs.get('ntor', 3)
+#    stellsym = kwargs.get('stellsym', False)
+#    nfp = kwargs.get('nfp', 1)
+#
+#    ncoils = kwargs.get('ncoils', None)
+#    
+#    nphi, ntheta = len(coils), len(coils[0].curve.gamma())
+#    qpts_theta = np.linspace(0, 1, ntheta, endpoint=False)
+#    qpts_phi = np.linspace(0, 1, nphi, endpoint=False)
+#
+#    surf = SurfaceXYZFourier(
+#        mpol=mpol,
+#        ntor=ntor,
+#        stellsym=stellsym,
+#        nfp=nfp,
+#        quadpoints_phi=qpts_phi,
+#        quadpoints_theta=qpts_theta
+#    )
+#    centroids = np.array([np.mean(coil.curve.gamma(), axis=0) for coil in coils])
+#
+#    phis = np.arctan2(centroids[:, 1], centroids[:, 0])
+#    indices = np.argsort(phis)
+#    gamma_curves = [coils[i].curve.gamma() for i in indices]
+#    if ncoils is not None:
+#        gamma_curves = np.stack([gamma if (i // ncoils) % 2 != 0 else gamma[::-1] for i, gamma in enumerate(gamma_curves)])
+#    surf.least_squares_fit(gamma_curves)
+#
+#    return surf
