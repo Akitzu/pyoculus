@@ -44,7 +44,6 @@ class SimsoptBfield(CylindricalBfield):
                 deltah = kwargs.get('deltah', 0.05)
                 degree = kwargs.get('degree', 3)
                 stellsym = kwargs.get('stellsym', True)
-                skyping = kwargs.get('skyping', skip)
                 if surf is None:
                     raise ValueError("If interpolate is True, a surf object (limit of interpolatedfield) must be passed as a kwarg.")
 
@@ -57,6 +56,7 @@ class SimsoptBfield(CylindricalBfield):
                     dists = self.surfclassifier.evaluate_rphiz(rphiz)
                     skip = list((dists < -deltah).flatten())
                     return skip
+                skyping = kwargs.get('skyping', skip)
 
                 n = kwargs.get('n', 20)
                 rs = np.linalg.norm(surf.gamma()[:, :, 0:2], axis=2)
