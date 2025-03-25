@@ -3,6 +3,51 @@ from ..fields.cylindrical_bfield import CylindricalBfield
 import pyoculus.solvers as solvers
 import numpy as np
 
+# Try to import numba and define a decorator
+try:
+    import numba
+    njit = numba.njit
+except ImportError:
+    # Define a no-op decorator if numba is not available
+    def njit(func):
+        return func
+    
+@njit
+def _jitted_f_RZ_tangent(y, Bfield, dBdRphiZ):
+    """
+    Returns the right-hand side (RHS) of the ODE with the calculation of the differential evolution. For an explanation, one could look at [S.R. Hudson](https://w3.pppl.gov/~shudson/Oculus/ga00aa.pdf).
+
+    Args:
+        y (array): The current :math:`R, Z` and :math:`d\\textbf{RZ}/dRZ` matrix. y = [dR/dphi, dZ/dphi, dR/dR_i, dZ/dR_i, dR/dZ_i, dZ/dZ_i] where i stands for the initial point in the phi0 plane (not the axis).
+    Returns:
+        array: 
+    """
+    dRZ = y[-4:].reshape(2, 2).T
+    # dRZ = [[y[2], y[4]], [y[3], y[5]]]
+
+    # R, Z evolution as in _rhs_RZ
+    dRdphi = Bfield[0] / Bfield[1]
+    dZdphi = Bfield[2] / Bfield[1]
+
+    # Matrix of the derivatives of (B^R/B^phi, B^Z/B^phi) with respect to (R, Z)
+    M00 = (
+        dBdRphiZ[0, 0] / Bfield[1] - Bfield[0] / Bfield[1] ** 2 * dBdRphiZ[1, 0]
+    )
+    M01 = (
+        dBdRphiZ[0, 2] / Bfield[1] - Bfield[0] / Bfield[1] ** 2 * dBdRphiZ[1, 2]
+    )
+    M10 = (
+        dBdRphiZ[2, 0] / Bfield[1] - Bfield[2] / Bfield[1] ** 2 * dBdRphiZ[1, 0]
+    )
+    M11 = (
+        dBdRphiZ[2, 2] / Bfield[1] - Bfield[2] / Bfield[1] ** 2 * dBdRphiZ[1, 2]
+    )
+    M = np.array([[M00, M01], [M10, M11]], dtype=np.float64)
+
+    dRZ = M @ dRZ
+
+    return np.array([dRdphi, dZdphi, dRZ[0, 0], dRZ[1, 0], dRZ[0, 1], dRZ[1, 1]])
+
 class CylindricalBfieldSection(IntegratedMap):
     """
     Map given by following the a magnetic field in cylindrical system :math:`(R, \\phi, Z)` and recording the intersections with symmetry planes :math:`\\phi = \\phi_0, \\phi_0 + T, ...`.
@@ -47,6 +92,7 @@ class CylindricalBfieldSection(IntegratedMap):
         # Find the magnetic axis if not provided
         self.R0 = R0
         self.Z0 = Z0
+        self._axis = None
 
         if R0 is None or Z0 is None:
             self.find_axis(**finderargs)
@@ -74,8 +120,22 @@ class CylindricalBfieldSection(IntegratedMap):
         axisfinder.find(1, guess, **kwargs)
         if axisfinder.successful:
             self.R0, self.Z0 = axisfinder.coords[0]
+            self._axis = axisfinder.coords[0]
         else:
             raise ValueError("The magnetic axis could not be found.")
+    
+    @property 
+    def axis(self):
+        """
+        Returns the coordinates of the magnetic axis.
+        """
+        if self._axis is None:
+            axis = solvers.FixedPoint(self)
+            axis.find(1, [self.R0, self.Z0])
+            self._axis = axis
+            if not np.allclose(self._axis.coords[0], [self.R0, self.Z0], atol=1e-4):
+                raise ValueError("The map axis coordinates are not close to the actual axis.")
+        return self._axis
 
     ## BaseMap methods
 
@@ -90,7 +150,14 @@ class CylindricalBfieldSection(IntegratedMap):
             self._integrator.set_rhs(self._rhs_RZ)
 
         if type(t) is not int:
-            return self._integrate(t, y0)
+            cache_res = self.cache.retrieve(y0, "f_noninteger")
+            if cache_res is not None and t in cache_res:
+                return cache_res[t]
+            else:
+                ic = [*y0]
+                res = self._integrate(t, ic)
+                self.cache.save(y0, 'f_noninteger', t, res)
+                return res
         
         # Check if the result is in the cache and use it if possible
         cache_res = self.cache.retrieve(y0, "f")
@@ -120,8 +187,17 @@ class CylindricalBfieldSection(IntegratedMap):
             self._integrator.set_rhs(self._rhs_RZ_tangent)
         
         if type(t) is not int:
+            cache_res = self.cache.retrieve(y0, "df_noninteger")
+            if cache_res is not None and t in cache_res:
+                return cache_res[t]
+            else: 
                 ic = [*y0, 1., 0., 0., 1.]
-                return self._integrate(t, ic)
+                integrand = self._integrate(t, ic)
+                f = integrand[:2]
+                df = integrand[2:6].reshape(2, 2).T
+                self.cache.save(y0, 'f_noninteger', t, f)
+                self.cache.save(y0, 'df_noninteger', t, df)
+                return df
 
         # Check if the result is in the cache and use it if possible
         cache_res = self.cache.retrieve(y0, "df")
@@ -152,9 +228,28 @@ class CylindricalBfieldSection(IntegratedMap):
 
         df = cache_res[t][2:6].reshape(2, 2).T
         return np.copy(df)
+    
+    def to_rhotheta(self, y, y0=None):
+        """
+        Converts the cylindrical coordinates to polar coordinates centered around the magnetic axis.
+        """
+        #ensure y is a 2D array:
+        y = np.array(y)
+        if y0 is None:
+            y0 = np.array([self.R0, self.Z0])
+        rho = np.linalg.norm(y - y0, axis=-1)
+        theta = np.arctan2(y[1] - y0[1], y[0] - y0[0])
+        return np.array([rho, theta])
+    
+    def to_RZ(self, rt):
+        """
+        Converts the polar coordinates centered around the magnetic axis to cylindrical coordinates.
+        """
+        rt = np.array(rt)
+        R = rt[0] * np.cos(rt[1]) + self.R0
+        Z = rt[0] * np.sin(rt[1]) + self.Z0
+        return np.array([R, Z])
         
-        
-
     def lagrangian(self, y0, t):
         """
         Set Meiss's Lagrangiat for the magnetic field.
@@ -186,8 +281,6 @@ class CylindricalBfieldSection(IntegratedMap):
         
         return np.copy(cache_res[t][2])
 
-        
-
     def winding(self, t, y0, y1=None):
         """
         Calculates the winding number of the field line starting at :math:`y_0` around the one starting at :math:`y_1`. By going into the poloidal coordinates centered around the position of the field line given by :math:`y_0` and integrating the angle change along the trajectory.
@@ -195,7 +288,7 @@ class CylindricalBfieldSection(IntegratedMap):
         Args:
             t (float): The number of periods to integrate.
             y0 (array): The starting point of the field line.
-            y1 (array, optional): The ending point of the field line. If not provided, the magnetic axis is used.
+            y1 (array, optional): Another field line around which winding is to be calculated. If not provided, the magnetic axis is used.
         
         Returns:
             np.ndarray: The radius difference between initial and final point and winding number between the two field lines.
@@ -208,7 +301,6 @@ class CylindricalBfieldSection(IntegratedMap):
         if y1 is None:
             y1 = np.array([self.R0, self.Z0])
         theta0 = np.arctan2(y0[1] - y1[1], y0[0] - y1[0])
-        rho0 = np.sqrt((y0[0] - y1[0]) ** 2 + (y0[1] - y1[1]) ** 2)
         
         
         # Check if the result is in the cache and use it if possible
@@ -232,8 +324,8 @@ class CylindricalBfieldSection(IntegratedMap):
         
         theta1 = output[4]
         rho1 = np.sqrt((output[0] - output[2]) ** 2 + (output[1] - output[3]) ** 2)
-        winding = np.array([rho1 - rho0, theta1 - theta0])
-        return winding
+        rhodtheta = np.array([rho1, theta1 - theta0])
+        return rhodtheta
 
     
     def dwinding(self, t, y0, y1=None):
@@ -377,43 +469,12 @@ class CylindricalBfieldSection(IntegratedMap):
         Args:
             phi (float): The current cylindrical angle :math:`\\phi`.
             y (array): The current :math:`R, Z` and :math:`d\\textbf{RZ}/dRZ` matrix. y = [dR/dphi, dZ/dphi, dR/dR_i, dZ/dR_i, dR/dZ_i, dZ/dZ_i] where i stands for the initial point in the phi0 plane (not the axis).
-            *args: Additional parameters for the magnetic field calculation.
         Returns:
             array: 
         """
-        R, Z, *dRZ = y
-        # dRZ = [[y[2], y[4]], [y[3], y[5]]]
-        dRZ = np.array(dRZ, dtype=np.float64).reshape(2, 2).T
-        M = np.zeros([2, 2], dtype=np.float64)
-
-        rphiz = np.array([R, phi, Z])
-
+        rphiz = np.array([y[0], phi, y[1]])
         Bfield, dBdRphiZ = self._mf.dBdX(rphiz, *args)
-
-        Bfield = np.array(Bfield, dtype=np.float64)
-        dBdRphiZ = np.array(dBdRphiZ, dtype=np.float64)
-
-        # R, Z evolution as in _rhs_RZ
-        dRdphi = Bfield[0] / Bfield[1]
-        dZdphi = Bfield[2] / Bfield[1]
-
-        # Matrix of the derivatives of (B^R/B^phi, B^Z/B^phi) with respect to (R, Z)
-        M[0, 0] = (
-            dBdRphiZ[0, 0] / Bfield[1] - Bfield[0] / Bfield[1] ** 2 * dBdRphiZ[1, 0]
-        )
-        M[0, 1] = (
-            dBdRphiZ[0, 2] / Bfield[1] - Bfield[0] / Bfield[1] ** 2 * dBdRphiZ[1, 2]
-        )
-        M[1, 0] = (
-            dBdRphiZ[2, 0] / Bfield[1] - Bfield[2] / Bfield[1] ** 2 * dBdRphiZ[1, 0]
-        )
-        M[1, 1] = (
-            dBdRphiZ[2, 2] / Bfield[1] - Bfield[2] / Bfield[1] ** 2 * dBdRphiZ[1, 2]
-        )
-
-        dRZ = np.matmul(M, dRZ)
-
-        return np.array([dRdphi, dZdphi, dRZ[0, 0], dRZ[1, 0], dRZ[0, 1], dRZ[1, 1]])
+        return _jitted_f_RZ_tangent(y, Bfield, dBdRphiZ)
 
     # dLangrangian ODE RHS
 
@@ -451,9 +512,21 @@ class CylindricalBfieldSection(IntegratedMap):
 class Cache:
     """
     A cache to store the results of integrations. 
-    Entries are catalogue by the starting point of the field line and the type of result.
-    the cache will return a dictionary of {t: result} where t is the time period and result is the result of the integration t times. 
-
+    Entries are catalogued by the starting point of the field line and the type of result.
+    the cache will return a dictionary of {t: result} where t is the time period and result is the result of the integration t times.
+    The cache is limited in size and will remove the oldest entry if the limit is reached.
+    The keys are a hash of the starting position and a string specifying the type of result. These are not specified in the cache itself, but
+    by the functions that use the cache. 
+    Currently implemented types are: 
+    (y0, 'f') for the field line position at time t
+    (y0, 'df') for the jacobian of the field line position at time t
+    (y0, 'f_noninteger') for the field line position at time t for non-integer t
+    (y0, 'df_noninteger') for the jacobian of the field line position at time t for non-integer t
+    (y0, 'lagrangian') for the lagrangian form at time t
+    (y0, 'winding') for the winding number at time t
+    (y0, 'dwinding') for the jacobian of the winding number at time t
+    [Note: the cache entries are based on *starting* point of a trajectory, so calculations starting at an intermediate point of a previous trajectory will not be retrieved from the cache.]
+    non-integer integrations are always computed from phi=0, and do not continue from a previous result.
 
     Attributes:
         size (int): The maximum size of the cache.
@@ -463,11 +536,14 @@ class Cache:
     def __init__(self, size=None):
         """
         Initializes the Cache object.
+        Entries are dictionaries whose keys are a hash of the starting points, and the type of result (simple integraiton or gradient-based integration).
+        the dictionaries are of the form {t: result} where t is the time period and result is the result of the integration t times from the starting point associated with the key. 
 
         Args:
-            size (int, optional): The maximum size of the cache. Defaults to 512.
+            size (int, optional): The maximum size of the cache (number of trajectories to store
+            for fast re-computing). Defaults to 4045.
         """
-        self.size = size if size is not None else 512
+        self.size = size if size is not None else 4046
         self.cache = {}
 
     def retrieve(self, y0, what):

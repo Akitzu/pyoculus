@@ -133,6 +133,18 @@ class BaseMap(ABC):
             if not low <= x[i] <= high and self.periodicity[i] == 0:
                 return False
         return True
+
+    def f_many(self, t, x_many): 
+        """
+        apply map f t times to all the rows of xx. 
+        """
+        res = []
+        for row in x_many:
+            try: 
+                res.append(self.f(t, row))
+            except: 
+                res.append(np.full(self.dimension, np.nan))
+        return np.array(res)
     
     # def distance(self, x, y):
     #     sum_xy_sq = 0

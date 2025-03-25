@@ -8,9 +8,23 @@ This module provides functions to transform vectors and matrices between cylindr
 import numpy as np
 import numpy.typing as npt
 
+
+import numpy as np
+import numpy.typing as npt
+
+# Try to import numba and define a decorator
+try:
+    import numba
+    njit = numba.njit
+except ImportError:
+    # Define a no-op decorator if numba is not available
+    def njit(func):
+        return func
+
+
 # Jacobian of the map (x, y, z) -> (r, phi, z) at (r, phi, z) and (x, y, z)
 
-
+@njit
 def xyz_jac(r: float, phi: float, z: float) -> np.array:
     """
     Jacobian of the map :math:`(x, y, z) \\to (r, \\phi, z)` at :math:`(r, \\phi, z)`.
@@ -22,15 +36,16 @@ def xyz_jac(r: float, phi: float, z: float) -> np.array:
             \\partial_x z & \\partial_y z & \\partial_z z \\\\
         \\end{bmatrix}
     """
-    return np.array(
+    matrix = np.array(
         [
             [np.cos(phi), np.sin(phi), 0],
             [-1 * np.sin(phi) / r, np.cos(phi) / r, 0],
-            [0, 0, 1],
+            [0*z, 0, 1],  # z is multiplied with zero otherwise numba cries on compilation
         ]
     )
+    return matrix
 
-
+@njit
 def rphiz_jac(x: float, y: float, z: float) -> np.array:
     """
     Jacobian of the map :math:`(x, y, z) \\to (r, \\phi, z)` at :math:`(x, y, z)`.
@@ -39,14 +54,14 @@ def rphiz_jac(x: float, y: float, z: float) -> np.array:
         [
             [x / np.sqrt(x**2 + y**2), y / np.sqrt(x**2 + y**2), 0],
             [-y / (x**2 + y**2), x / (x**2 + y**2), 0],
-            [0, 0, 1],
+            [0*z, 0, 1],  # z is multiplied with zero otherwise numba cries on compilation
         ]
     )
 
 
 # Jacobian of the map (r, phi, z) -> (x, y, z) at (r, phi, z) and (x, y, z)
 
-
+@njit
 def xyz_inv_jac(r: float, phi: float, z: float) -> np.array:
     """
     Inverse Jacobian of the map :math:`(r, \\phi, z) \\to (x, y, z)` at :math:`(r, \\phi, z)`.
@@ -55,11 +70,11 @@ def xyz_inv_jac(r: float, phi: float, z: float) -> np.array:
         [
             [np.cos(phi), -1 * np.sin(phi) * r, 0],
             [np.sin(phi), np.cos(phi) * r, 0],
-            [0, 0, 1],
+            [0 *z, 0, 1],  # z is multiplied with zero otherwise numba cries on compilation
         ]
     )
 
-
+@njit
 def rphiz_inv_jac(x: float, y: float, z: float) -> np.array:
     """
     Inverse Jacobian of the map :math:`(r, \\phi, z) \\to (x, y, z)` at :math:`(x, y, z)`.
@@ -68,21 +83,21 @@ def rphiz_inv_jac(x: float, y: float, z: float) -> np.array:
         [
             [x / np.sqrt(x**2 + y**2), -y * np.sqrt(x**2 + y**2), 0],
             [y / np.sqrt(x**2 + y**2), x * np.sqrt(x**2 + y**2), 0],
-            [0, 0, 1],
+            [0*z, 0, 1],  # z is multiplied with zero otherwise numba cries on compilation
         ]
     )
 
 
 # Coordinate transformations
 
-
+@njit
 def xyz(r: float, phi: float, z: float) -> np.array:
     """
     Transforms cylindrical coordinates :math:`(r, \\phi, z)` to cartesian coordinates :math:`(x, y, z)`.
     """
     return np.array([r * np.cos(phi), r * np.sin(phi), z])
 
-
+@njit
 def rphiz(x: float, y: float, z: float) -> np.array:
     """
     Transforms cartesian coordinates :math:`(x, y, z)` to cylindrical coordinates :math:`(r, \\phi, z)`.
@@ -92,7 +107,7 @@ def rphiz(x: float, y: float, z: float) -> np.array:
 
 # Vector transformations
 
-
+@njit
 def vec_cart2cyl(vec: npt.ArrayLike, r: float, phi: float, z: float) -> np.array:
     """
     Transforms the (contravariant) cartesian components of a vector to the contravariant cylindrical components at :math:`(r, \\phi, z)`.
@@ -123,9 +138,9 @@ def vec_cart2cyl(vec: npt.ArrayLike, r: float, phi: float, z: float) -> np.array
     Returns:
         array: The contravariant cylindrical components of the vector.
     """
-    return np.matmul(xyz_jac(r, phi, z), np.atleast_2d(vec).T).T[0]
+    return np.dot(xyz_jac(r, phi, z), np.atleast_2d(vec).T).T[0]
 
-
+@njit
 def vec_cyl2cart(vec: npt.ArrayLike, x: float, y: float, z: float) -> np.array:
     """
     Transforms the contravariant cylindrical components to the (contravariant) cartesian components of a vector at :math:`(x, y, z)`.
@@ -135,7 +150,7 @@ def vec_cyl2cart(vec: npt.ArrayLike, x: float, y: float, z: float) -> np.array:
 
 # Matrix transformations
 
-
+@njit
 def mat_cart2cyl(mat: np.array, r: float, phi: float, z: float) -> np.array:
     """
     Transforms a matrix :math:`A` from cartesian coordinates to cylindrical coordinates at :math:`(r, \\phi, z)`.
@@ -174,16 +189,16 @@ def mat_cart2cyl(mat: np.array, r: float, phi: float, z: float) -> np.array:
 
     invjac = xyz_inv_jac(r, phi, z)
     jac = xyz_jac(r, phi, z)
-    return np.matmul(np.matmul(jac, mat), invjac)
+    return jac @ mat @ invjac
 
-
+@njit
 def mat_cyl2cart(mat: np.array, x: float, y: float, z: float) -> np.array:
     """
     Transforms a matrix :math:`A` from cylindrical coordinates to cartesian coordinates at :math:`(x, y, z)`.
     """
     raise NotImplementedError("Not implemented yet.")
 
-
+@njit
 def dinvJ_matrix(vec: npt.ArrayLike, r: float, phi: float, z: float) -> np.array:
     """
     Computes the matrix due to the evolution of the basis in cylindrical coordinates.
@@ -217,6 +232,6 @@ def dinvJ_matrix(vec: npt.ArrayLike, r: float, phi: float, z: float) -> np.array
                 (-vec[0] * np.cos(phi) - vec[1] * np.sin(phi)) / r,
                 0,
             ],
-            [0, 0, 0],
+            [0*z, 0, 0],  # z is multiplied with zero otherwise numba cries on compilation
         ]
     )

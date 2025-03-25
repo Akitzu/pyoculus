@@ -6,6 +6,7 @@ This module provides a function to create a canvas for plotting using Matplotlib
 """
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 def create_canvas(rcstyle=None, **kwargs) -> tuple:
@@ -40,3 +41,17 @@ def create_canvas(rcstyle=None, **kwargs) -> tuple:
     kwargs.pop("ax", None)
 
     return fig, ax, kwargs
+
+
+def clean_bigsteps(array, threshold=0.1):
+    """
+    place nans where the difference between two consecutive values is greater than a threshold
+
+    Useful for removing modulo-boundary crossing lines, that are very long
+    """
+    diff = np.linalg.norm(np.diff(array, axis=0), axis=1)
+    idx = np.where(diff > threshold)[0]
+    array[idx+1, :] = np.nan
+    return array
+
+

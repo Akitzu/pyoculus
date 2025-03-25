@@ -89,7 +89,7 @@ def rot(f, from_holonomous=True):
 
 ## Equilibrium
 
-# Equilibrium with q-profile = sf + shear * rho^2 with rho^2 = (rr[0]-R)^2 + (rr[2]-R)^2
+# Equilibrium with q-profile = sf + shear / 2 * rho^2 with rho^2 = (rr[0]-R)^2 + (rr[2]-R)^2
 
 
 def psi_squared(rr: jnp.array, R: float, Z: float) -> jnp.float64:
@@ -117,7 +117,7 @@ def A_r_squared(
     Vector potential :math:`A_r` component (giving the poloidal flux :math:`F`) for the squared circle equilibrium field. Using it with the :code:`psi_squared` function makes sense of :code:`sf` and :code:`shear` as the :math:`q`-factor profile becomes:
 
     .. math::
-        q(r, z) = sf + shear * (r - R)^2 + (z - Z)^2.
+        q(r, z) = sf + shear / 2 * ((r - R)^2 + (z - Z)^2).
 
     Args:
         rr (array): Position vector in cylindrical coordinates.
@@ -136,7 +136,7 @@ def A_r_squared(
             * (
                 (
                     4 * sf
-                    + shear
+                    + shear / 2
                     * (
                         5 * rr[0] ** 2
                         - 10 * rr[0] * R
@@ -149,7 +149,7 @@ def A_r_squared(
                 - 1j
                 * rr[0]
                 * (rr[0] - 2 * R)
-                * (4 * sf + (3 * rr[0] ** 2 - 6 * rr[0] * R + 4 * R**2) * shear)
+                * (4 * sf + (3 * rr[0] ** 2 - 6 * rr[0] * R + 4 * R**2) * shear / 2)
                 * jnp.log(
                     -1j * rr[2]
                     + jnp.sqrt(-rr[0] * (rr[0] - 2 * R) - (rr[2] - Z) ** 2)

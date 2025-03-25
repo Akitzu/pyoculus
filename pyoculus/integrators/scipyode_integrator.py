@@ -38,7 +38,7 @@ class ScipyODEIntegrator(BaseIntegrator):
                 - ode (callable): Function for the right-hand side of the ODE. Must be of the form f(t, x, *args).
                 - args (tuple, optional): Additional arguments to pass to the ODE function. Defaults to ().
                 - type (str, optional): Type of integrator. Notably: 'dopri5' for RK45, 'dop853' for RK853. Defaults to 'dopri5'.
-                - rtol (float, optional): Relative tolerance for the solver. Defaults to 1e-7.
+                - rtol (float, optional): Relative tolerance for the solver. Defaults to 1e-10.
                 - nsteps (int, optional): Maximum number of integration steps. Defaults to 10000.
         """
 
@@ -50,7 +50,7 @@ class ScipyODEIntegrator(BaseIntegrator):
             params["type"] = "dopri5"  # set default to RK45
 
         if "rtol" not in params.keys():
-            params["rtol"] = 1e-7  # set to default value
+            params["rtol"] = 1e-10  # set to default value
         self.rtol = params["rtol"]
 
         if "nsteps" not in params.keys():

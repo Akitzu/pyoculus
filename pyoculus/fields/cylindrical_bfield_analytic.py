@@ -1,6 +1,7 @@
 from ..toybox.cylindrical_toybox import *
 from .cylindrical_bfield import CylindricalBfield
 import matplotlib.pyplot as plt
+from ..utils.plot import create_canvas
 from functools import partial
 
 import logging
@@ -102,18 +103,35 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         super().__init__(Nfp=1)
 
     @classmethod
-    def without_axis(
-        cls, R, Z, sf, shear, perturbations_args=list(), guess=None, finderargs=dict(), **kwargs
-    ):
-        """Create an instance of the class without knowing the magnetic axis. The axis is found by creating a temporary instance and calling the CylindricalBfield.find_axis method.
-        The arguments are the same as for the constructor with the addition of a guess position (default : [R,Z]) and the kwargs for the find_axis method.
+    def with_new_axis(cls, R, Z, sf, shear, perturbations_args=list(), RZguess=None):
         """
-        if guess is None:
-            guess = [R, Z]
-
-        instance = cls(R, Z, sf, shear, perturbations_args, **kwargs)
-        instance.find_axis(guess, **finderargs)
-        return instance
+        Create a new AnalyticCylindricalBfield object whose axis location
+        is found. 
+        Perturbations such as circular-current-loop displace the axis. 
+        This perturbation is first added, then the axis location is found, 
+        and perturbations such as maxwell-boltzmann and gaussian are added
+        on this new axis. 
+        """
+        from ..maps import CylindricalBfieldSection
+        # check if there is an axis-shifting perturbation (circular-current-loop)
+        if any('circular-current-loop' in pertdic['type'] for pertdic in perturbations_args):
+            # create a field with the axis-shifting perturbations
+            tmp_field = cls(R, Z, sf, shear, [pertdic for pertdic in perturbations_args if pertdic['type'] == 'circular-current-loop'])
+            if RZguess is None:
+                RZguess = [R, Z]
+            tmp_map = CylindricalBfieldSection.without_axis(tmp_field, guess=RZguess)
+            new_R, new_Z = tmp_map.R0, tmp_map.Z0
+            # add the axis-located perturbations:
+            other_perts = [pertdic for pertdic in perturbations_args if pertdic['type'] != 'circular-current-loop']
+            for pert in other_perts:
+                if "R" not in pert.keys():
+                    pert.update({"R": new_R})
+                if "Z" not in pert.keys():
+                    pert.update({"Z": new_Z})
+                tmp_field.add_perturbation(pert)
+            return tmp_field
+        else:  # no axis-shifting perturbation
+            return cls(R, Z, sf, shear, perturbations_args)
 
     @property
     def amplitudes(self):
@@ -159,6 +177,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
     def _initialize_perturbations(self, index=None):
         """Initialize the perturbations functions and the gradient. Also updates the total field and its gradient."""
+        self._jitted_perturbations = []
 
         if index is not None:
             indices = [index]
@@ -227,10 +246,13 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         ) == len(self.perturbations_args):
             return self._jited_perturbations
         else:
-            self._jited_perturbations = [
-                jit(lambda rr: pertdic["amplitude"] * self._perturbations[i](rr))
-                for i, pertdic in enumerate(self.perturbations_args)
-            ]
+            self._jited_perturbations = []
+            for i in range(len(self.perturbations_args)):
+                self._jited_perturbations.append(
+                    jit(
+                        lambda rr, i=i: self.perturbations_args[i]["amplitude"]  # NO! LAZY PYTHON NO!
+                        * self._perturbations[i](rr)
+                    ))
             return self._jited_perturbations
 
     # BfieldProblem methods implementation
@@ -263,7 +285,7 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
     ## Additional plotting functions
 
-    def plot_intensities(
+    def plot_perturbation_levels(
         self,
         rw,
         zw,
@@ -271,15 +293,13 @@ class AnalyticCylindricalBfield(CylindricalBfield):
         RZ_manifold=None,
         N_levels=50,
         alpha=0.5,
-        ax=None,
+        colorbar=False,
+        **kwargs
     ):
         """Plot the perturbation psi flux function and the perturbation B field in the RZ plane at the provided points.
         The perturbation psi is the sum of the perturbations defined in the perturbations_args attribute.
         """
-        if ax is None:
-            fig, ax = plt.subplots(figsize=(20, 5))
-        else:
-            fig = ax.get_figure()
+        fig, ax, kwargs = create_canvas(**kwargs)
 
         r = np.linspace(rw[0], rw[1], nl[0])
         z = np.linspace(zw[0], zw[1], nl[1])
@@ -314,26 +334,43 @@ class AnalyticCylindricalBfield(CylindricalBfield):
 
         if len(self.perturbations_args) == 0:
             psi = np.zeros(R.shape)
+        
         mappable = ax.contourf(R, Z, psi, levels=N_levels, alpha=alpha)
-        fig.colorbar(mappable)
+        if colorbar:
+            fig.colorbar(mappable)
 
         if RZ_manifold is not None:
+            self.plot_perturbation_vector(RZ_manifold, ax=ax, alpha=alpha)
+
+        return fig, ax
+
+    def plot_perturbation_vector(self, locations, normed=True, **kwargs):
+        """Plot the perturbation vector field at the provided locations."""
+        
+        fig, ax, kwargs = create_canvas(**kwargs)
+
+        # pop alpha from kwargs or give it 1.0
+        alpha = kwargs.pop("alpha", 1.0) 
+        
+        if locations is not None:
             bfuncts = self.perturbations
-            Bs = np.zeros(shape=(RZ_manifold.shape[0], 3))
+            Bs = np.zeros(shape=(locations.shape[0], 3))
             for i, pertdic in enumerate(self.perturbations_args):
                 if pertdic["type"] != "circular-current-loop":
-                    Bs += np.array([bfuncts[i]([R, 0.0, Z]) for R, Z in RZ_manifold])
+                    Bs += np.array([bfuncts[i]([R, 0.0, Z]) for R, Z in locations])
 
-            norms = np.linalg.norm(Bs, axis=1)
+            if normed:
+                norms = np.linalg.norm(Bs, axis=1)
+                Bs /= norms[:, np.newaxis]
 
             ax.quiver(
-                RZ_manifold[:, 0],
-                RZ_manifold[:, 1],
-                Bs[:, 0] / np.linalg.norm(Bs, axis=1),
-                Bs[:, 2] / np.linalg.norm(Bs, axis=1),
-                norms,
+                locations[:, 0],
+                locations[:, 1],
+                Bs[:, 0],
+                Bs[:, 2],
                 alpha=alpha,
                 linewidth=0.5,
+                **kwargs
             )
 
         return fig, ax
