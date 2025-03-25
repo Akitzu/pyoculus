@@ -65,8 +65,7 @@ class SimsoptBfield(CylindricalBfield):
                 phirange = (0, 2 * np.pi / Nfp, n * 2)
                 zrange = (0, np.max(zs), n // 2)
 
-                
-                from simsopt.geo self._mf_B = InterpolatedField(
+                self._mf_B = InterpolatedField(
                     mf,
                     degree,
                     rrange,
