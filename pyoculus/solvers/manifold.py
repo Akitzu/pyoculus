@@ -3,7 +3,7 @@ from .base_solver import BaseSolver
 from .fixed_point import FixedPoint
 from ..utils.plot import create_canvas, clean_bigsteps
 from scipy.optimize import root, minimize
-from typing import Iterator, Literal, Union
+from typing import Iterator, Literal, Union, Iterable
 from numpy.typing import NDArray
 
 # from functools import total_ordering
@@ -500,6 +500,7 @@ class ClinicSet:
                     raise ValueError("in recalculating shifted clinic it escaped the fundamental domain.")
                 self._clinics_list.append(clinic)
                 self._orderize()
+                logger.warning("Homo/heteroclinic recorded and ordered.")
                 return True
             else:
                 logger.warning("Homo/heteroclinic already recorded, skipping...")
@@ -745,7 +746,7 @@ class Manifold(BaseSolver):
         super().__init__(map)
 
     def choose(
-        self, dir_1: Union[Literal["+", "-"], float, NDArray], dir_2: Union[Literal["+", "-"], float, NDArray], first_stable: bool
+        self, dir_1: Union[Literal["+", "-"], float, Iterable], dir_2: Union[Literal["+", "-"], float, Iterable], first_stable: bool
     ) -> None:
         """Choose manifold stable and unstable directions to define your :class:`Manifold` problem.
 
@@ -776,8 +777,8 @@ class Manifold(BaseSolver):
             self.vector_s *= (-1) ** int(stabledir == "-")  # negate if minus provided
         elif isinstance(stabledir, float):
             self.vector_s *= (-1)**int(np.dot(self.vector_s, np.array([np.cos(stabledir), np.sin(stabledir)])) < 0)  # negate if dot negative
-        elif isinstance(stabledir, np.ndarray) and len(stabledir) == 2:
-            self.vector_s *= (-1)**int(np.dot(self.vector_s, stabledir) < 0)  # negate if dot negative
+        elif isinstance(stabledir, Iterable) and len(stabledir) == 2:
+            self.vector_s *= (-1)**int(np.dot(self.vector_s, np.asarray(stabledir)) < 0)  # negate if dot negative
         else:
             raise ValueError("Invalid dir_1 given, either '+'/'-', float or len-2 array")
 
@@ -788,8 +789,8 @@ class Manifold(BaseSolver):
             self.vector_u *= (-1) ** int(unstabledir == "-") # negate if minus provided
         elif isinstance(unstabledir, float):
             self.vector_u *= (-1)**int(np.dot(self.vector_u, np.array([np.cos(unstabledir), np.sin(unstabledir)])) < 0) # negate if dot negative
-        elif isinstance(unstabledir, np.ndarray) and len(unstabledir) == 2:
-            self.vector_u *= (-1)**int(np.dot(self.vector_u, unstabledir) < 0) # negate if dot negative
+        elif isinstance(unstabledir, Iterable) and len(unstabledir) == 2:
+            self.vector_u *= (-1)**int(np.dot(self.vector_u, np.asarray(unstabledir)) < 0) # negate if dot negative
         else:
             raise ValueError("Invalid dir_2 given, either '+'/'-', float or len-2 array")
 
@@ -1437,7 +1438,7 @@ class Manifold(BaseSolver):
         """
         if self.clinics.is_empty:
             raise ValueError('Need to have one clinic first before finding others')
-        clinicnum = self.clinics.size
+        clinicnum = np.copy(self.clinics.size)
         total_number_of_points = self.clinics.total_number_of_points - 1
         n_s = total_number_of_points//2
         n_u = total_number_of_points - n_s
@@ -1459,6 +1460,7 @@ class Manifold(BaseSolver):
                 newclinic = Clinic.from_guess(self, eps_s, eps_u, n_s, n_u, **kwargs)
                 self.clinics.record_clinic(newclinic)
                 if self.clinics.size == clinicnum + 1:
+                    logger.info(f"clinic recorded after {_ +1} attempts")
                     break
             except Exception as e:
                 logger.warning(f"Failed to find other clinic: {e}")
