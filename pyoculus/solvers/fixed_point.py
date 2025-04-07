@@ -335,6 +335,25 @@ class FixedPoint(BaseSolver):
         if not self.successful:
             raise ValueError("Fixed point not found.")
         return np.linalg.eigvals(self.Jacobian)
+    
+    @property
+    def RZcoords(self):
+        """
+        Return the RZ coordinates of the fixed point, applying a transform if the 
+        field is a ToroidalBfield (rho theta)
+        """
+        if not self.successful:
+            raise ValueError("Fixed point not found.")
+        if isinstance(self._map, maps.ToroidalBfieldSection):
+            if type(self._map._mf).__name__ == "SpecBfield":
+                converted_coords = [self._map._mf.convert_coords(np.append(coord, self._map.phi0)) for coord in self.coords]
+                return np.array(converted_coords)[:, ::2]
+            else:
+                raise ValueError("RZcoords only implemented for SpecBfield")
+        elif isinstance(self._map, maps.CylindricalBfieldSection):
+            return self.coords
+        else: 
+            raise ValueError("RZcoords only implemented for ToroidalBfieldSection and CylindricalBfieldSection")
 
     @property
     def topological_index(self):
@@ -556,15 +575,18 @@ class FixedPoint(BaseSolver):
         else:
             return None
 
-    def _newton_method_1D(self, guess, x_axis, theta=0, niter=100, tol=1e-10):
+    def _newton_method_1D(self, guess, x_axis=None, niter=100, tol=1e-10):
         """
         This will be rapidly depraciated.
         """
         if not isinstance(self._map, maps.ToroidalBfieldSection):
             raise ValueError("This method is only implemented for ToroidalBfieldSection")
+        
+        if not (np.isclose(guess[1], 0.) or np.isclose(guess[1], np.pi) or np.isclose(guess[1], 2*np.pi)):
+            print(guess)
+            raise ValueError("1d finding only works on the Z=0 line")
 
-        x = np.array([guess[0], theta], dtype=np.float64)
-        x_axis = np.array(x_axis, dtype=np.float64)
+        x = np.array([guess[0], 0], dtype=np.float64)
 
         self.history.append(x.copy())
         succeeded = False
@@ -633,9 +655,9 @@ class FixedPoint(BaseSolver):
                 kwargs["marker"] = "o"
         
         if plot_all:
-            ax.scatter(self.coords[:, 0], self.coords[:, 1], **kwargs)
+            ax.scatter(self.RZcoords[:, 0], self.RZcoords[:, 1], **kwargs)
         else:
-            ax.scatter(self.coords[0, 0], self.coords[0, 1], **kwargs)
+            ax.scatter(self.RZcoords[0, 0], self.RZcoords[0, 1], **kwargs)
 
         return fig, ax
 
