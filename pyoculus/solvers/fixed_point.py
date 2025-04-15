@@ -144,6 +144,8 @@ class FixedPoint(BaseSolver):
             method_fun = self._scipy_derivs
         elif method == "scipy.1D":
             method_fun = self._scipy_1d_symmetry
+        elif method == "scipy.1D_2D":
+            method_fun = self._scipy_1d_2d
 #        elif method == "scipy.stellsym.2D":
 #            method_fun = self.scipy_stellsym_2d
         else:
@@ -350,10 +352,8 @@ class FixedPoint(BaseSolver):
                 return np.array(converted_coords)[:, ::2]
             else:
                 raise ValueError("RZcoords only implemented for SpecBfield")
-        elif isinstance(self._map, maps.CylindricalBfieldSection):
-            return self.coords
         else: 
-            raise ValueError("RZcoords only implemented for ToroidalBfieldSection and CylindricalBfieldSection")
+            return self.coords
 
     @property
     def topological_index(self):
@@ -493,27 +493,55 @@ class FixedPoint(BaseSolver):
         self._scipy_root_res = root_scalar(fun, x0=guess[0], method=scipy_method, bracket=bracket, **kwargs)
         return np.array([self._scipy_root_res.root, 0])
 
-#    def scipy_stellsym_2d(self, guess, **kwargs):
-#        """
-#        use a 2d solver to find a fixed point in a symmetry plane not on the Z=0 line. 
-#        In general, the halfmap forwards equals the half-map backwards, but in stellarator symmetric devices
-#        the halfmap backwards is also the halfmap forwards from its stellarator-symmetric point, but flipped in Z.
-#        Currently unable to formulate the exact problem to solve, but I believe a fixed point can be found
-#        using only quarter-map integration
-#        """
-#        if not (self._map.phi0 == 0. or np.isclose(self._map.phi0 / self._map.dzeta, 0.5)):
-#            raise ValueError("1d finding only works on a symmetry plane")
-#        
-#        def fun(x):
-#            logger.info(f"scipy_stellsym_2d - xx : {x}")
-#            flipz = np.array([1, -1])
-#            quartermap = self._map.f(self.t/4, x)
-#            diff = self._map.f(self.t/4, x)*flipz - self._map.f(-self.t/4, x * flipz)
-#            logger.info(f"scipy_stellsym_2d - diff : {x}")
-#            return diff
-#        
-#        self._scipy_root_res = root(fun, guess, **kwargs)
-#        return np.copy(self._scipy_root_res.x)
+    def _scipy_1d_2d(self, guess, **kwargs):
+        """
+        use a 1d solver to find the fixed point in a symmetry plane, then refine with a 
+        2d search on the found point. 
+        In stellarator symmetric devices, it is guaranteed there is a fixed point on Z=0.
+        Nevertheless, due to numerical error the fixed point of the integration may be slightly offset. 
+        In this method, first R is varied and a zero of the Z component of the half map difference is found, then that point is used as the starting point of the 2d search. 
+
+
+        With bracketing functions it is useful to add a bracket_infinity_sign keyword +- 1, to choose 
+        if a failed evaluation should return positive or negative infinity. (sign of the return must be opposite
+        on each limit of the bracket)
+    
+        """
+        if not np.isclose(guess[-1], 0., atol=1e-7):
+            raise ValueError("1d finding only works on the Z=0 line")
+        if not (self._map.phi0 == 0. or np.isclose(self._map.phi0 / self._map.dzeta, 0.5)):
+            raise ValueError("1d finding only works on a symmetry plane")
+        scipy_method = kwargs.pop("scipy_method", "brentq")
+        
+        bracket = kwargs.pop("bracket", None)
+        bracket_infinity_sign = np.sign(kwargs.pop("bracket_infinity", -1))  # sign of the infinity to return when the map is not calculated
+        if scipy_method in ["toms748", "ridder", "brentq", "brenth", "bisect"]:
+            if bracket is None:
+                bracket = guess[0] * np.array([0.99, 1.01])
+                logger.info(f"Newton - bracket not given for method that requires it, using 1 percent margin, bracket = {bracket}")
+        
+        def fun_1d(R):
+            logger.info(f"Newton - xx : {R}")
+            try:
+                diff = (self._map.f(self.t/2, np.append(R, 0.)) - self._map.f(-self.t/2, np.append(R, 0.)))
+                zdiff = diff[-1]
+            except Exception as e:
+                logger.info(f"Newton - failed at xx {R}: {e}")
+                zdiff = np.inf*bracket_infinity_sign
+
+            logger.info(f"Newton 1d - zdiff : {zdiff}")
+            return zdiff
+
+        self._scipy_root_res_1d = root_scalar(fun_1d, x0=guess[0], method=scipy_method, bracket=bracket, **kwargs)
+        guess2d = [self._scipy_root_res_1d.root, 0]
+
+        def fun_2d(x):
+            logger.info(f"Newton 2d - xx : {x}")
+            return self._map.f(self.t/2, x) - self._map.f(-self.t/2, x)
+        
+        self._scipy_root_res = root(fun_2d, guess2d)
+
+        return np.copy(self._scipy_root_res.x)
 
 
     def _newton_method_winding(self, guess, xaxis=None, niter=100, tol=1e-10):
@@ -582,9 +610,9 @@ class FixedPoint(BaseSolver):
         if not isinstance(self._map, maps.ToroidalBfieldSection):
             raise ValueError("This method is only implemented for ToroidalBfieldSection")
         
-        if not (np.isclose(guess[1], 0.) or np.isclose(guess[1], np.pi) or np.isclose(guess[1], 2*np.pi)):
+        if not (np.isclose(guess[1], 0., atol=1e-5) or np.isclose(guess[1], np.pi) or np.isclose(guess[1], 2*np.pi)):
             print(guess)
-            raise ValueError("1d finding only works on the Z=0 line")
+            raise ValueError(f"got{guess}; 1d finding only works on the Z=0 line, ")
 
         x = np.array([guess[0], 0], dtype=np.float64)
 

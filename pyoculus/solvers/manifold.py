@@ -98,7 +98,7 @@ class Clinic:
         self._xend_u = None
 
     @classmethod
-    def from_guess(cls, manifold: "Manifold", eps_s: float, eps_u: float, n_s: int, n_u: int, **kwargs):
+    def from_guess(cls, manifold: "Manifold", eps_s: float, eps_u: float, n_s: int, n_u: int, ERR=1e-3, **kwargs):
         """
         Search a homo/hetero-clinic point.
 
@@ -124,6 +124,8 @@ class Clinic:
         root_kwargs.update(kwargs.get("root_args", {}))
         use_jac = root_kwargs.get("jac")
 
+        logger.debug(f"Using root finding parameters: {root_kwargs}")
+
         rfp_s = manifold.rfp_s
         rfp_u = manifold.rfp_u
         vector_s = manifold.vector_s
@@ -131,9 +133,8 @@ class Clinic:
         map_multiple = manifold.fixedpoint_1.m
 
         # Verifying that epsilons lie in linear regime
-        ERR = kwargs.pop("ERR", 1e-3)
-
         stable_error = manifold.error_linear_regime(eps_s, rfp_s, manifold.vector_s, direction=-1)
+
         if (stable_error > ERR):
             raise ValueError(f"Stable epsilon guess is not in the linear regime, error is {stable_error}.")
         unstable_error =  manifold.error_linear_regime(eps_u, rfp_u, manifold.vector_u, direction=+1)
@@ -500,18 +501,18 @@ class ClinicSet:
                     raise ValueError("in recalculating shifted clinic it escaped the fundamental domain.")
                 self._clinics_list.append(clinic)
                 self._orderize()
-                logger.warning("Homo/heteroclinic recorded and ordered.")
+                logger.warning(f"Homo/heteroclinic recorded and ordered, total clinics = {self.size}")
                 return True
             else:
-                logger.warning("Homo/heteroclinic already recorded, skipping...")
+                logger.warning(f"Homo/heteroclinic already recorded, total clinics = {self.size}. skipping...")
                 return False
 
     def _no_clinics_similar(self, clinic, tol) -> bool:
         """
         Returns True if no clinics in the list are similar
         """
-        stable_epsilon_test = not(np.any([np.isclose(clinic.eps_s, other.eps_s, rtol=tol, atol=1e-12) for other in self._clinics_list ]))  # not any isclose
-        unstable_epsilon_test = not(np.any([np.isclose(clinic.eps_u, other.eps_u, rtol=tol, atol=1e-12) for other in self._clinics_list ]))  # not any isclose
+        stable_epsilon_test = not (np.any([np.isclose(clinic.eps_s, other.eps_s, rtol=tol, atol=0.) for other in self._clinics_list ]))  # not any isclose
+        unstable_epsilon_test = not (np.any([np.isclose(clinic.eps_u, other.eps_u, rtol=tol, atol=0.) for other in self._clinics_list ]))  # not any isclose
         return stable_epsilon_test and unstable_epsilon_test  # none is close
 
     def reset(self) -> None:
@@ -1368,7 +1369,7 @@ class Manifold(BaseSolver):
         #     raise ValueError("Could not find N")
         return n_s, n_u
 
-    def find_clinic_single(self, guess_eps_s, guess_eps_u, n_s=None, n_u=None, reset_clinics=False, nretry=1, **kwargs):
+    def find_clinic_single(self, guess_eps_s, guess_eps_u, n_s=None, n_u=None, reset_clinics=False, nretry=1, ERR=1e-3, **kwargs):
         """
         Search a homo/hetero-clinic point.
 
@@ -1382,17 +1383,15 @@ class Manifold(BaseSolver):
             - n_u (int): Number of times the map needs to be applied for the unstable manifold.
             - reset_clinics: replace all clinics and make this clinic the fundamental segment.
             - nretry: retry by jittering the epsilon guesses n times
+            - ERR (float): Error tolerance for verifying the linear regime (default: 1e-3).
         **kwargs
             - root_args (dict): Arguments to pass to the root-finding function.
                 suggested: {'jac':True/False} integrated jacobian or FD for step
                 {'options':{'factor':1e-3}} takes smaller steps when jac is ill.
-            - ERR (float): Error tolerance for verifying the linear regime (default: 1e-3).
 
         Returns:
             tuple: A tuple containing the found epsilon values for the stable and unstable manifolds (eps_s, eps_u).
         """
-
-
         # Set the number of times the map needs to be applied (times the poloidal mode m)
         if n_s is None or n_u is None:
             n_s, n_u = self.find_N(guess_eps_s, guess_eps_u)
@@ -1403,7 +1402,7 @@ class Manifold(BaseSolver):
         newclinic = None
         for _ in range(nretry):
             try:
-                newclinic = Clinic.from_guess(self, this_eps_s, this_eps_u, n_s, n_u, **kwargs)
+                newclinic = Clinic.from_guess(self, this_eps_s, this_eps_u, n_s, n_u, ERR=ERR, **kwargs)
                 break
             except Exception as e:
                 logger.warning(f"Failed to find clinic: {e}")
