@@ -140,7 +140,7 @@ class Clinic:
         unstable_error =  manifold.error_linear_regime(eps_u, rfp_u, manifold.vector_u, direction=+1)
         if (unstable_error > ERR):
             raise ValueError(f"Unstable epsilon guess is not in the linear regime, error is {unstable_error}.")
-
+        
 
         # Evolution function for the root finding without and with jacobian
         def evolution_no_jac(eps, n_s, n_u):
@@ -212,6 +212,104 @@ class Clinic:
         )
 
         return cls(manifold, eps_s, eps_u, n_s, n_u)
+        
+    @classmethod
+    def with_deflation(cls, manifold:"Manifold", eps_s:float, eps_u: float, n_s: int, n_u: int, **kwargs):
+        """
+        find a clinic point using a deflation method and bounds to remove previously found
+        clinic points. 
+        """
+        logger.debug(f"Using n_s, n_u - {n_s}, {n_u}")
+        # Updating the default root finding parameters
+        root_kwargs = {"jac": False}
+        root_kwargs.update(kwargs.get("root_args", {}))
+        use_jac = root_kwargs.get("jac")
+        logger.debug(f"Using root finding parameters: {root_kwargs}")
+
+        if manifold.clinics.size <1: 
+            raise ValueError("No clinics in the set, cannot use the deflation method.")
+
+        rfp_s = manifold.rfp_s
+        rfp_u = manifold.rfp_u
+        vector_s = manifold.vector_s
+        vector_u = manifold.vector_u
+        map_multiple = manifold.fixedpoint_1.m
+        fundamental_stable = manifold.clinics.fundamental_segments["stable"]
+        fundamental_unstable = manifold.clinics.fundamental_segments["unstable"]
+
+        # the first and last return point get mapped to +- infinity, we ignore them
+        found_inner_epsilons = np.stack([manifold.clinics.stable_epsilons[1:-1], manifold.clinics.unstable_epsilons[1:-1]], axis=1)
+
+        def map_optimization_variables_to_epsilons(xx_opt, fundamental_stable, fundamental_unstable):
+            """
+            we need to stick to the fundamental section, so we use the hyperbolic tangent
+            to map our optimization variables to the epsilons in this section
+            """
+            eps_s = fundamental_stable[0] + (fundamental_stable[1] - fundamental_stable[0]) * (np.tanh(.1*xx_opt[0]) + 1) / 2
+            eps_u = fundamental_unstable[0] + (fundamental_unstable[1] - fundamental_unstable[0]) * (np.tanh(.1* xx_opt[1]) + 1) / 2
+            return eps_s, eps_u
+       
+        def map_epsilons_to_optimization_variables(eps_s, eps_u, fundamental_stable, fundamental_unstable):
+            """
+            we need to stick to the fundamental section, so we use the hyperbolic tangent
+            to map our optimization variables to the epsilons in this section
+            """
+            eps_s = np.arctanh(2 * (eps_s - fundamental_stable[0]) / (fundamental_stable[1] - fundamental_stable[0]) - 1) *10
+            eps_u = np.arctanh(2 * (eps_u - fundamental_unstable[0]) / (fundamental_unstable[1] - fundamental_unstable[0]) - 1) *10
+            return eps_s, eps_u
+        
+        def deflated_residual(xx_opt, n_s, n_u, found_epsilons_in_optimization_variables):
+            """
+            deflation residual function for the optimization problem. 
+            Deflation consists of multiplying the residual by $1 + \Sum 1/|xx-xx_found|^2)$, which blows up at the found points. 
+
+            Since we expect the roots to be first order, we can use second order deflation.  
+            """
+            print(f'xx_opt: {xx_opt}')
+            eps_s, eps_u = map_optimization_variables_to_epsilons(xx_opt, fundamental_stable, fundamental_unstable)
+            print(f'eps_s, eps_u: {eps_s, eps_u}')
+            r_s = rfp_s + eps_s * vector_s
+            r_u = rfp_u + eps_u * vector_u
+
+            r_s_evolved = manifold._map.f(-1 * n_s * map_multiple, r_s)
+            r_u_evolved = manifold._map.f(n_u * map_multiple, r_u)
+
+            diff = r_s_evolved - r_u_evolved
+
+            # Deflation term: 1 plus sum of inverse of squared distances to previously found epsilon points
+            # we do the deflation in epsilon space, the optimization space is only to limit to
+            # the fundamental section.
+            deflation_term = 1 + (1e-3* np.sum(xx_opt**2)) + np.sum([1/(np.linalg.norm(found_roots - xx_opt)**2) for found_roots in found_epsilons_in_optimization_variables])
+            print(f'difference: {diff}, eps_s, eps_u : {eps_s, eps_u}, optimization variables : {xx_opt} deflation_term: {deflation_term}')
+            return diff * deflation_term
+        
+        found_epsilons_in_optimization_variables = [map_epsilons_to_optimization_variables(*found_pair, fundamental_stable, fundamental_unstable) for found_pair in found_inner_epsilons]
+        print(f'found_epsilons_in_optimization_variables: {found_epsilons_in_optimization_variables}')
+
+        root_obj = root(
+            deflated_residual,
+            map_epsilons_to_optimization_variables(eps_s, eps_u, fundamental_stable, fundamental_unstable),
+            args=(n_s, n_u, found_epsilons_in_optimization_variables),
+            **root_kwargs,
+        )
+        
+        # Checking status and logging the result
+        logger.info(f"Root search status : {root_obj.message}")
+        logger.debug(f"Root search object : {root_obj}")
+
+        if not root_obj.success:
+            raise ValueError("Homo/Heteroclinic search was not successful.")
+
+        eps_s, eps_u = map_optimization_variables_to_epsilons(root_obj.x, fundamental_stable, fundamental_unstable)
+
+        logger.info(
+            f"Success! Found epsilon pair (eps_s, eps_u) : {eps_s:.3e}, {eps_u:.3e} gives a difference of {root_obj.fun}."
+        )
+
+        return cls(manifold, eps_s, eps_u, n_s, n_u)
+        
+
+
 
     @property
     def trajectory(self):
@@ -1423,6 +1521,28 @@ class Manifold(BaseSolver):
         self.clinics.record_clinic(newclinic)
 
         return None
+    
+    def find_other_clinic_test(self, shift_in_stable:float, shift_in_unstable:float=None, nretry =1, **kwargs):
+        """
+        bla
+        """
+        if self.clinics.is_empty:
+            raise ValueError('Need to have one clinic first before finding others')
+        clinicnum = np.copy(self.clinics.size)
+        total_number_of_points = self.clinics.total_number_of_points - 1
+        n_s = total_number_of_points//2
+        n_u = total_number_of_points - n_s
+
+        stable_segment = self.clinics.stable_segment
+        eps_s = stable_segment[0] + np.sqrt(shift_in_stable) * (stable_segment[1] - stable_segment[0])
+
+        if shift_in_unstable is None:
+            shift_in_unstable = 1-shift_in_stable
+        unstable_segment = self.clinics.unstable_segment
+        eps_u = unstable_segment[0] + np.sqrt(shift_in_unstable) * (unstable_segment[1] - unstable_segment[0])
+        
+        newclinic = Clinic.with_deflation(self, eps_s, eps_u, n_s, n_u, **kwargs)
+        self.clinics.record_clinic(newclinic)
 
     def find_other_clinic(self, shift_in_stable:float, shift_in_unstable:float=None, nretry =1, **kwargs):
         """
