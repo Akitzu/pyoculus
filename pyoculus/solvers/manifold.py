@@ -150,6 +150,7 @@ class Clinic:
 
             r_s_evolved = manifold._map.f(-1 * n_s * map_multiple, r_s)
             r_u_evolved = manifold._map.f(n_u * map_multiple, r_u)
+            logger.debug(f"mapping to : {r_s_evolved}, {r_u_evolved}")
 
             return (r_s_evolved, r_u_evolved, r_s_evolved - r_u_evolved)
 
@@ -1576,7 +1577,6 @@ class Manifold(BaseSolver):
         for _ in range(nretry):
             try:
                 newclinic = Clinic.from_guess(self, this_eps_s, this_eps_u, n_s, n_u, **kwargs)
-                newclinic = Clinic.from_guess(self, eps_s, eps_u, n_s, n_u, **kwargs)
                 self.clinics.record_clinic(newclinic)
                 if self.clinics.size == clinicnum + 1:
                     logger.info(f"clinic recorded after {_ +1} attempts")
