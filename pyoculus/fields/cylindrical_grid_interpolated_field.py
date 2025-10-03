@@ -1,6 +1,7 @@
 from .cylindrical_bfield import CylindricalBfield
 from scipy.interpolate import RegularGridInterpolator
 import numpy as np
+from scipy.integrate import quad
 
 
 class AxisymmetricCylindricalGridField(CylindricalBfield):
@@ -25,17 +26,18 @@ class AxisymmetricCylindricalGridField(CylindricalBfield):
         self.F_psi = F_psi
 
         self.F_psi_interpolator = RegularGridInterpolator((R, Z), F_psi, method='quintic')
-        self.B_R_derived = lambda xx: -1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx, nu=[0,1])
-        self.B_Z_derived = lambda xx: 1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx, nu=[1,0])
+        self.B_R_derived = lambda xx: -1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx, nu=[0,1])[0]
+        self.B_Z_derived = lambda xx: 1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx, nu=[1,0])[0]
         self.B_phi_interpolator = RegularGridInterpolator((R, Z), B_phi, method='quintic')
         self.B_R_interpolator = RegularGridInterpolator((R, Z), B_R, method='quintic')
         self.B_Z_interpolator = RegularGridInterpolator((R, Z), B_Z, method='quintic')
         self.pertfield=pertfield
         self.pertamp = 1
         if pertfield is None:
-            self.pertftun = lambda xx: np.zeros(3)
+            self.pertfun = lambda xx: np.zeros(3)
         else:
             self.pertfun = pertfield.B
+
 
     @classmethod
     def from_matlab_file(cls, filename, with_perturbation=False):
@@ -85,14 +87,39 @@ class AxisymmetricCylindricalGridField(CylindricalBfield):
         xx2d = xx[::2]
         return np.array([self.B_R_interpolator(xx2d)[0], self.B_phi_interpolator(xx2d)[0], self.B_Z_interpolator(xx2d)[0]])
     
-    def A(self, xx): 
+
+    def A_R(self, xx):
+        """
+        xx: numpy array of shape (3,) specifying the coordinates at which the vector potential is to be evaluated
+        return value of A_R for this specific point
+        """
+        xx2d = xx[::2]
+
+        def integrand(Zp):
+            return self.B_phi_interpolator([xx2d[0],Zp])[0] 
+        A_r, err = quad(integrand, self.Z[0], xx2d[1])  
+
+        return A_r
+
+
+
+    def A_unperturbed(self, xx): 
         """
         xx: numpy array of shape (3,) specifying the coordinates at which the vector potential is to be evaluated
         """
         xx2d = xx[::2]
+        
+        return np.array([self.A_R(xx), self.F_psi_interpolator(xx2d)[0]/(2*np.pi*xx2d[0]), 0]) ###AR or AZ=0 gauge ????
+    
 
-        #return np.array([0, 0, self.B_phi_interpolator(xx[0:2])[0] * xx[0]])
-        return np.array([0, self.F_psi_interpolator(xx2d)[0]/(2*np.pi*xx2d[0])], 0) ###AR or AZ=0 gauge ????
+
+    def A(self, xx): 
+        """
+        xx: numpy array of shape (3,) specifying the coordinates at which the vector potential is to be evaluated
+        """
+        
+        return self.A_unperturbed(xx) + self.pertfield.A(xx) * self.pertamp
+
 #    
 #    def B_many(self, xx):
 #        """
@@ -106,28 +133,18 @@ class AxisymmetricCylindricalGridField(CylindricalBfield):
         xx: numpy array of shape (3,) specifying the coordinates at which the magnetic field gradient is to be evaluated
         return Bfield, jacobian matrix for a specific point
         """
-        xx2d = xx[0::2]
-        
-        #r_derivs = np.array(
-        #    [1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx, nu=[2,0]), 
-        #    self.B_phi_interpolator(xx2d, nu=[1,0]), 
-        #    1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx, nu=[1,1])]
-        #    )
-        #z_derivs = np.array(
-        #    [1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx, nu=[2,0]), 
-        #    self.B_phi_interpolator(xx2d, nu=[1,0]), 
-        #    1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx, nu=[1,1])]
-        #    )
-
-
-
-        dR=np.array([self.B_R_interpolator(xx2d, nu=[1,0])[0],      0 ,  self.B_R_interpolator(xx2d, nu=[0,1])[0]])
+        xx2d = xx[::2]
+      
+        dR=np.array([-1/xx[0]*self.B_R_derived(xx2d)-1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[1,1])[0],      0    ,  -1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[0,2])[0]])
         dPhi=np.array([self.B_phi_interpolator(xx2d, nu=[1,0])[0],  0 ,  self.B_phi_interpolator(xx2d, nu=[0,1])[0]])
-        dZ=np.array([self.B_Z_interpolator(xx2d, nu=[1,0])[0],      0 ,  self.B_Z_interpolator(xx2d, nu=[0,1])[0]])
+        dZ=np.array([-1/xx[0]*self.B_Z_derived(xx2d)+1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[0,2])[0]   ,      0 ,  -1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[1,1])[0]])    
+        if self.pertfield is None:
+            return self.B(xx), np.vstack([dR, dPhi, dZ])
+        else:
+            return self.B(xx), np.vstack([dR, dPhi, dZ])+self.pertfield.dBdX(xx)[1]
 
-    
-        #
-        return self.B(xx2d), np.vstack([dR, dPhi, dZ])
+
+
 
 class AxisymmetricGridPerturbation(CylindricalBfield):
     """
@@ -153,27 +170,26 @@ class AxisymmetricGridPerturbation(CylindricalBfield):
         """
         xx2d = xx[::2]
         B_R_cosphi = -1/(2*np.pi*xx[0]) * self.F_psi_cosphi_interpolator(xx2d, nu=[0,1])[0] * np.cos(xx[1])
-        B_R_sinphi = -1/(2*np.pi*xx[0]) * self.F_psi_cosphi_interpolator(xx2d, nu=[0,1])[0] * np.sin(xx[1])
+        B_R_sinphi = -1/(2*np.pi*xx[0]) * self.F_psi_sinphi_interpolator(xx2d, nu=[0,1])[0] * np.sin(xx[1])
         return B_R_cosphi + B_R_sinphi
     
     def B_Z(self, xx):
         xx2d = xx[::2]
-        B_Z_cosphi = 1/(2*np.pi*xx[0]) * self.F_psi_sinphi_interpolator(xx2d, nu=[1,0])[0] * np.cos(xx[1])
+        B_Z_cosphi = 1/(2*np.pi*xx[0]) * self.F_psi_cosphi_interpolator(xx2d, nu=[1,0])[0] * np.cos(xx[1])
         B_Z_sinphi = 1/(2*np.pi*xx[0]) * self.F_psi_sinphi_interpolator(xx2d, nu=[1,0])[0] * np.sin(xx[1])
         return B_Z_cosphi + B_Z_sinphi
     
     def B(self, xx): 
         return np.hstack([self.B_R(xx), 0, self.B_Z(xx)])
     
+      
     def A(self, xx):
         """
         xx: numpy array of shape (3,) specifying the coordinates at which the magnetic potential is to be evaluated
         """
-        #xx2d = xx[::2]
-        #Aphi=1/(2*np.pi*xx2d[0]) * self.F_psi_cosphi_interpolator(xx2d)[0] * (np.cos(xx[1])+np.sin(xx[1]))
-
-        #return np.array([0, Aphi, 0])
-        raise NotImplementedError("Vector potential is not implemented.")
+        xx2d = xx[::2]
+        
+        return np.array([0 , 1/(2*np.pi*xx[0]) * (self.F_psi_cosphi_interpolator(xx2d)[0] * np.cos(xx[1]) + self.F_psi_sinphi_interpolator(xx2d)[0] * np.sin(xx[1])) ,0])
     
     def dBdX(self, xx, *args):
         """Gradient of the total field function at the point coords. Where (dBdX)^i_j = dB^i/dX^j with i the row index and j the column index of the matrix."""
@@ -182,18 +198,18 @@ class AxisymmetricGridPerturbation(CylindricalBfield):
         xx2d = xx[::2]
 
 
-        dR = np.array([-1/xx[0]*self.B_R(xx2d)  -   1/(2*np.pi*xx[0]) * self.F_psi_cosphi_interpolator(xx2d, nu=[1,1])[0] * (np.cos(xx[1])+np.sin(xx[1])), 
-                           self.B_R(xx2d)*(1-2*np.sin(xx[1])/(np.cos(xx[1])+np.sin(xx[1]))),
-                           -1/(2*np.pi*xx[0]) * self.F_psi_cosphi_interpolator(xx2d, nu=[0,2])[0] * (np.cos(xx[1])+np.sin(xx[1]))])
+        dR = np.array([-1/xx[0]*self.B_R(xx)  -   1/(2*np.pi*xx[0]) * (self.F_psi_cosphi_interpolator(xx2d, nu=[1,1])[0] * np.cos(xx[1]) + self.F_psi_sinphi_interpolator(xx2d, nu=[1,1])[0]*np.sin(xx[1])), 
+                            1/(2*np.pi*xx[0]) * (self.F_psi_cosphi_interpolator(xx2d, nu=[0,1])[0] * np.sin(xx[1]) - self.F_psi_sinphi_interpolator(xx2d, nu=[0,1])[0] * np.cos(xx[1])),
+                           -1/(2*np.pi*xx[0]) * (self.F_psi_cosphi_interpolator(xx2d, nu=[0,2])[0] * np.cos(xx[1]) + self.F_psi_sinphi_interpolator(xx2d, nu=[0,2])[0] * np.sin(xx[1]))])
                            
         dPhi = np.array([0,0,0])
         
-        dZ = np.array([-1/xx[0]*self.B_Z(xx2d)  -   1/(2*np.pi*xx[0]) * self.F_psi_sinphi_interpolator(xx2d, nu=[2,0])[0] * (np.cos(xx[1])+np.sin(xx[1])), 
-                           self.B_Z(xx2d)*(1-2*np.sin(xx[1])/(np.cos(xx[1])+np.sin(xx[1]))),
-                           -1/(2*np.pi*xx[0]) * self.F_psi_sinphi_interpolator(xx2d, nu=[1,1])[0] * (np.cos(xx[1])+np.sin(xx[1]))])
+        dZ = np.array([-1/xx[0]*self.B_Z(xx)  +   1/(2*np.pi*xx[0]) * (self.F_psi_sinphi_interpolator(xx2d, nu=[2,0])[0] * np.cos(xx[1])+np.sin(xx[1])*self.F_psi_sinphi_interpolator(xx2d, nu=[2,0])[0]), 
+                           -1/(2*np.pi*xx[0]) * (self.F_psi_cosphi_interpolator(xx2d, nu=[1,0])[0] * np.sin(xx[1]) - self.F_psi_sinphi_interpolator(xx2d, nu=[1,0])[0] * np.cos(xx[1])),
+                            1/(2*np.pi*xx[0]) * (self.F_psi_cosphi_interpolator(xx2d, nu=[1,1])[0] * np.cos(xx[1]) + self.F_psi_sinphi_interpolator(xx2d, nu=[1,1])[0] * np.sin(xx[1]))])
         
 
-        return self.B(xx2d), np.vstack([dR,dPhi,dZ]) 
+        return self.B(xx), np.vstack([dR,dPhi,dZ]) 
 
 
 #class NonAxisymmetricCylindricalGrid(CylindricalBfield):
@@ -245,4 +261,4 @@ class AxisymmetricGridPerturbation(CylindricalBfield):
 #            dZ=np.array([self.B_Z_interpolator(xx2d, nu=[1,0,0])[0],    self.B_Z_interpolator(xx2d, nu=[0,1,0])[0] ,  self.B_Z_interpolator(xx2d, nu=[0,0,1])[0]])
 #
 #
-#            return self.B(xx2d), np.vstack([dR,dPhi,dZ])
+#            return self.B(xx2d), np.vstack([dR,dPhi,d
