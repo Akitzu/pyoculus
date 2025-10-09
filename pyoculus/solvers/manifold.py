@@ -6,10 +6,12 @@ from scipy.optimize import root, minimize
 from typing import Iterator, Literal, Union, Iterable
 from numpy.typing import NDArray
 
+
 # from functools import total_ordering
 from matplotlib.patches import FancyArrowPatch
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.path import Path
 
 import logging
 
@@ -1764,51 +1766,6 @@ class Manifold(BaseSolver):
 
 
 
-class ResonnanceZone:
-
-    def __init__(self, manifold1: Manifold, manifold2: Manifold):
-        self.manifold1 = manifold1
-        self.manifold2 = manifold2
-        if manifold1._map != manifold2._map:
-            raise ValueError("Manifolds must be defined on the same map.")
-        self._map = manifold1._map
-        self.fixedpoint_1 = manifold1.fixedpoint_1
-        self.fixedpoint_2 = manifold1.fixedpoint_2
-        if manifold1.fixedpoint_1 != manifold2.fixedpoint_2:
-            raise ValueError("Fixed points must be the same and reversed.")
-        if manifold1.fixedpoint_2 != manifold2.fixedpoint_1:
-            raise ValueError("Fixed points must be the same and reversed.")
-        
-    def area(self): 
-        
-
-        if hasattr(self.manifold1, 'clinics'): 
-         self.manifold1.find_clinics(first_guess_eps_s=9e-6, first_guess_eps_u=8e-6)
-        if hasattr(self.manifold2, 'clinics'):
-         self.manifold2.find_clinics(first_guess_eps_s=9e-6, first_guess_eps_u=8e-6)
-
-        traj1=self.manifold1.clinics[0].trajectory
-        traj2=self.manifold2.clinics[0].trajectory
-
-        int1= np.sum(self.manifold1._compute_lagrangian_in_sections2(traj1))
-        int2= np.sum(self.manifold2._compute_lagrangian_in_sections2(traj2))
-
-        int3=len(traj1)*self._map.lagrangian(self.manifold1.rfp_s,1)
-        int4=len(traj2)*self._map.lagrangian(self.manifold2.rfp_s,1)
-
-        return int1+int2-int3-int4
-    
-    def plot(self, which="both", stepsize_limit=None, **kwargs):
-        """
-        Plot the stable and/or unstable manifolds.
-
-        """
-        fig, ax, kwargs = create_canvas(**kwargs)
-        
-        self.manifold1.plot(ax=ax, which=which, stepsize_limit=stepsize_limit, **kwargs)
-        self.manifold2.plot(ax=ax, which=which, stepsize_limit=stepsize_limit, **kwargs)
-
-        return fig, ax
 
 #        # used to return [dimension*len(x_many) , nintersect + 1]
 #        x_path = np.full((self._map.dimension * x_many.shape[0], nintersect + 1), np.nan)

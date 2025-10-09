@@ -137,11 +137,11 @@ class AxisymmetricCylindricalGridField(CylindricalBfield):
       
         dR=np.array([-1/xx[0]*self.B_R_derived(xx2d)-1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[1,1])[0],      0    ,  -1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[0,2])[0]])
         dPhi=np.array([self.B_phi_interpolator(xx2d, nu=[1,0])[0],  0 ,  self.B_phi_interpolator(xx2d, nu=[0,1])[0]])
-        dZ=np.array([-1/xx[0]*self.B_Z_derived(xx2d)+1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[0,2])[0]   ,      0 ,  -1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[1,1])[0]])    
+        dZ=np.array([-1/xx[0]*self.B_Z_derived(xx2d)+1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[2,0])[0]   ,      0 ,  1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[1,1])[0]])    
         if self.pertfield is None:
-            return self.B(xx), np.vstack([dR, dPhi, dZ])
+            return self.B(xx), (np.vstack([dR, dPhi, dZ])).T
         else:
-            return self.B(xx), np.vstack([dR, dPhi, dZ])+self.pertfield.dBdX(xx)[1]
+            return self.B(xx), (np.vstack([dR, dPhi, dZ])+self.pertfield.dBdX(xx)[1]).T
 
 
 
@@ -192,6 +192,7 @@ class AxisymmetricGridPerturbation(CylindricalBfield):
         return np.array([0 , 1/(2*np.pi*xx[0]) * (self.F_psi_cosphi_interpolator(xx2d)[0] * np.cos(xx[1]) + self.F_psi_sinphi_interpolator(xx2d)[0] * np.sin(xx[1])) ,0])
     
     def dBdX(self, xx, *args):
+
         """Gradient of the total field function at the point coords. Where (dBdX)^i_j = dB^i/dX^j with i the row index and j the column index of the matrix."""
 
 
