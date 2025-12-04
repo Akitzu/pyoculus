@@ -14,20 +14,20 @@ if TYPE_CHECKING:
 
 class SimsoptBfield(CylindricalBfield):
     """
-    
+
     """
-    
+
     def __init__(self, Nfp : int, mf : "MagneticField", interpolate: Union[bool, "InterpolatedField"] = False, **kwargs):
         """
-        Create a SimsoptBfield, Pyoculus's bridge to the simsopt MagneticField object. 
-        
-        Args: 
+        Create a SimsoptBfield, Pyoculus's bridge to the simsopt MagneticField object.
+
+        Args:
         Nfp (int): The number of field periods. Default is 1. This parameter defines the periodicity of the magnetic field (:math:`T = 2*\\pi/n_\\text{fp}`).
         mf (MagneticField): A simsopt MagneticField object.
         interpolate (bool or InterpolatedField): If True, the field will be interpolated. If an InterpolatedField object is passed, it will be used as the interpolating field.
-        **kwargs: Additional parameters to be passed to the InterpolatedField constructor if interpolate is True. This should contain a kwarg 'surf' which is the boundary of the interpolated region. 
+        **kwargs: Additional parameters to be passed to the InterpolatedField constructor if interpolate is True. This should contain a kwarg 'surf' which is the boundary of the interpolated region.
         """
-        
+
         super().__init__(Nfp)
 
         self._mf = mf
@@ -35,7 +35,7 @@ class SimsoptBfield(CylindricalBfield):
 
         if interpolate:
             self._interpolating = True
-            if type(interpolate)-__name__ == "InterpolatedField":
+            if type(interpolate).__name__ == "InterpolatedField":
                 self._mf_B = interpolate
             else:
                 from simsopt.geo import SurfaceClassifier
@@ -89,7 +89,7 @@ class SimsoptBfield(CylindricalBfield):
 
     def B(self, rphiz):
         """
-        
+
         """
         xyz = cct.xyz(*rphiz)
         xyz = np.reshape(xyz, (-1, 3))
@@ -101,7 +101,7 @@ class SimsoptBfield(CylindricalBfield):
 
     def dBdX(self, rphiz):
         """
-        
+
         """
         xyz = cct.xyz(*rphiz)
         xyz = np.reshape(xyz, (-1, 3))
@@ -109,12 +109,12 @@ class SimsoptBfield(CylindricalBfield):
 
         B_cart = self._mf.B()
         dBdX_cart = self._mf.dB_by_dX().reshape(3, 3)
-        
+
         return cct.vec_cart2cyl(B_cart, *rphiz), cct.mat_cart2cyl(dBdX_cart, *rphiz) + cct.dinvJ_matrix(B_cart, *rphiz)
 
     def A(self, rphiz):
         """
-        
+
         """
         xyz = cct.xyz(*rphiz)
         xyz = np.reshape(xyz, (-1, 3))
@@ -127,18 +127,18 @@ class SimsoptBfield(CylindricalBfield):
 
 #def surf_from_coils(coils, **kwargs):
 #    """
-#    not very robust way of trying to fit a surface that intersects the coils. 
+#    not very robust way of trying to fit a surface that intersects the coils.
 #    """
 #    logger.info(f"Using surf_from_coils with parameters: {kwargs}")
 #    logger.warning("Using surf_from_coild can result in weird surfaces. Use with caution.")
-#    
+#
 #    mpol = kwargs.get('mpol', 3)
 #    ntor = kwargs.get('ntor', 3)
 #    stellsym = kwargs.get('stellsym', False)
 #    nfp = kwargs.get('nfp', 1)
 #
 #    ncoils = kwargs.get('ncoils', None)
-#    
+#
 #    nphi, ntheta = len(coils), len(coils[0].curve.gamma())
 #    qpts_theta = np.linspace(0, 1, ntheta, endpoint=False)
 #    qpts_phi = np.linspace(0, 1, nphi, endpoint=False)
