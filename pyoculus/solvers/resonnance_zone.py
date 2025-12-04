@@ -55,10 +55,10 @@ class ResonnanceZone:
           whole_chain: if True, compute the area of the whole chain of islands, otherwise only one island.
         """
 
-        if hasattr(self.manifold1, 'clinics'): 
-         self.manifold1.find_clinics(first_guess_eps_s=9e-6, first_guess_eps_u=8e-6)
-        if hasattr(self.manifold2, 'clinics'):
-         self.manifold2.find_clinics(first_guess_eps_s=9e-6, first_guess_eps_u=8e-6)
+        if not hasattr(self.manifold1, 'clinics'): 
+         self.manifold1.find_clinics(first_guess_eps_s=9e-6, first_guess_eps_u=8e-6,n_points=1)
+        if not hasattr(self.manifold2, 'clinics'):
+         self.manifold2.find_clinics(first_guess_eps_s=9e-6, first_guess_eps_u=8e-6,n_points=1)
 
 
         traj1=self.manifold1.clinics[0].trajectory
@@ -125,31 +125,31 @@ class ResonnanceZone:
             idx = np.argmin(dist)
             return idx
 
-        ResoManifold1=self.manifold1
-        ResoManifold2=self.manifold2
+        #ResoManifold1=self.manifold1
+        #ResoManifold2=self.manifold2
 
-        if hasattr(ResoManifold1, 'clinics'): 
-            ResoManifold1.find_clinics(first_guess_eps_s=9e-6, first_guess_eps_u=8e-6)
+        if not hasattr(self.manifold1, 'clinics'): 
+            self.manifold1.find_clinics(first_guess_eps_s=9e-6, first_guess_eps_u=8e-6,n_points=1)
 
-        if hasattr(ResoManifold2, 'clinics'):
-            ResoManifold2.find_clinics(first_guess_eps_s=9e-6, first_guess_eps_u=8e-6)
+        if not hasattr(self.manifold2, 'clinics'):
+            self.manifold2.find_clinics(first_guess_eps_s=9e-6, first_guess_eps_u=8e-6,n_points=1)
 
-        if hasattr(ResoManifold1, '_stable_trajectory'): 
-            ResoManifold1.compute(
-            eps_s=9e-6, eps_u=8e-6, nint_s=8, nint_u=8, neps_s=80, neps_u=80)
-       
-        if hasattr(ResoManifold2, '_stable_trajectory'): 
-            ResoManifold2.compute(
+        if not hasattr(self.manifold1, '_stable_trajectory'):
+            self.manifold1.compute(
             eps_s=9e-6, eps_u=8e-6, nint_s=8, nint_u=8, neps_s=80, neps_u=80)
 
-        MF1s=ResoManifold1._stable_trajectory  # first stable segment 
-        MF1u=ResoManifold1._unstable_trajectory #first unstable segment
-        MF2s=ResoManifold2._stable_trajectory #second stable segment
-        MF2u=ResoManifold2._unstable_trajectory #second unstable segment
+        if not hasattr(self.manifold2, '_stable_trajectory'):
+            self.manifold2.compute(
+            eps_s=9e-6, eps_u=8e-6, nint_s=8, nint_u=8, neps_s=80, neps_u=80)
+
+        MF1s=self.manifold1._stable_trajectory  # first stable segment 
+        MF1u=self.manifold1._unstable_trajectory #first unstable segment
+        MF2s=self.manifold2._stable_trajectory #second stable segment
+        MF2u=self.manifold2._unstable_trajectory #second unstable segment
 
 
-        M2_0_idx=len(ResoManifold2.clinics[0].trajectory)//2 #middle point where the contour switch from stable to unstable 
-        M2_0 = ResoManifold2.clinics[0].trajectory[M2_0_idx]
+        M2_0_idx=len(self.manifold2.clinics[0].trajectory)//2 #middle point where the contour switch from stable to unstable 
+        M2_0 = self.manifold2.clinics[0].trajectory[M2_0_idx]
         idx_2s = IndexClosestPoint(MF2s, M2_0)
         idx_2u = IndexClosestPoint(MF2u, M2_0)
         MF2s= MF2s[:idx_2s]
@@ -157,8 +157,8 @@ class ResonnanceZone:
         MF2u= MF2u[::-1]  
         
 
-        M1_0_idx=len(ResoManifold1.clinics[0].trajectory)//2
-        M1_0 = ResoManifold1.clinics[0].trajectory[M1_0_idx]
+        M1_0_idx=len(self.manifold1.clinics[0].trajectory)//2
+        M1_0 = self.manifold1.clinics[0].trajectory[M1_0_idx]
         idx_1s = IndexClosestPoint(MF1s, M1_0)
         idx_1u = IndexClosestPoint(MF1u, M1_0)
         MF1u= MF1u[:idx_1u]  
@@ -166,10 +166,10 @@ class ResonnanceZone:
         MF1u= MF1u[::-1]  
 
         contour_points = np.vstack([
-         ResoManifold1.rfp_s,      
+         self.manifold1.rfp_s,      
          MF1s,              
          MF1u,      
-         ResoManifold2.rfp_s,
+         self.manifold2.rfp_s,
          MF2s,
          MF2u])      
       
@@ -195,8 +195,10 @@ class ResonnanceZone:
 
         inside = contour_path.contains_points(points_grid)
         inside_points = points_grid[inside]
+        inside_points = np.column_stack([inside_points[:, 0], np.zeros(inside_points.shape[0]), inside_points[:, 1]])
 
         # Compute mean B field inside contour
+
         B_inside = np.array([self.manifold1._map._mf.B(pt)[1]*pt[0] for pt in inside_points])
 
     

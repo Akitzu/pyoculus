@@ -7,6 +7,9 @@ from typing import Iterator, Literal, Union, Iterable
 from numpy.typing import NDArray
 
 
+import dill as pickle
+
+
 # from functools import total_ordering
 from matplotlib.patches import FancyArrowPatch
 import matplotlib.pyplot as plt
@@ -1271,6 +1274,8 @@ class Manifold(BaseSolver):
         """
         fig, ax, kwargs = create_canvas(**kwargs)
 
+        labels = kwargs.pop("labels", ["stable manifold", "unstable manifold"])
+
         colors = kwargs.pop("colors", ["xkcd:royal blue", "xkcd:magenta"])
         markersize = kwargs.pop("markersize", 2)
         fmt = kwargs.pop("fmt", "-o")
@@ -1286,7 +1291,8 @@ class Manifold(BaseSolver):
                     points[:,0][:final_index],
                     points[:,1][:final_index],
                     fmt,
-                    label=f"{dir} manifold",
+                    label=labels[i],
+                    #label=f"{dir} manifold",
                     color=colors[i],
                     markersize=markersize,
                     **kwargs,
@@ -1767,6 +1773,8 @@ class Manifold(BaseSolver):
 
 
 
+
+
 #        # used to return [dimension*len(x_many) , nintersect + 1]
 #        x_path = np.full((self._map.dimension * x_many.shape[0], nintersect + 1), np.nan)
 #        x_path[:, 0] = x_many.flatten()
@@ -1788,3 +1796,18 @@ class Manifold(BaseSolver):
 #
 #
 #
+
+
+### Sauvegarde et chargement
+
+    def save(self, path):
+        """Sauvegarde l’objet complet dans un fichier .pkl"""
+        with open(path, "wb") as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def load(cls, path):
+        """Recharge l’objet complet depuis un fichier .pkl"""
+        with open(path, "rb") as f:
+            return pickle.load(f)
+

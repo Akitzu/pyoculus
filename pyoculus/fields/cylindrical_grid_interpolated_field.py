@@ -61,6 +61,32 @@ class AxisymmetricCylindricalGridField(CylindricalBfield):
             return cls(R, Z, B_R, B_Z, B_phi, F_psi, pertfield=pertfield)
         else:
             return cls(R, Z, B_R, B_Z, B_phi, F_psi)
+
+
+##### With separatrix current
+
+    @classmethod
+    def from_matlab_file_with_added_B(cls, filename, B_R_s, B_Z_s, F_psi_s ,with_perturbation=False):
+        """
+        filename: string specifying the name of the .mat file containing the grid of points. 
+
+        for example, MEQ equilibrium solver calculates the magnetic data in Matlab, the user needs to save the data in a .mat file and provide the filename to this function.
+        """
+        import scipy.io 
+        data = scipy.io.loadmat(filename)
+        R = data['rr'][0,:]
+        Z = data['zz'][:,0]
+        B_R = data['Br'].T+B_R_s.T
+        B_Z = data['Bz'].T+B_Z_s.T
+        B_phi = data['Bphi'].T
+        F_psi = data['Fx'].T+F_psi_s.T
+        if with_perturbation:
+            F_psi_cosphi = data['Fx_cosphi'].T
+            F_psi_sinphi = data['Fx_sinphi'].T
+            pertfield = AxisymmetricGridPerturbation(R, Z, F_psi_cosphi, F_psi_sinphi)
+            return cls(R, Z, B_R, B_Z, B_phi, F_psi, pertfield=pertfield)
+        else:
+            return cls(R, Z, B_R, B_Z, B_phi, F_psi)    
     
     def set_perturbation_amplitude(self, amplitude):
         self.pertamp = amplitude
@@ -77,7 +103,7 @@ class AxisymmetricCylindricalGridField(CylindricalBfield):
         """
         xx: numpy array of shape (3,) specifying the coordinates at which the magnetic field is to be evaluated
         """
-        return self.B_axi(xx) + self.pertfun(xx)
+        return self.B_axi(xx) + self.pertfun(xx) 
 
     def B_interpolated(self, xx):
         """
@@ -136,12 +162,15 @@ class AxisymmetricCylindricalGridField(CylindricalBfield):
         xx2d = xx[::2]
       
         dR=np.array([-1/xx[0]*self.B_R_derived(xx2d)-1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[1,1])[0],      0    ,  -1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[0,2])[0]])
+
         dPhi=np.array([self.B_phi_interpolator(xx2d, nu=[1,0])[0],  0 ,  self.B_phi_interpolator(xx2d, nu=[0,1])[0]])
-        dZ=np.array([-1/xx[0]*self.B_Z_derived(xx2d)+1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[2,0])[0]   ,      0 ,  1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[1,1])[0]])    
+
+        dZ=np.array([-1/xx[0]*self.B_Z_derived(xx2d)+1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[2,0])[0]   ,      0 ,  1/(2*np.pi*xx[0]) * self.F_psi_interpolator(xx2d, nu=[1,1])[0]])  
+
         if self.pertfield is None:
-            return self.B(xx), (np.vstack([dR, dPhi, dZ])).T
+            return self.B(xx), (np.vstack([dR, dPhi, dZ]))
         else:
-            return self.B(xx), (np.vstack([dR, dPhi, dZ])+self.pertfield.dBdX(xx)[1]).T
+            return self.B(xx), (np.vstack([dR, dPhi, dZ])+self.pertfield.dBdX(xx)[1]*self.pertamp)
 
 
 
@@ -258,7 +287,9 @@ class AxisymmetricGridPerturbation(CylindricalBfield):
 #            xx: numpy array of shape (3,) specifying the coordinates at which the magnetic field gradient is to be evaluated
 #            """
 #            dR=np.array([self.B_R_interpolator(xx2d, nu=[1,0,0])[0],    self.B_R_interpolator(xx2d, nu=[0,1,0])[0] ,  self.B_R_interpolator(xx2d, nu=[0,0,1])[0]])
+
 #            dPhi=np.array([self.B_phi_interpolator(xx2d, nu=[1,0,0])[0],self.B_phi_interpolator(xx2d, nu=[0,1,0])[0] ,  self.B_phi_interpolator(xx2d, nu=[0,0,1])[0]])
+
 #            dZ=np.array([self.B_Z_interpolator(xx2d, nu=[1,0,0])[0],    self.B_Z_interpolator(xx2d, nu=[0,1,0])[0] ,  self.B_Z_interpolator(xx2d, nu=[0,0,1])[0]])
 #
 #
