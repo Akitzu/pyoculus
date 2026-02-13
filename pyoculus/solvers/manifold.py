@@ -1087,7 +1087,6 @@ class Manifold(BaseSolver):
         return np.abs(1 - np.dot(eps_dir_norm, eigenvector))
 
     ### Computation of the manifolds
-
     def start_config(self, epsilon, rfp, eigenvalue, eigenvector, neps, direction=1):
         """
         Compute a starting configuration for the manifold drawing. It takes a point in the linear regime
@@ -1581,6 +1580,8 @@ class Manifold(BaseSolver):
                 if self.clinics.size == clinicnum + 1:
                     logger.info(f"clinic recorded after {_ +1} attempts")
                     break
+                else: 
+                    raise ValueError(f"Failed to find new clinic after {_ +1} attempts.") #triggers exception below
             except Exception as e:
                 logger.warning(f"Failed to find other clinic: {e}")
                 newshift = np.random.random()

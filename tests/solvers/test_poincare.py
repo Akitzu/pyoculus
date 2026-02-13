@@ -14,10 +14,9 @@ class TestPoincarePlot(unittest.TestCase):
             self.Z = 0.
             self.sf = 1.2
             self.shear = 1.
-            self.tol = 1e-10
             self.ntraj = 10
             self.mf = AnalyticCylindricalBfield(R=self.R, Z=self.Z, sf=self.sf, shear=self.shear)
-            self.section = CylindricalBfieldSection(self.mf, R0=self.R, Z0=self.Z, tol=self.tol)
+            self.section = CylindricalBfieldSection(self.mf, R0=self.R, Z0=self.Z)
             self.rhos = np.linspace(1e-5, 1, self.ntraj)
             self.xs = np.stack([self.rhos+self.R, np.zeros(self.ntraj)], axis=1)
             self.poincare_plot = PoincarePlot(self.section, self.xs)

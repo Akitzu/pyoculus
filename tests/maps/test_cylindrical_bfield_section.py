@@ -16,7 +16,7 @@ class TestCylindricalBfieldSection(unittest.TestCase):
         self.shear = 1.
         self.tol = 1e-8
         self.mf = AnalyticCylindricalBfield(R=self.R, Z=self.Z, sf=self.sf, shear=self.shear)
-        self.cylindrical_bfield_section = CylindricalBfieldSection(self.mf, R0=self.R, Z0=self.Z, tol=self.tol)
+        self.cylindrical_bfield_section = CylindricalBfieldSection(self.mf, R0=self.R, Z0=self.Z)
 
     def test_initialization(self):
         """
@@ -92,11 +92,11 @@ class TestCylindricalBfieldSection(unittest.TestCase):
 
     def test_lagrangian_integration(self):
         """
-        replace the vector potential with the identity, and confirm that the integral around
+        replace the vector potential with unit norm in phi direction, and confirm that the integral around
         the axis is 2*pi*R0
         """
         y0 = [5.0, 0.0]
-        self.cylindrical_bfield_section._mf.A = lambda x: np.ones(3)
+        self.cylindrical_bfield_section._mf.A = lambda x: np.array([0, 1/x[0], 0]) # expects contravariant, phi changed
         result = self.cylindrical_bfield_section.lagrangian(y0, 1)  # reduces to \int dl over circle with radius R
         self.assertAlmostEqual(result, 2*np.pi*self.R, places=5)
 
