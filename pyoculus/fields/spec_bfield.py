@@ -23,7 +23,7 @@ class SpecBfield(ToroidalBfield):
         @param lvol which volume we are interested in, from 1 to spec_data.input.Mvol
         Only support SPEC version >=3.0
         """
-        super().__init__(1)
+        super().__init__(1)  # argument 1 sets Nfp which is overwritten when module is initialized. 
         self._init_fortran_module(spec_data, lvol)
         self.problem_size = 2
         if self.Igeometry == 1:

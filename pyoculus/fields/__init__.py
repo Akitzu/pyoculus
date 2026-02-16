@@ -12,6 +12,7 @@ from .toroidal_bfield import ToroidalBfield
 from .two_waves import TwoWaves
 # from .qfm_bfield import QFMBfield
 from .spec_bfield import SpecBfield
+from .spectre_bfield import SpectreBfield
 
 # Cylindrical magnetic fields
 from .cylindrical_bfield import CylindricalBfield
