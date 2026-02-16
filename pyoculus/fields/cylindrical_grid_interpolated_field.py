@@ -143,8 +143,10 @@ class AxisymmetricCylindricalGridField(CylindricalBfield):
         """
         xx: numpy array of shape (3,) specifying the coordinates at which the vector potential is to be evaluated
         """
-        
-        return self.A_unperturbed(xx) + self.pertfield.A(xx) * self.pertamp
+        if self.pertfield is None:
+            return self.A_unperturbed(xx)
+        else:
+            return self.A_unperturbed(xx) + self.pertfield.A(xx) * self.pertamp
 
 #    
 #    def B_many(self, xx):

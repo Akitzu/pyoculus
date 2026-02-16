@@ -1541,8 +1541,8 @@ class Manifold(BaseSolver):
         markers = kwargs.get(
             "markers", ["o", "s", "*", "P", "p", "X", "D", "d", "^", "v", "<", ">"]
         )
-        color = kwargs.get("color", "royalblue")
-        edgecolor = kwargs.get("edgecolor", "cyan")
+        color = kwargs.pop("color", "royalblue")
+        edgecolor = kwargs.pop("edgecolor", "cyan")
 
         fig, ax, kwargs = create_canvas(**kwargs)
 
@@ -1804,6 +1804,54 @@ class Manifold(BaseSolver):
         """Sauvegarde l’objet complet dans un fichier .pkl"""
         with open(path, "wb") as f:
             pickle.dump(self, f)
+
+
+    
+    def save_mf_quasr(self, path):
+       payload = {
+         'stable': np.asarray(getattr(self, 'stable', [])),
+         'unstable': np.asarray(getattr(self, 'unstable', [])),
+         'clinics': [np.asarray(getattr(c, 'trajectory', [])) for c in getattr(self, 'clinics', [])],
+         'fp0_coords': np.asarray(getattr(self, 'fp0', getattr(self, 'fixed_point0', None)) and getattr(self.fp0, 'coords', None) or []),
+         'fp1_coords': np.asarray(getattr(self, 'fp1', getattr(self, 'fixed_point1', None)) and getattr(self.fp1, 'coords', None) or []),
+         'meta': {k: getattr(self, k) for k in ('nint_s', 'nint_u', 'eps_s', 'eps_u') if hasattr(self, k)}
+       }
+       with open(path, 'wb') as f:
+         pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)  
+
+
+    def load_mf_quasr(self, path):
+        """
+        Recharge le payload sauvegardé par save_mf_quasr dans l'instance courante.
+        Attention : ne recrée pas le map ni les FixedPoint — il faut une instance Manifold valide.
+        """
+        with open(path, "rb") as f:
+            payload = pickle.load(f)
+
+        # Trajectoires principales
+        stable = payload.get("stable", None)
+        unstable = payload.get("unstable", None)
+        self._stable_trajectory = np.asarray(stable) if stable is not None and len(stable) else None
+        self._unstable_trajectory = np.asarray(unstable) if unstable is not None and len(unstable) else None
+
+        # Clinics : liste de trajectoires (arrays)
+        clinics = payload.get("clinics", [])
+        # on stocke les trajectoires brutes ; reconstruction d'objets Clinic nécessiterait map/FixedPoint complets
+        self._clinics_payload = [np.asarray(c) for c in clinics]
+
+        # Points fixes (coordonnées) si présents
+        fp0 = payload.get("fp0_coords", None)
+        fp1 = payload.get("fp1_coords", None)
+        self.fp0_coords = np.asarray(fp0) if fp0 is not None and len(fp0) else None
+        self.fp1_coords = np.asarray(fp1) if fp1 is not None and len(fp1) else None
+
+        # Méta
+        self._mf_quasr_meta = payload.get("meta", {})
+
+        # Invalider caches dépendants
+        self._areas = None
+
+        return payload
 
     @classmethod
     def load(cls, path):
