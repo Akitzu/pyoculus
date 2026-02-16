@@ -1,4 +1,3 @@
-## file spectre_field.py
 ## file spectre_bfield.py
 #  Set up the SPECTRE magnetic field, which directly interfaces to ah SPECTRE object
 #  in python memory
@@ -8,7 +7,7 @@
 
 from .toroidal_bfield import ToroidalBfield
 import numpy as np
-from spectre4py import SPECTRE, SPECTRE_pyoculus_helper
+from spectre import SPECTRE, SPECTRE_pyoculus_helper
 
 
 class SpectreBfield(ToroidalBfield):
@@ -16,7 +15,6 @@ class SpectreBfield(ToroidalBfield):
     SPECTRE magnetic field class, which directly interfaces to a SPECTRE object in python memory
 
     This class only deals with a single SPECTRE volume at a time, in which the field is given in s, theta, zeta coordinates.
-    The rdial coordinate s goes from -1 to 1. 
     The radial coordinate s goes from -1 to 1. 
     Theta and zeta coordinates from 0 to 2 pi.
 
@@ -31,7 +29,7 @@ class SpectreBfield(ToroidalBfield):
 
         Parameters
         ----------
-        SPECTRE_helper : SPECTRE_helper
+        SPECTRE_helper : SPECTRE_pyoculus_helper
             The SPECTRE helper object, which provides the functions to evaluate the magnetic field at given coordinates.
         lvol : int
             The index of the SPECTRE volume to use, starting from 0.
@@ -60,7 +58,7 @@ class SpectreBfield(ToroidalBfield):
         SpectreBfield
             The initialized SPECTRE magnetic field object.
         """
-        helper = SPECTRE_helper(h5_file)
+        helper = SPECTRE_pyoculus_helper(h5_file)
         return cls(helper, lvol)
 
     def B(self, coords, *args):

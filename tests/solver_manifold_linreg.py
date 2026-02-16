@@ -1,4 +1,3 @@
-import unittest
 from pyoculus.integrators import ScipyODEIntegrator
 import numpy as np
 
@@ -27,6 +26,3 @@ import numpy as np
 #     endpoint2 = integrator.integrate(2*np.pi)[0:2]
 
 #     return np.linalg.norm(((M @ v) - (endpoint2 - endpoint1))/np.linalg.norm(endpoint2 - endpoint1))
-
-# if __name__ == "__main__":
-#     pass

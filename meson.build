@@ -74,6 +74,7 @@ py3.install_sources(
   'pyoculus/fields/toroidal_bfield.py',
   'pyoculus/fields/two_waves.py',
   'pyoculus/fields/cylindrical_grid_interpolated_field.py',
+  'pyoculus/fields/spectre_bfield.py',
   'pyoculus/fields/__init__.py',
   subdir: 'pyoculus/fields'
 )
