@@ -15,10 +15,7 @@ class ToroidalBfieldSection(IntegratedMap):
         else:
             self._mf = toroidalbfield
 
-        if toroidalbfield.ivol == 0:
-            domain = [(0, 1), (0, 2*np.pi)]
-        else: 
-            domain = [(-1, 1), (0, 2*np.pi)]
+        domain = [(-1, 1), (0, 2*np.pi)]
 
         periodicity = [0, 1]
 
