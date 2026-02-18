@@ -339,8 +339,14 @@ class PoincarePlot(BaseSolver):
 
         # plotting the points
         for x_mapped in self._hits:
-            ax.scatter(x_mapped[:, 0], x_mapped[:, 1], **kwargs)
-
+            if isinstance(self._map, maps.CylindricalBfieldSection):
+                ax.scatter(x_mapped[:, 0], x_mapped[:, 1], **kwargs)
+            elif isinstance(self._map, maps.ToroidalBfieldSection):
+                coords = kwargs.pop("coords", 'thetazeta')
+                if coords == 'thetazeta':
+                    ax.scatter(x_mapped[:, 1], x_mapped[:, 0], **kwargs)
+                else:
+                    raise NotImplementedError("rz coordinates plotting is not implemented yet for ToroidalBfieldSection")
 
         if xlim is not None:
             ax.set_xlim(xlim)

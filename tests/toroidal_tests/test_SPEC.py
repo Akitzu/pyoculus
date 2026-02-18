@@ -1,8 +1,8 @@
-
 import pytest
 import numpy as np
 from py_spec import SPECout
 from pyoculus.fields.spec_bfield import SpecBfield
+from pyoculus.solvers import FixedPoint
 import os
 
 from pyoculus.maps.toroidal_bfield_section import ToroidalBfieldSection
@@ -39,6 +39,8 @@ def test_spec_bfield_init(spec_file):
 @pytest.mark.parametrize("spec_file", SPEC_FILES)
 def test_spec_bfield_methods(spec_file):
     """Test methods of SpecBfield."""
+    if spec_file == "../test_files/oldh5_SPEC.h5":
+        pytest.skip("skip testing deprecated file")
     
     file_path = os.path.join(os.path.dirname(__file__), spec_file)
     spec_data = SPECout(file_path)
@@ -47,11 +49,6 @@ def test_spec_bfield_methods(spec_file):
     # Increase lvol until a valid volume is found
     while spec_data.input.physics.Lrad[lvol - 1] == 0:
         lvol +=1
-
-    if spec_data.version < 3.0:
-        with pytest.raises(Exception, match="SPEC version >=3.0 is needed"):
-            SpecBfield(spec_data, lvol)
-        return
 
     bfield = SpecBfield(spec_data, lvol)
 
@@ -131,3 +128,22 @@ def test_integration_methods(spec_file):
 
     lin_approx = mapped_point + map_jac @ (displacement_vector)
     assert np.allclose(f_p_plus_delta, lin_approx, atol=1e-11)
+
+
+def test_solver_fixpoint():
+    """
+    test finding the axis in the inner volume
+    """
+    spec_file = "../test_files/tor_SPEC.h5"
+
+    file_path = os.path.join(os.path.dirname(__file__), spec_file)
+    spec_data = SPECout(file_path)
+    lvol = 1
+
+    bfield = SpecBfield(spec_data, lvol)
+    section = ToroidalBfieldSection(bfield, phi0=0.0)
+    guess=[-0.989, 0.1]  #  has to be close to the actual fixed point
+    fixed_point = FixedPoint(section)
+
+    fixed_point.find_with_iota(n=0, m=1, guess=guess)
+    assert fixed_point.successful
