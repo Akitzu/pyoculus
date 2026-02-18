@@ -86,7 +86,7 @@ class FixedPoint(BaseSolver):
 
     ## Findings fixed points methods
 
-    def find(self, t : Union[float,  int], guess : ArrayLike = None, nrestart : int = 0, method : str = "newton", **kwargs):
+    def find(self, t : Union[float,  int], guess : ArrayLike = None, nrestart : int = 0, method : str = "scipy.root", **kwargs):
         """
         Tries to find a fixed point of the map applied :math:`t` times.
 
@@ -179,7 +179,7 @@ class FixedPoint(BaseSolver):
 
         return rdata
 
-    def find_with_iota(self, n : int, m : int, guess : ArrayLike, x_axis : ArrayLike = None, nrestart : int = 0, method : str = "newton", **kwargs):
+    def find_with_iota(self, n : int, m : int, guess : ArrayLike, x_axis : ArrayLike = None, nrestart : int = 0, method : str = "scipy.root", **kwargs):
         """
         Tries to find the fixed point of a map with winding number :math:`\\iota/2\\pi = q^{-1} = n/m` around x_axis.s
 
@@ -203,7 +203,7 @@ class FixedPoint(BaseSolver):
         # Setup the x_axis if not provided
         if x_axis is None:
             if isinstance(self._map, maps.ToroidalBfieldSection):
-                x_axis = np.array([0., 0.])
+                x_axis = np.array([-1., 0.])
             elif isinstance(self._map, maps.CylindricalBfieldSection):
                 x_axis = np.array([self._map.R0, self._map.Z0])
             else:
@@ -211,8 +211,6 @@ class FixedPoint(BaseSolver):
                 x_axis = np.zeros(self._map.dimension)
         elif len(x_axis) != self._map.dimension:
             raise ValueError("The x_axis should have the same dimension as the map domain.")
-        elif not self._map.in_domain(x_axis):
-            raise ValueError("The x_axis is not in the domain of the map.")
 
         # Setup of the poloidal m and toroidal mode numbers
         if not isinstance(n, int) or not isinstance(m, int):
@@ -241,7 +239,9 @@ class FixedPoint(BaseSolver):
         if method == "newton":
             method_fun = self._newton_method_winding
         elif method == "1D":
-            method_fun = self._newton_method_1D
+            method_fun = self._scipy_winding_1D
+        elif method == "scipy.root":
+            method_fun = self._scipy_winding
         else:
             raise ValueError(f"Method {method} is not implemented.")
         self._method = method
@@ -429,7 +429,9 @@ class FixedPoint(BaseSolver):
 
         def fun(x):
             logger.info(f"Newton - xx : {x}")
-            return self._map.f(self.t/2, x) - self._map.f(-self.t/2, x)
+            diff = self._map.f(self.t/2, x) - self._map.f(-self.t/2, x)
+            logger.info(f"Newton - diff : {diff}")
+            return diff
         
         self._scipy_root_res = root(fun, guess, method=scipy_method, **kwargs)
 
@@ -602,60 +604,69 @@ class FixedPoint(BaseSolver):
             return x
         else:
             return None
-
-    def _newton_method_1D(self, guess, x_axis=None, niter=100, tol=1e-10):
-        """
-        This will be rapidly depraciated.
-        """
-        if not isinstance(self._map, maps.ToroidalBfieldSection):
-            raise ValueError("This method is only implemented for ToroidalBfieldSection")
+    
         
-        if not (np.isclose(guess[1], 0., atol=1e-5) or np.isclose(guess[1], np.pi) or np.isclose(guess[1], 2*np.pi)):
-            print(guess)
-            raise ValueError(f"got{guess}; 1d finding only works on the Z=0 line, ")
+    def _scipy_winding(self, guess, xaxis=None, **kwargs):
+        """
+        Use the scipy root method to find the fixed point using the change in total
+        winding, based on a toroidal coordinate system located on the
+        axis. 
+        Guess should be provided in the coordinates natural to the map, 
+        and will be converted to toroidal internally.
+        """
+        scipy_method = kwargs.pop("scipy_method", "hybr")
+        target_dtheta = self._n * self._map.dzeta
 
-        x = np.array([guess[0], 0], dtype=np.float64)
+        def fun(x):
+            logger.info(f"Newton - xx : {x}")
+            x_winding = self._map.winding(self.t, x, xaxis)
+            logger.info(f"Newton - x_winding : {x_winding}")
 
-        self.history.append(x.copy())
-        succeeded = False
+            if isinstance(self._map, maps.ToroidalBfieldSection):
+                rhotheta = x
+            elif isinstance(self._map, maps.CylindricalBfieldSection):
+                rhotheta = self._map.to_rhotheta(x)
 
-        for i in range(niter):
-            logger.info(f"Newton {i} - x : {x}")
+            delta_x = np.array([x_winding[0] - rhotheta[0], x_winding[-1] - target_dtheta])
+            logger.info(f"Newton - delta_x_rhodtheta : {delta_x}")
+            return delta_x
+        
+        self._scipy_root_res = root(fun, guess, method=scipy_method, **kwargs)
 
-            dW = self._map.dwinding(self.t, x)
-            x_winding = self._map.winding(self.t, x)
+        return np.copy(self._scipy_root_res.x)
 
-            logger.info(
-                f"Newton {i} - x_winding : {x_winding}"
-            )
+    def _scipy_winding_1D(self, guess, xaxis=None, **kwargs):
+        """
+        Use the scipy root method to find the fixed point using the change in total
+        winding, based on a toroidal coordinate system located on the
+        axis. 
+        Guess should be provided in the coordinates natural to the map, 
+        and will be converted to toroidal internally.
+        """
+        scipy_method = kwargs.pop("scipy_method", "hybr")
+        target_dtheta = self._n * self._map.dzeta
 
-            # Stop if the resolution is good enough
-            delta_x = x_winding - x - np.array([0., self._n*self._map.dzeta])
-            if abs(delta_x[-1]) < tol:
-                succeeded = True
-                break
+        if guess[-1] != 0.:
+            raise ValueError("1d finding only works on the Z=0 or theta=0 line")
 
-            # Newton's step
-            step = np.array([- delta_x[-1] / dW[1,0], 0.]) 
-            x_new = x + step
+        def fun(x_1d):
+            xx = np.array([x_1d, 0.])
+            logger.info(f"Newton - xx : {xx}")
+            x_winding = self._map.winding(self.t, xx, xaxis)
+            logger.info(f"Newton - x_winding : {x_winding}")
 
-            # Update the variables
-            logger.info(f"Newton {i} - step: {x_new-x}")
-            x = x_new
-            logger.info(f"Newton {i} - x_new: {x_new}")
+            if isinstance(self._map, maps.ToroidalBfieldSection):
+                s_theta = xx
+            elif isinstance(self._map, maps.CylindricalBfieldSection):
+                s_theta = self._map.to_rhotheta(xx)
 
-            if not self._map.in_domain(x):
-                logger.info(f"Newton {i} - out of domain")
-                return None
+            delta_x = np.array([x_winding[0] - s_theta[0], x_winding[-1] - target_dtheta])
+            logger.info(f"Newton - delta_x_rhodtheta : {delta_x}")
+            return delta_x
+        
+        self._scipy_root_res = root(fun, guess, method=scipy_method, **kwargs)
 
-            self.history.append(x.copy())
-
-        if succeeded:
-            return x
-        else:
-            return None
-
-    # Plotting methods
+        return np.copy(np.array([self._scipy_root_res.x[0], 0.]))
 
     def plot(
         self, plot_all = True, **kwargs
@@ -688,10 +699,3 @@ class FixedPoint(BaseSolver):
             ax.scatter(self.RZcoords[0, 0], self.RZcoords[0, 1], **kwargs)
 
         return fig, ax
-
-
-    def plot_history(self, **kwargs):
-        """
-        Plot the history of the fixed point search.
-        """
-        pass   
