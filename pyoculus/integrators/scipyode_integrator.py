@@ -54,7 +54,7 @@ class ScipyODEIntegrator(BaseIntegrator):
         self.rtol = params["rtol"]
 
         if "nsteps" not in params.keys():
-            params["nsteps"] = 10000
+            params["nsteps"] = 20000
 
         if "args" not in params.keys():
             params["args"] = ()
