@@ -43,10 +43,22 @@ class SpecBfield(ToroidalBfield):
 
         ## The output of B contains the jacobian factor
         self.has_jacobian = True
+    
+    @classmethod
+    def from_h5_file(cls, h5_file, lvol):
+        """! Initialize the SPEC magnetic field from a SPEC h5 file
+        @param h5_file the path to the SPEC h5 file
+        @param lvol which volume we are interested in, from 1 to spec_data.input.Mvol
+        Only support SPEC version >=3.0
+        """
+        from py_spec import SPECout
+        spec_data = SPECout(h5_file)
+        return cls(spec_data, lvol)
+
 
     def B(self, coords, *args):
         """! Returns magnetic fields
-        @param coordinates \f$(s,\theta,\zeta)\f$
+        @param coordinates \\f$(s,\\theta,\\zeta)\\f$
         @param *args extra parameters
         @returns the contravariant magnetic fields
         """
@@ -55,7 +67,7 @@ class SpecBfield(ToroidalBfield):
 
     def dBdX(self, coords, *args):
         """! Returns magnetic fields
-        @param coordinates \f$(s,\theta,\zeta)\f$
+        @param coordinates \\f$(s,\\theta,\\zeta)\\f$
         @param *args extra parameters
         @returns B, dBdX, the contravariant magnetic fields, the derivatives of them
         """
@@ -128,7 +140,7 @@ class SpecBfield(ToroidalBfield):
     
     def A(self, coords, *args):
         """! Returns the vector potential
-        @param coordinates \f$(s,\theta,\zeta)\f$
+        @param coordinates \\f$(s,\\theta,\\zeta)\\f$
         @param *args extra parameters
         @returns the contravariant vector potential
         """
