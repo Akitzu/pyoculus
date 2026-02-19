@@ -93,11 +93,11 @@ class TestCylindricalBfieldSection:
 
     def test_lagrangian_integration(self):
         """
-        replace the vector potential with unit norm in phi direction, and confirm that the integral around
+        replace the vector potential with dl/||dl||_2 and confirm that the integral around
         the axis is 2*pi*R0
         """
         y0 = [5.0, 0.0]
-        self.cylindrical_bfield_section._mf.A = lambda x: np.array([0, 1/x[0], 0]) # expects contravariant, phi changed
+        self.cylindrical_bfield_section._mf.A = lambda x: np.array([0, 1 / x[0], 0]) # Set A to dl/||dl||_2 
         result = self.cylindrical_bfield_section.lagrangian(y0, 1)  # reduces to \int dl over circle with radius R
         assert np.isclose(result, 2*np.pi*self.R, atol=1e-5)
 

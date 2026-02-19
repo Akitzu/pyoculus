@@ -600,7 +600,7 @@ class ClinicSet:
                     raise ValueError("in recalculating shifted clinic it escaped the fundamental domain.")
                 self._clinics_list.append(clinic)
                 self._orderize()
-                logger.warning(f"Homo/heteroclinic recorded and ordered, total clinics = {self.size}")
+                logger.warning("Homo/heteroclinic recorded and ordered.")
                 return True
             else:
                 logger.warning(f"Homo/heteroclinic already recorded, total clinics = {self.size}. skipping...")

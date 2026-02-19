@@ -132,3 +132,24 @@ and we see that it implies here |_| :
     \det(\dpmap) = \beta_{R\,Z}(x)/\beta_{R\,Z}(\pmap(x)) = B^\phi(x)/B^\phi(\pmap(x))
 
 and we got the same formula back as a direct calculation.This shows the power of differential forms. This can be generalized to any number of iteration of the map.
+
+Integration of a vector field along a field line
+------------------------------------------------
+
+The integral of a vector field, say $\textbf{A}$, along a curve is defined by~:
+
+.. math::
+
+    \int_\gamma g(\textbf{A},\textbf{dl}) = \int_\gamma g(\textbf{A}(\gamma(s)),\dot{\gamma}(s))\,ds.
+
+To get the integral along a field line curve $\dot{\gamma}$ should be replaced by the field line curve tangent vector, the same as the one optain above~:
+
+.. math::
+
+    \int_\gamma g(\textbf{A},\textbf{dl}) = \int_0^\phi (A^r\dot{\gamma}^r + r^2A^\phi\dot{\gamma}^\phi + A^z\dot{\gamma}^z)\,ds.
+
+The vector field can be the vector potential. Or, to get the arc length of the field line curve for instance, one must choose $A = \dot{\gamma}/\Vert\dot{\gamma}\Vert$, then~:
+
+.. math::
+
+    \int_\gamma g(\textbf{A},\textbf{dl}) = \int_\gamma g(\frac{\dot{\gamma}}{\Vert\dot{\gamma}\Vert},\dot{\gamma})\,ds = \int_\gamma \Vert\dot{\gamma}\Vert\,ds = \int_\gamma \sqrt{\pm g_{\mu\nu}\dot{\gamma}^\mu\dot{\gamma}^\nu}\,ds.
