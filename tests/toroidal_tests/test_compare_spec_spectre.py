@@ -1,9 +1,14 @@
-from pyoculus.fields import SpecBfield, SpectreBfield
-from py_spec import SPECout
-from pyoculus.maps import ToroidalBfieldSection
-from pyoculus.solvers import PoincarePlot
 import numpy as np
 import pytest
+
+py_spec = pytest.importorskip("py_spec")
+SPECout = py_spec.SPECout
+
+spectre = pytest.importorskip("spectre")
+
+from pyoculus.fields import SpecBfield, SpectreBfield
+from pyoculus.maps import ToroidalBfieldSection
+from pyoculus.solvers import PoincarePlot
 
 def test_compare_pplot_trajectories_inner_volume():
     """

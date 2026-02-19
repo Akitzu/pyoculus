@@ -6,7 +6,9 @@ import os
 
 from pyoculus.maps.toroidal_bfield_section import ToroidalBfieldSection
 from pyoculus.solvers import FixedPoint
-from spectre import SPECTRE, SPECTRE_pyoculus_helper
+spectre = pytest.importorskip("spectre")
+SPECTRE = spectre.SPECTRE
+SPECTRE_pyoculus_helper = spectre.SPECTRE_pyoculus_helper
 import logging
 logging.basicConfig(level=logging.DEBUG)
 

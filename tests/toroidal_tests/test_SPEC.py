@@ -1,6 +1,8 @@
 import pytest
 import numpy as np
-from py_spec import SPECout
+
+py_spec = pytest.importorskip("py_spec")
+SPECout = py_spec.SPECout
 from pyoculus.fields.spec_bfield import SpecBfield
 from pyoculus.solvers import FixedPoint
 import os
