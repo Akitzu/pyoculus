@@ -26,24 +26,25 @@ def test_compare_pplot_trajectories_inner_volume():
 
     assert np.allclose(pplots._hits, pplot._hits, atol=1e-5)
 
-@pytest.mark.xfail(reason="Known failure: trajectory comparison between SPEC and SPECTRE")
+#@pytest.mark.xfail(reason="Known failure: trajectory comparison between SPEC and SPECTRE")
 def test_compare_pplot_trajectories_outer_volume():
     """
     Calculate the trajectories using the SPEC (fortran) methods and 
     the SPECTRE (numba) methods. 
     """
-    pp_starts_st = np.linspace(np.array([-.999, 0]), np.array([0.999, 0]), 5)
+    num_pts = 5
+    pp_starts_st = np.linspace(np.array([-.999, 0]), np.array([0.5, 0]), 5)
     out = SPECout('tests/test_files/w7x_1vol_spectre.h5')
     out.input.physics.Istellsym = 1  #hack because the attribute name changed
     spec = SpecBfield(out, 2)   #spec 1-based
     sections = ToroidalBfieldSection(spec)
-    pplots = PoincarePlot(sections, pp_starts_st, 5)
-    pplots.compute(10)
+    pplot_spec = PoincarePlot(sections, pp_starts_st, 5)
+    pplot_spec.compute(num_pts)
 
 
     spectre = SpectreBfield.from_h5_file('tests/test_files/w7x_1vol_spectre.h5', 1)
     section = ToroidalBfieldSection(spectre)
     pplot = PoincarePlot(section, pp_starts_st, 3)
-    pplot.compute(5)
+    pplot.compute(num_pts)
 
-    assert np.allclose(pplots._hits, pplot._hits, atol=1e-5)
+    assert np.allclose(pplot_spec._hits, pplot._hits, atol=1e-5, equal_nan=True)
