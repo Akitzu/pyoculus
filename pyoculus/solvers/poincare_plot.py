@@ -353,6 +353,10 @@ class PoincarePlot(BaseSolver):
             plot_array = self.hits_polar
             for traj in plot_array:
                 ax.scatter(traj[:, 0], traj[:, 1], lw=lw, s=s, **kwargs)
+        elif plottype is None:
+            plot_array = self._hits
+            for traj in plot_array:
+                ax.scatter(traj[:, 0], traj[:, 1], lw=lw, s=s, **kwargs)
 
         if xlim is not None:
             ax.set_xlim(xlim)

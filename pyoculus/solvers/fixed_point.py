@@ -684,7 +684,12 @@ class FixedPoint(BaseSolver):
         self, plottype='RZ', plot_all = True, **kwargs
     ):
         """
-        Plot the fixed point with caracteristics of 
+        Plot the fixed point. 
+        Args: 
+            plottype: the type of plot to make, either 'RZ' or 'polar' or None. if None, the natural coordinats of the map will be plotted. 
+            plot_all: if True, all the iterates of the fixed point will be plotted, otherwise only the fixed point itself will be plotted.
+            **kwargs: additional arguments for the scatter plot, such as color, size, etc.
+
         """
 
         if not self.successful:
@@ -709,6 +714,8 @@ class FixedPoint(BaseSolver):
             plotpoints = self.RZcoords
         elif plottype == 'polar':
             plotpoints = self.polarcoords
+        elif plottype is None:
+            plotpoints = self.coords
        
         if plot_all:
             ax.scatter(plotpoints[:, 0], plotpoints[:, 1], **kwargs)
