@@ -305,6 +305,7 @@ class PoincarePlot(BaseSolver):
 
         Args:
             plottype (str): The type of plot to generate. Can be 'RZ' for R-Z coordinates or 'polar' (including pyoculus s-theta coordinates)
+                            or None to directly plot in the coordinates of the map. 
             xlabel (str): The label of the x-axis.
             ylabel (str): The label of the y-axis.
             xlim (tuple): The range of the x-axis.

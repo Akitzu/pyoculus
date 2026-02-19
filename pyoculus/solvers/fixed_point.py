@@ -689,7 +689,6 @@ class FixedPoint(BaseSolver):
             plottype: the type of plot to make, either 'RZ' or 'polar' or None. if None, the natural coordinats of the map will be plotted. 
             plot_all: if True, all the iterates of the fixed point will be plotted, otherwise only the fixed point itself will be plotted.
             **kwargs: additional arguments for the scatter plot, such as color, size, etc.
-
         """
 
         if not self.successful:
