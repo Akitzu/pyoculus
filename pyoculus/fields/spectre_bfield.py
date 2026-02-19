@@ -59,7 +59,7 @@ class SpectreBfield(ToroidalBfield):
             The initialized SPECTRE magnetic field object.
         """
         from spectre.postprocess.main import SPECTREout
-        helper = SPECTRE_pyoculus_helper(SPECTREout(h5_file))
+        helper = SPECTRE_pyoculus_helper(SPECTREout(h5_file), lvol)
         return cls(helper, lvol)
 
     def B(self, coords):

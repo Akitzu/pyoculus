@@ -347,11 +347,23 @@ class FixedPoint(BaseSolver):
         if not self.successful:
             raise ValueError("Fixed point not found.")
         if isinstance(self._map, maps.ToroidalBfieldSection):
-            if type(self._map._mf).__name__ == "SpecBfield":
-                converted_coords = [self._map._mf.convert_coords(np.append(coord, self._map.phi0)) for coord in self.coords]
-                return np.array(converted_coords)[:, ::2]
-            else:
-                raise ValueError("RZcoords only implemented for SpecBfield")
+            converted_coords = [self._map._mf.convert_coords(np.append(coord, self._map.phi0)) for coord in self.coords]
+            return np.array(converted_coords)[:, ::2]
+        else: 
+            return self.coords
+        
+    
+    @property
+    def polarcoords(self):
+        """
+        Return the polar coordinates of the fixed point, applying a transform if the 
+        field is a ToroidalBfield (rho theta)
+        """
+        if not self.successful:
+            raise ValueError("Fixed point not found.")
+        if isinstance(self._map, maps.CylindricalBfieldSection):
+            converted_coords = [self._map.to_rhotheta(np.append(coord, self._map.phi0)) for coord in self.coords]
+            return np.array(converted_coords)[:, ::2]
         else: 
             return self.coords
 
@@ -669,7 +681,7 @@ class FixedPoint(BaseSolver):
         return np.copy(np.array([self._scipy_root_res.x[0], 0.]))
 
     def plot(
-        self, plot_all = True, **kwargs
+        self, plottype='RZ', plot_all = True, **kwargs
     ):
         """
         Plot the fixed point with caracteristics of 
@@ -693,9 +705,14 @@ class FixedPoint(BaseSolver):
                 # Elliptic fixed point
                 kwargs["marker"] = "o"
         
+        if plottype == 'RZ':
+            plotpoints = self.RZcoords
+        elif plottype == 'polar':
+            plotpoints = self.polarcoords
+       
         if plot_all:
-            ax.scatter(self.RZcoords[:, 0], self.RZcoords[:, 1], **kwargs)
+            ax.scatter(plotpoints[:, 0], plotpoints[:, 1], **kwargs)
         else:
-            ax.scatter(self.RZcoords[0, 0], self.RZcoords[0, 1], **kwargs)
+            ax.scatter(plotpoints[0, 0], plotpoints[0, 1], **kwargs)
 
         return fig, ax

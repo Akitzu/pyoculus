@@ -299,11 +299,12 @@ class PoincarePlot(BaseSolver):
 
     ## Plotting methods
 
-    def plot(self, xlabel=None, ylabel=None, xlim=None, ylim=None, **kwargs):
+    def plot(self, plottype='RZ', xlabel=None, ylabel=None, xlim=None, ylim=None, **kwargs):
         """
         Plot the Poincare plot.
 
         Args:
+            plottype (str): The type of plot to generate. Can be 'RZ' for R-Z coordinates or 'polar' (including pyoculus s-theta coordinates)
             xlabel (str): The label of the x-axis.
             ylabel (str): The label of the y-axis.
             xlim (tuple): The range of the x-axis.
@@ -337,16 +338,21 @@ class PoincarePlot(BaseSolver):
         if kwargs.get("color") is None:
             kwargs.update({"color": "black"})
 
+        # set defaults for better pplots
+        # line width 0 allows for smallest points.
+        lw = kwargs.pop("lw", 0)
+        s = kwargs.pop("s", 3)
+
         # plotting the points
-        for x_mapped in self._hits:
-            if isinstance(self._map, maps.CylindricalBfieldSection):
-                ax.scatter(x_mapped[:, 0], x_mapped[:, 1], **kwargs)
-            elif isinstance(self._map, maps.ToroidalBfieldSection):
-                coords = kwargs.pop("coords", 'thetazeta')
-                if coords == 'thetazeta':
-                    ax.scatter(x_mapped[:, 1], x_mapped[:, 0], **kwargs)
-                else:
-                    raise NotImplementedError("rz coordinates plotting is not implemented yet for ToroidalBfieldSection")
+        if plottype == 'RZ':
+            plot_array = self.hits_rz
+            for traj in plot_array:
+                ax.scatter(traj[:, 0], traj[:, 1], lw=lw, s=s, **kwargs)
+            ax.set_aspect('equal')
+        elif plottype == 'polar':
+            plot_array = self.hits_polar
+            for traj in plot_array:
+                ax.scatter(traj[:, 0], traj[:, 1], lw=lw, s=s, **kwargs)
 
         if xlim is not None:
             ax.set_xlim(xlim)
@@ -439,6 +445,44 @@ class PoincarePlot(BaseSolver):
             ax.set_ylim(ylim)
 
         return fig, ax
+
+    @property
+    def hits_rz(self):
+        """
+        helper to return the rz coordnates of a call to 
+        compute. 
+        """
+        if self._hits is None:
+            raise Exception("A successful call of compute() is needed")
+        if isinstance(self._map, maps.CylindricalBfieldSection):
+            return self._hits
+        elif isinstance(self._map, maps.ToroidalBfieldSection): # hits are stored in s-theta coordinates. 
+            hits_rz = []
+            for traj in self._hits: # first index
+                traj_sthetazeta = np.insert(traj, 2, self._map.phi0, axis=1) #fill phi0 value
+                traj_rz = []
+                for point in traj_sthetazeta:
+                    traj_rz.append(self._map._mf.convert_coords(point)[::2])
+                hits_rz.append(traj_rz)
+            return np.array(hits_rz)
+        
+    @property
+    def hits_polar(self): 
+        """
+        helper to return the thetazeta or rho, theta coordnates of a call to compute. 
+        """
+        if self._hits is None:
+            raise Exception("A successful call of compute() is needed")
+        if isinstance(self._map, maps.CylindricalBfieldSection):
+            hits_rho_theta = []
+            for traj_RZ in self._hits: # first index
+                traj_rhotheta = []
+                for point in traj_RZ:
+                    traj_rhotheta.append(self._map.to_rhotheta(point))
+                hits_rho_theta.append(traj_rhotheta)
+            return np.array(hits_rho_theta)
+        elif isinstance(self._map, maps.ToroidalBfieldSection):
+            return self._hits
     
     # Saving / Loading methods
 

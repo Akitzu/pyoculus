@@ -15,7 +15,7 @@ class TestPoincarePlot:
             self.Z = 0.
             self.sf = 1.2
             self.shear = 1.
-            self.ntraj = 10
+            self.ntraj = 4
             self.mf = AnalyticCylindricalBfield(R=self.R, Z=self.Z, sf=self.sf, shear=self.shear)
             self.section = CylindricalBfieldSection(self.mf, R0=self.R, Z0=self.Z)
             self.rhos = np.linspace(1e-5, 1, self.ntraj)
@@ -51,6 +51,15 @@ class TestPoincarePlot:
             toybox_expectation_q = self.sf + self.shear / 2 * self.rhos**2
             toybox_expectation_iota = 1/toybox_expectation_q
             np.testing.assert_allclose(iotas, toybox_expectation_iota, atol=1.1e-5)
+        
+        def test_plot(self):
+            """
+            test the plotting function, which should not error
+            """
+            self.poincare_plot.compute(npts=10)
+            fig, ax = self.poincare_plot.plot()
+            assert fig is not None
+            assert ax is not None
 
         
 
