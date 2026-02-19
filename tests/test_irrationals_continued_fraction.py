@@ -1,4 +1,3 @@
-import unittest
 import numpy as np
 from pyoculus.utils import expandcf, fromcf
 
@@ -17,20 +16,15 @@ test_cases = [
     # ((2, 3), [0, 1, 1, 1]),
 ]
 
-class TestContinuedFractionFunctions(unittest.TestCase):
+class TestContinuedFractionFunctions:
     def test_expandcf(self):
         for num, frac, ci in test_cases:
-            with self.subTest(ci=ci, frac=frac, num=num):
-                result = expandcf(num, len(ci))
-                expected = ci
-                np.testing.assert_array_equal(result, expected, f"Failed to correctly expand num={num} into ci={ci}.")
+            result = expandcf(num, len(ci))
+            expected = ci
+            np.testing.assert_array_equal(result, expected, f"Failed to correctly expand num={num} into ci={ci}.")
 
     def test_fromcf(self):
         for num, frac, ci in test_cases:
-            with self.subTest(ci=ci, frac=frac, num=num):
-                result = fromcf(ci)
-                expected = frac
-                self.assertEqual(result, expected, f"Failed to correctly convert ci={ci} back to fraction frac={frac}.")
-
-if __name__ == '__main__':
-    unittest.main()
+            result = fromcf(ci)
+            expected = frac
+            assert result == expected, f"Failed to correctly convert ci={ci} back to fraction frac={frac}."

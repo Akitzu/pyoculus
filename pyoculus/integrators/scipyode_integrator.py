@@ -54,7 +54,7 @@ class ScipyODEIntegrator(BaseIntegrator):
         self.rtol = params["rtol"]
 
         if "nsteps" not in params.keys():
-            params["nsteps"] = 10000
+            params["nsteps"] = 20000
 
         if "args" not in params.keys():
             params["args"] = ()
@@ -111,8 +111,12 @@ class ScipyODEIntegrator(BaseIntegrator):
             rhs (callable): The new RHS function.
         """
         self.rhs = rhs
+        ode_params = self._params.copy()
+        ode_params.pop("ode")
+        ode_params.pop("args")
+        ode_params.pop("type")
         self.integrator = ode(self.rhs).set_integrator(
-            self._params["type"], rtol=self._params["rtol"], nsteps=self._params["nsteps"]
+            self._params["type"], **ode_params
         )
 
     def __copy__(self):

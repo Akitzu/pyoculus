@@ -1,8 +1,7 @@
 import numpy as np
-import unittest
 from pyoculus.integrators import ScipyODEIntegrator
 
-class TestODEIntegrator(unittest.TestCase):
+class TestODEIntegrator:
     def test_exponential_growth(self):
         # Define the differential equation
         def dydt(t, y):
@@ -23,7 +22,4 @@ class TestODEIntegrator(unittest.TestCase):
         expected_solution = yi * np.exp(tf)
 
         # Check if the numerical solution at tf is close to the expected solution
-        self.assertAlmostEqual(yf[0], expected_solution, places=3, msg="Numerical solution does not match expected solution within tolerance.")
-
-if __name__ == '__main__':
-    unittest.main()
+        assert np.isclose(yf[0], expected_solution, atol=1e-3), "Numerical solution does not match expected solution within tolerance."
