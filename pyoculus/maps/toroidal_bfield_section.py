@@ -2,6 +2,7 @@ from .integrated_map import IntegratedMap
 from ..fields.toroidal_bfield import ToroidalBfield
 import numpy as np
 
+
 class ToroidalBfieldSection(IntegratedMap):
     """
     Class that sets up a Map given by following the a magnetic field in toroidal system :math:`(s, \\theta, \\zeta)`.
@@ -14,7 +15,8 @@ class ToroidalBfieldSection(IntegratedMap):
         else:
             self._mf = toroidalbfield
 
-        domain = [(0, np.inf), (0, 2*np.pi)]
+        domain = [(-1, 1), (0, 2*np.pi)]
+
         periodicity = [0, 1]
 
         super().__init__(dim=2, domain=domain, periodicity=periodicity, dzeta=2*np.pi/toroidalbfield.Nfp, ode = self._ode_rhs_tangent, **kwargs)
@@ -62,10 +64,13 @@ class ToroidalBfieldSection(IntegratedMap):
         """
         Integrates the ODE for a number of periods.
         """
-        dphi = t * self.dzeta
-        y = np.array(y0)
-        self._integrator.set_initial_value(self.phi0, y)
-        return self._integrator.integrate(self.phi0 + dphi)
+        if t==0:
+            return y0
+        else: 
+            dphi = t * self.dzeta
+            y = np.array(y0)
+            self._integrator.set_initial_value(self.phi0, y)
+            return self._integrator.integrate(self.phi0 + dphi)
 
     def _ode_rhs(self, phi, st, *args):
         """
