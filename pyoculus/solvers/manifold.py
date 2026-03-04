@@ -1901,7 +1901,7 @@ class Manifold(BaseSolver):
          'fp0_coords': np.asarray(getattr(self, 'fp0', getattr(self, 'fixed_point0', None)) and getattr(self.fp0, 'coords', None) or []),
          'fp1_coords': np.asarray(getattr(self, 'fp1', getattr(self, 'fixed_point1', None)) and getattr(self.fp1, 'coords', None) or []),
          'meta': {k: getattr(self, k) for k in ('nint_s', 'nint_u', 'eps_s', 'eps_u') if hasattr(self, k)}
-       }
+        }
        with open(path, 'wb') as f:
          pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)  
 
