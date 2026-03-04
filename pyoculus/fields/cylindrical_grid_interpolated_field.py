@@ -62,7 +62,6 @@ class AxisymmetricCylindricalGridField(CylindricalBfield):
         else:
             return cls(R, Z, B_R, B_Z, B_phi, F_psi)
 
-
 ##### With separatrix current
 
     @classmethod
@@ -148,14 +147,6 @@ class AxisymmetricCylindricalGridField(CylindricalBfield):
         else:
             return self.A_unperturbed(xx) + self.pertfield.A(xx) * self.pertamp
 
-#    
-#    def B_many(self, xx):
-#        """
-#        xx: numpy array of shape (N, 3) specifying the coordinates at which the magnetic field is to be evaluated
-#        """
-#        xx2d = xx[:, ::2]
-#        return np.array([self.B_R_interpolator(xx2d), self.B_phi_interpolator(xx2d), self.B_Z_interpolator(xx2d)]).T
-    
     def dBdX(self, xx):
         """
         xx: numpy array of shape (3,) specifying the coordinates at which the magnetic field gradient is to be evaluated
@@ -213,7 +204,6 @@ class AxisymmetricGridPerturbation(CylindricalBfield):
     def B(self, xx): 
         return np.hstack([self.B_R(xx), 0, self.B_Z(xx)])
     
-      
     def A(self, xx):
         """
         xx: numpy array of shape (3,) specifying the coordinates at which the magnetic potential is to be evaluated
@@ -225,7 +215,6 @@ class AxisymmetricGridPerturbation(CylindricalBfield):
     def dBdX(self, xx, *args):
 
         """Gradient of the total field function at the point coords. Where (dBdX)^i_j = dB^i/dX^j with i the row index and j the column index of the matrix."""
-
 
         xx2d = xx[::2]
 
@@ -240,59 +229,5 @@ class AxisymmetricGridPerturbation(CylindricalBfield):
                            -1/(2*np.pi*xx[0]) * (self.F_psi_cosphi_interpolator(xx2d, nu=[1,0])[0] * np.sin(xx[1]) - self.F_psi_sinphi_interpolator(xx2d, nu=[1,0])[0] * np.cos(xx[1])),
                             1/(2*np.pi*xx[0]) * (self.F_psi_cosphi_interpolator(xx2d, nu=[1,1])[0] * np.cos(xx[1]) + self.F_psi_sinphi_interpolator(xx2d, nu=[1,1])[0] * np.sin(xx[1]))])
         
-
         return self.B(xx), np.vstack([dR,dPhi,dZ]) 
 
-
-#class NonAxisymmetricCylindricalGrid(CylindricalBfield):
-#    """ 
-#    Non-axisymmetric magnetic field provided by interpolating a grid of points given in the R-Z plane. 
-#
-#    Tokamak equilibrium solvers often provide the relevant data in a grid of points in the R-Z plane. 
-#    """
-#
-#    def __init__(self, R, Z, phi, B_R, B_Z, B_phi):
-#        """
-#        R: 1D numpy array specifying the R coordinates of the grid points
-#        Z: 1D numpy array specifying the Z coordinates of the grid points
-#        phi: 1D numpy array specifying the phi coordinates of the grid points
-#        B_R: numpy array specifying the R component of the magnetic field at each grid point
-#        B_Z: numpy array specifying the Z component of the magnetic field at each grid point
-#        B_phi: numpy array specifying the phi component of the magnetic field at each grid point
-#        """
-#        self.R = R
-#        self.Z = Z
-#        self.phi = phi
-#        self.B_R = B_R
-#        self.B_Z = B_Z
-#        self.B_phi = B_phi
-#
-#        self.B_R_interpolator = RegularGridInterpolator((R, Z, phi), B_R, method='cubic')
-#        self.B_Z_interpolator = RegularGridInterpolator((R, Z, phi), B_Z, method='cubic')
-#        self.B_phi_interpolator = RegularGridInterpolator((R, Z, phi), B_phi, method='cubic')
-#
-#        def B(self, xx):
-#            """
-#            xx: numpy array of shape (3,) specifying the coordinates at which the magnetic field is to be evaluated
-#            """
-#            return np.array([self.B_R_interpolator(xx)[0], self.B_Z_interpolator(xx)[0], self.B_phi_interpolator(xx)[0]])
-#                        
-#
-#        def B_many(self, xx):
-#            """
-#            xx: numpy array of shape (N, 3) specifying the coordinates at which the magnetic field is to be evaluated
-#            """
-#            return np.array([self.B_R_interpolator(xx), self.B_Z_interpolator(xx), self.B_phi_interpolator(xx)]).T  
-#
-#        def dBdX(self, xx):
-#            """
-#            xx: numpy array of shape (3,) specifying the coordinates at which the magnetic field gradient is to be evaluated
-#            """
-#            dR=np.array([self.B_R_interpolator(xx2d, nu=[1,0,0])[0],    self.B_R_interpolator(xx2d, nu=[0,1,0])[0] ,  self.B_R_interpolator(xx2d, nu=[0,0,1])[0]])
-
-#            dPhi=np.array([self.B_phi_interpolator(xx2d, nu=[1,0,0])[0],self.B_phi_interpolator(xx2d, nu=[0,1,0])[0] ,  self.B_phi_interpolator(xx2d, nu=[0,0,1])[0]])
-
-#            dZ=np.array([self.B_Z_interpolator(xx2d, nu=[1,0,0])[0],    self.B_Z_interpolator(xx2d, nu=[0,1,0])[0] ,  self.B_Z_interpolator(xx2d, nu=[0,0,1])[0]])
-#
-#
-#            return self.B(xx2d), np.vstack([dR,dPhi,d
