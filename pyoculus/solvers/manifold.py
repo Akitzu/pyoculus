@@ -1894,7 +1894,7 @@ class Manifold(BaseSolver):
        
         """save the manifold object for a Stellerator field in a .pkl file"""
     
-       payload = {
+        payload = {
          'stable': np.asarray(getattr(self, 'stable', [])),
          'unstable': np.asarray(getattr(self, 'unstable', [])),
          'clinics': [np.asarray(getattr(c, 'trajectory', [])) for c in getattr(self, 'clinics', [])],
@@ -1902,7 +1902,7 @@ class Manifold(BaseSolver):
          'fp1_coords': np.asarray(getattr(self, 'fp1', getattr(self, 'fixed_point1', None)) and getattr(self.fp1, 'coords', None) or []),
          'meta': {k: getattr(self, k) for k in ('nint_s', 'nint_u', 'eps_s', 'eps_u') if hasattr(self, k)}
         }
-       with open(path, 'wb') as f:
+        with open(path, 'wb') as f:
          pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)  
 
     def load_mf_quasr(self, path):
