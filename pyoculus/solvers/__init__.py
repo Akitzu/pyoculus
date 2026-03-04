@@ -6,4 +6,4 @@ from .manifold import Manifold
 from .lyapunov_exponent import LyapunovExponent
 from .flux_surface_gr import FluxSurfaceGR
 from .qfm import QFM
-from .resonnance_zone import ResonnanceZone
+from .resonance_zone import ResonanceZone

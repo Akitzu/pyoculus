@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 
-class ResonnanceZone:
+class ResonanceZone:
     """
     Class representing the resonnance zone formed by 2 stable and 2 unstable manifolds, intersected by 2 homo/hetero-clinic point and 2 fixed points.
 
