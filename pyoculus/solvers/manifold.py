@@ -1748,18 +1748,6 @@ class Manifold(BaseSolver):
             lagrangians.append(self._map.lagrangian(point, self.fixedpoint_1.m))
         return np.array(lagrangians)
     
-    def _compute_lagrangian_in_sections2(self, trajectory):
-        """
-        Compute the lagrangian value for a clinic trajectory, one map at a time.
-        Skip the last point because that maps out of the fundamental segment.
-        """
-        logger.debug(f"starting Lagrangian integration for trajectory of length {len(trajectory)}")
-        clinic_points = trajectory
-        lagrangians = []
-        for point in clinic_points[:-1]:
-            lagrangians.append(self._map.lagrangian(point, 1))
-        return np.array(lagrangians)
-
     def _AdL_integral_points(self, gamma, dl=None, is_closed=False):
         """
         approximate the integral of A.dl along a set of of points using a midpoint rule.
