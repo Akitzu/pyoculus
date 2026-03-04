@@ -113,7 +113,7 @@ py3.install_sources(
   'pyoculus/solvers/manifold.py',
   'pyoculus/solvers/poincare_plot.py',
   'pyoculus/solvers/qfm.py',
-  'pyoculus/solvers/resonnance_zone.py',
+  'pyoculus/solvers/resonance_zone.py',
   'pyoculus/solvers/__init__.py',
   subdir: 'pyoculus/solvers'
 )
