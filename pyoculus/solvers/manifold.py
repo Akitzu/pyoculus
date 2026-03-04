@@ -5,11 +5,7 @@ from ..utils.plot import create_canvas, clean_bigsteps
 from scipy.optimize import root, minimize
 from typing import Iterator, Literal, Union, Iterable
 from numpy.typing import NDArray
-
-
 import dill as pickle
-
-
 # from functools import total_ordering
 from matplotlib.patches import FancyArrowPatch
 import matplotlib.pyplot as plt
