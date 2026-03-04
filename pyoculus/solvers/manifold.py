@@ -1892,7 +1892,7 @@ class Manifold(BaseSolver):
     
     def save_mf_quasr(self, path):
        
-        """save the manifold object for a Stellerator field in a .pkl file""""
+        """save the manifold object for a Stellerator field in a .pkl file"""
     
        payload = {
          'stable': np.asarray(getattr(self, 'stable', [])),
