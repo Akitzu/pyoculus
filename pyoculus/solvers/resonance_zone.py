@@ -6,8 +6,6 @@ from ..utils.plot import create_canvas, clean_bigsteps
 from scipy.optimize import root, minimize
 from typing import Iterator, Literal, Union, Iterable
 from numpy.typing import NDArray
-
-
 # from functools import total_ordering
 from matplotlib.patches import FancyArrowPatch
 import matplotlib.pyplot as plt
@@ -60,25 +58,23 @@ class ResonanceZone:
         if not hasattr(self.manifold2, 'clinics'):
          self.manifold2.find_clinics(first_guess_eps_s=9e-6, first_guess_eps_u=8e-6,n_points=1)
 
+        traj_lagrangian_1=self.manifold1.clinics[0].trajectory
+        traj_lagrangian_2=self.manifold2.clinics[0].trajectory
 
-        traj1=self.manifold1.clinics[0].trajectory
-        traj2=self.manifold2.clinics[0].trajectory
-            
-        ### lagrangians of the clinic trajectories    
-        traj1=self.manifold1._compute_lagrangian_in_sections(traj1)
-        traj2=self.manifold2._compute_lagrangian_in_sections(traj2)
+        ### lagrangians of the clinic trajectories
+        traj_lagrangian_1=self.manifold1._compute_lagrangian_in_sections(traj_lagrangian_1)
+        traj_lagrangian_2=self.manifold2._compute_lagrangian_in_sections(traj_lagrangian_2)
         
         ### lagrangians of the fixed points
         h1=self._map.lagrangian(self.manifold1.rfp_s,self.fixedpoint_1.m)
         h2=self._map.lagrangian(self.manifold2.rfp_s,self.fixedpoint_2.m)
 
-    
-        traj1[:]=traj1[:]-h1 
-        traj2[:]=traj2[:]-h2 
-       
+        traj_lagrangian_1[:]=traj_lagrangian_1[:]-h1
+        traj_lagrangian_2[:]=traj_lagrangian_2[:]-h2
+
         ### sum of the lagrangian difference between the clinic trajectories and the fixed points
-        int1= np.sum(traj1)
-        int2= np.sum(traj2)
+        int1= np.sum(traj_lagrangian_1)
+        int2= np.sum(traj_lagrangian_2)
         if whole_chain:
             return self.fixedpoint_1.m*(int1+int2)
         else:
@@ -86,14 +82,12 @@ class ResonanceZone:
 
     def plot(self, which="both", stepsize_limit=None, with_clinics=False, **kwargs):
 
-
         """
         Plot the 2 stable and the 2 unstable manifolds.
          which (str): which manifold to plot. Can be 'stable', 'unstable' or 'both'.
          stepsize_limit = threshold to remove big steps in the manifolds.
          with_clinics (bool): if True, plot the clinic points.
         """
-
 
         fig, ax, kwargs = create_canvas(**kwargs)
         
@@ -106,8 +100,7 @@ class ResonanceZone:
 
         return fig, ax
     
-
-
+    
     def contour(self):
          
         """
