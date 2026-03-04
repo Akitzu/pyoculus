@@ -1873,45 +1873,27 @@ class Manifold(BaseSolver):
             res.append(x_many)
         return np.array(res)
     
-
-
-
-
-
-
-#        # used to return [dimension*len(x_many) , nintersect + 1]
-#        x_path = np.full((self._map.dimension * x_many.shape[0], nintersect + 1), np.nan)
-#        x_path[:, 0] = x_many.flatten()
-#
-#        t = self.fixedpoint_1.m * direction
-#
-#        for i, x in enumerate(x_many):
-#            for j in range(nintersect):
-#                try:
-#                    x_new = self._map.f(t, x)
-#                except:
-#                    logger.error(f"Integration of point {x} failed.")
-#                    break
-#
-#                x_path[2 * i : 2 * i + self._map.dimension, j + 1] = x_new
-#                x = x_new
-#
-#        #return x_path
-#
-#
-#
-
-
-### Sauvegarde et chargement
+    ### Save and loading
 
     def save(self, path):
-        """Sauvegarde l’objet complet dans un fichier .pkl"""
+
+        """save the manifold object to a .pkl file"""
+
         with open(path, "wb") as f:
             pickle.dump(self, f)
 
+    @classmethod
+    def load(cls, path):
 
+        """load the manifold object from a .pkl file"""
+
+        with open(path, "rb") as f:
+            return pickle.load(f)
     
     def save_mf_quasr(self, path):
+       
+        """save the manifold object for a Stellerator field in a .pkl file""""
+    
        payload = {
          'stable': np.asarray(getattr(self, 'stable', [])),
          'unstable': np.asarray(getattr(self, 'unstable', [])),
@@ -1923,43 +1905,31 @@ class Manifold(BaseSolver):
        with open(path, 'wb') as f:
          pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)  
 
-
     def load_mf_quasr(self, path):
-        """
-        Recharge le payload sauvegardé par save_mf_quasr dans l'instance courante.
-        Attention : ne recrée pas le map ni les FixedPoint — il faut une instance Manifold valide.
-        """
+
+        """load the payload saved by save_mf_quasr into the current instance."""
+
         with open(path, "rb") as f:
             payload = pickle.load(f)
 
-        # Trajectoires principales
         stable = payload.get("stable", None)
         unstable = payload.get("unstable", None)
         self._stable_trajectory = np.asarray(stable) if stable is not None and len(stable) else None
         self._unstable_trajectory = np.asarray(unstable) if unstable is not None and len(unstable) else None
 
-        # Clinics : liste de trajectoires (arrays)
         clinics = payload.get("clinics", [])
-        # on stocke les trajectoires brutes ; reconstruction d'objets Clinic nécessiterait map/FixedPoint complets
+
         self._clinics_payload = [np.asarray(c) for c in clinics]
 
-        # Points fixes (coordonnées) si présents
         fp0 = payload.get("fp0_coords", None)
         fp1 = payload.get("fp1_coords", None)
         self.fp0_coords = np.asarray(fp0) if fp0 is not None and len(fp0) else None
         self.fp1_coords = np.asarray(fp1) if fp1 is not None and len(fp1) else None
 
-        # Méta
         self._mf_quasr_meta = payload.get("meta", {})
 
-        # Invalider caches dépendants
         self._areas = None
 
         return payload
 
-    @classmethod
-    def load(cls, path):
-        """Recharge l’objet complet depuis un fichier .pkl"""
-        with open(path, "rb") as f:
-            return pickle.load(f)
 
