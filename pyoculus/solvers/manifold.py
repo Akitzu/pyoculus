@@ -5,11 +5,12 @@ from ..utils.plot import create_canvas, clean_bigsteps
 from scipy.optimize import root, minimize
 from typing import Iterator, Literal, Union, Iterable
 from numpy.typing import NDArray
-
+import dill as pickle
 # from functools import total_ordering
 from matplotlib.patches import FancyArrowPatch
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.path import Path
 
 import logging
 
@@ -1368,6 +1369,8 @@ class Manifold(BaseSolver):
         """
         fig, ax, kwargs = create_canvas(**kwargs)
 
+        labels = kwargs.pop("labels", ["stable manifold", "unstable manifold"])
+
         colors = kwargs.pop("colors", ["xkcd:royal blue", "xkcd:magenta"])
         markersize = kwargs.pop("markersize", 2)
         fmt = kwargs.pop("fmt", "-o")
@@ -1383,7 +1386,8 @@ class Manifold(BaseSolver):
                     points[:,0][:final_index],
                     points[:,1][:final_index],
                     fmt,
-                    label=f"{dir} manifold",
+                    label=labels[i],
+                    #label=f"{dir} manifold",
                     color=colors[i],
                     markersize=markersize,
                     **kwargs,
@@ -1653,8 +1657,8 @@ class Manifold(BaseSolver):
         markers = kwargs.get(
             "markers", ["o", "s", "*", "P", "p", "X", "D", "d", "^", "v", "<", ">"]
         )
-        color = kwargs.get("color", "royalblue")
-        edgecolor = kwargs.get("edgecolor", "cyan")
+        color = kwargs.pop("color", "royalblue")
+        edgecolor = kwargs.pop("edgecolor", "cyan")
 
         fig, ax, kwargs = create_canvas(**kwargs)
 
@@ -1743,7 +1747,7 @@ class Manifold(BaseSolver):
         for point in clinic_points[:-1]:
             lagrangians.append(self._map.lagrangian(point, self.fixedpoint_1.m))
         return np.array(lagrangians)
-
+    
     def _AdL_integral_points(self, gamma, dl=None, is_closed=False):
         """
         approximate the integral of A.dl along a set of of points using a midpoint rule.
@@ -1868,26 +1872,66 @@ class Manifold(BaseSolver):
             x_many = self._map.f_many(t, x_many)
             res.append(x_many)
         return np.array(res)
+    
+    ### Save and loading
+
+    def save(self, path):
+        """
+        save the manifold object to a .pkl file
+        """
+
+        with open(path, "wb") as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def load(cls, path):
+        """load the manifold object from a .pkl file"""
+
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    
+    def save_mf_quasr(self, path):
+        """
+        save the manifold object for a Stellerator field in a .pkl file
+        """
+    
+        payload = {
+         'stable': np.asarray(getattr(self, 'stable', [])),
+         'unstable': np.asarray(getattr(self, 'unstable', [])),
+         'clinics': [np.asarray(getattr(c, 'trajectory', [])) for c in getattr(self, 'clinics', [])],
+         'fp0_coords': np.asarray(getattr(self, 'fp0', getattr(self, 'fixed_point0', None)) and getattr(self.fp0, 'coords', None) or []),
+         'fp1_coords': np.asarray(getattr(self, 'fp1', getattr(self, 'fixed_point1', None)) and getattr(self.fp1, 'coords', None) or []),
+         'meta': {k: getattr(self, k) for k in ('nint_s', 'nint_u', 'eps_s', 'eps_u') if hasattr(self, k)}
+        }
+        with open(path, 'wb') as f:
+         pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)  
+
+    def load_mf_quasr(self, path):
+        """
+        load the payload saved by save_mf_quasr into the current instance.
+        """
+
+        with open(path, "rb") as f:
+            payload = pickle.load(f)
+
+        stable = payload.get("stable", None)
+        unstable = payload.get("unstable", None)
+        self._stable_trajectory = np.asarray(stable) if stable is not None and len(stable) else None
+        self._unstable_trajectory = np.asarray(unstable) if unstable is not None and len(unstable) else None
+
+        clinics = payload.get("clinics", [])
+
+        self._clinics_payload = [np.asarray(c) for c in clinics]
+
+        fp0 = payload.get("fp0_coords", None)
+        fp1 = payload.get("fp1_coords", None)
+        self.fp0_coords = np.asarray(fp0) if fp0 is not None and len(fp0) else None
+        self.fp1_coords = np.asarray(fp1) if fp1 is not None and len(fp1) else None
+
+        self._mf_quasr_meta = payload.get("meta", {})
+
+        self._areas = None
+
+        return payload
 
 
-#        # used to return [dimension*len(x_many) , nintersect + 1]
-#        x_path = np.full((self._map.dimension * x_many.shape[0], nintersect + 1), np.nan)
-#        x_path[:, 0] = x_many.flatten()
-#
-#        t = self.fixedpoint_1.m * direction
-#
-#        for i, x in enumerate(x_many):
-#            for j in range(nintersect):
-#                try:
-#                    x_new = self._map.f(t, x)
-#                except:
-#                    logger.error(f"Integration of point {x} failed.")
-#                    break
-#
-#                x_path[2 * i : 2 * i + self._map.dimension, j + 1] = x_new
-#                x = x_new
-#
-#        #return x_path
-#
-#
-#

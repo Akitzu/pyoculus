@@ -37,6 +37,7 @@ dependencies=[
     "scipy",
     "matplotlib",
     "scipy",
+    "dill"
     ]
 
 [project.optional-dependencies]

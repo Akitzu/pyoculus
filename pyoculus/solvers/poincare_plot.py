@@ -87,7 +87,7 @@ class PoincarePlot(BaseSolver):
     @classmethod
     def with_segments(cls, map, xns, neps, connected = True):
         """
-        Create a Poincare plot specifying the points to be along mutilple segments.
+        Create a Poincare plot specifying the points to be along multiple segments.
 
         Can be used either to join the points passed as arguments when connected is True. Or, when connected is False, the points are taken to be the two by two extremities of eich segment.
         
