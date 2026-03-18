@@ -1876,23 +1876,24 @@ class Manifold(BaseSolver):
     ### Save and loading
 
     def save(self, path):
-
-        """save the manifold object to a .pkl file"""
+        """
+        save the manifold object to a .pkl file
+        """
 
         with open(path, "wb") as f:
             pickle.dump(self, f)
 
     @classmethod
     def load(cls, path):
-
         """load the manifold object from a .pkl file"""
 
         with open(path, "rb") as f:
             return pickle.load(f)
     
     def save_mf_quasr(self, path):
-       
-        """save the manifold object for a Stellerator field in a .pkl file"""
+        """
+        save the manifold object for a Stellerator field in a .pkl file
+        """
     
         payload = {
          'stable': np.asarray(getattr(self, 'stable', [])),
@@ -1906,8 +1907,9 @@ class Manifold(BaseSolver):
          pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)  
 
     def load_mf_quasr(self, path):
-
-        """load the payload saved by save_mf_quasr into the current instance."""
+        """
+        load the payload saved by save_mf_quasr into the current instance.
+        """
 
         with open(path, "rb") as f:
             payload = pickle.load(f)
