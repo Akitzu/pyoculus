@@ -74,7 +74,11 @@ class TestCylindricalGridInterpolatedField(unittest.TestCase):
         result = self.cylindrical_bfield_section.lagrangian(y0, 1)  # reduces to \int dl over circle with radius R
         self.assertAlmostEqual(result, 2*np.pi, places=5)
 
-
+    def test_load_from_mat(self):
+        """
+        Test the loading from a .mat file
+        """
+        JFField = AxisymmetricCylindricalGridField.from_matlab_file('./examples/TCV_jellyfish/JF_75979_120.mat', with_perturbation=True)
 
 
 if __name__ == '__main__':

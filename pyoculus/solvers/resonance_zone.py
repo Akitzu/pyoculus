@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class ResonanceZone:
     """
-    Class representing the resonnance zone formed by 2 stable and 2 unstable manifolds, intersected by 2 homo/hetero-clinic point and 2 fixed points.
+    Class representing the resonnance zone formed by 2 stable and 2 unstable manifolds, intersected by 2 heteroclinic point and 2 fixed points.
 
     Args:
      - manifold1: The first manifold.
@@ -47,7 +47,6 @@ class ResonanceZone:
             raise ValueError("Fixed points must be the same and reversed.")
 
     def area(self, whole_chain=False):
-
         """
         Compute the area of the resonance zone using Meiss's action principle.
           whole_chain: if True, compute the area of the whole chain of islands, otherwise only one island.
@@ -80,8 +79,7 @@ class ResonanceZone:
         else:
             return int1+int2
 
-    def plot(self, which="both", stepsize_limit=None, with_clinics=False, **kwargs):
-
+    def plot_manifolds(self, which="both", stepsize_limit=None, with_clinics=False, **kwargs):
         """
         Plot the 2 stable and the 2 unstable manifolds.
          which (str): which manifold to plot. Can be 'stable', 'unstable' or 'both'.
@@ -100,15 +98,13 @@ class ResonanceZone:
 
         return fig, ax
     
-    
-    def contour(self):
-         
+
+    def plot_reso_zone(self):
         """
         Compute the closed contour of the resonnance zone, formed by the stable and unstable manifolds of the two fixed points.
         Returns the contour points as a Nx2 array.
 
         """
-
 
         def IndexClosestPoint(traj, point):
 
@@ -140,8 +136,7 @@ class ResonanceZone:
         MF2s=self.manifold2._stable_trajectory #second stable segment
         MF2u=self.manifold2._unstable_trajectory #second unstable segment
 
-
-        M2_0_idx=len(self.manifold2.clinics[0].trajectory)//2 #middle point where the contour switch from stable to unstable 
+        M2_0_idx=len(self.manifold2.clinics[0].trajectory)//2 
         M2_0 = self.manifold2.clinics[0].trajectory[M2_0_idx]
         idx_2s = IndexClosestPoint(MF2s, M2_0)
         idx_2u = IndexClosestPoint(MF2u, M2_0)
@@ -149,7 +144,6 @@ class ResonanceZone:
         MF2u= MF2u[:idx_2u]
         MF2u= MF2u[::-1]  
         
-
         M1_0_idx=len(self.manifold1.clinics[0].trajectory)//2
         M1_0 = self.manifold1.clinics[0].trajectory[M1_0_idx]
         idx_1s = IndexClosestPoint(MF1s, M1_0)
@@ -169,12 +163,10 @@ class ResonanceZone:
         return contour_points[::-1] #reverse to have clockwise orientation
     
     def flux_approx_SL(self):
-
         """
         Approximate the flux through the resonnance zone using area computed with shoelace method, multiplied by the mean magnetic field inside the contour
         """
         
-
         contour_points=self.contour()
         
         # Compute grid inside contour
