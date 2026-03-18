@@ -14,8 +14,8 @@ plt.rcParams.update(
 )
 logging.basicConfig(level=logging.DEBUG)
 
-POINCARE_TRAJ = 15
-POINCARE_ITS = 450
+POINCARE_TRAJ = 5
+POINCARE_ITS = 50
 
 SHEAR = 1.2
 SF = 1.16
