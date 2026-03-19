@@ -164,7 +164,7 @@ class FixedPoint(BaseSolver):
                 break
             elif i < nrestart:
                 logger.info(f"Search {i+1} starting from a random initial guesss.")
-                guess = self.random_initial_guess(guess0)
+                guess = self.random_initial_guess(prev_guess=guess0)
 
         # now we go and get all the fixed points by iterating the map
         if x_fp is not None:
@@ -258,7 +258,7 @@ class FixedPoint(BaseSolver):
                 break
             elif i < nrestart:
                 logger.info(f"Search {i+1} starting from a random initial guesss.")
-                guess = self.random_initial_guess(guess0)
+                guess = self.random_initial_guess(prev_guess=guess0)
 
         # now we go and get all the fixed points by iterating the map
         if x_fp is not None:
@@ -276,29 +276,26 @@ class FixedPoint(BaseSolver):
 
     ## Utils methods
 
-    def random_initial_guess(self, mu=None, sigma=None):
+    def random_initial_guess(self, prev_guess=None, max_step=0.5):
         """
-        Returns a random initial point in the domain of the map using a Gaussian distribution.
+        Returns a random initial point uniformly sampled from the domain of the map.
+
+        If prev_guess is provided and the map is a CylindricalBfieldSection,
+        the sampling region is restricted to prev_guess ± max_step (intersected with the domain).
 
         Args:
-            mu (float): the mean of the Gaussian distribution
-            sigma (np.array): the covariance matrix of the Gaussian distribution
+            prev_guess (np.array): the previous guess to sample around
+            max_step (float): the maximum step size from prev_guess in each dimension
         """
         domain = self._map.domain
-        domain = [
-            (
-                low if low != -np.inf else -np.finfo(np.float64).max,
-                high if high != np.inf else np.finfo(np.float64).max,
-            )
-            for (low, high) in domain
-        ]
+        lows = np.array([low for (low, high) in domain])
+        highs = np.array([high for (low, high) in domain])
 
-        if mu is None:
-            mu = np.array([(low + high) / 2 for (low, high) in domain])
-        if sigma is None:
-            sigma = np.eye(self._map.dimension)
+        if prev_guess is not None and isinstance(self._map, maps.CylindricalBfieldSection):
+            lows = np.maximum(lows, prev_guess - max_step)
+            highs = np.minimum(highs, prev_guess + max_step)
 
-        return np.random.multivariate_normal(mu, sigma)
+        return np.random.uniform(lows, highs)
 
     def record_data(self, x_fp):
         """
@@ -415,7 +412,7 @@ class FixedPoint(BaseSolver):
             # Newton's step
             delta_x = x_evolved - x
             step = np.linalg.solve(df - np.eye(self._map.dimension), -1 * delta_x)
-            x_new = self._map.check_domain(x + step)
+            x_new = self._map.into_domain(x + step)
 
             # Update the variables
             logger.info(f"Newton {i} - step : {x_new-x}")
@@ -440,12 +437,16 @@ class FixedPoint(BaseSolver):
         scipy_method = kwargs.pop("scipy_method", "hybr")
 
         def fun(x):
+            x = self._map.into_domain(x) # map back to domain
             logger.info(f"Newton - xx : {x}")
             diff = self._map.f(self.t/2, x) - self._map.f(-self.t/2, x)
             logger.info(f"Newton - diff : {diff}")
             return diff
         
         self._scipy_root_res = root(fun, guess, method=scipy_method, **kwargs)
+        if not self._scipy_root_res.success:
+            logger.info(f"Scipy root failed: {self._scipy_root_res.message}")
+            return None
 
         return np.copy(self._scipy_root_res.x)
     
@@ -466,6 +467,11 @@ class FixedPoint(BaseSolver):
             return forwardf - backwardf, (forwardjac - backwardjac)
 
         self._scipy_root_res = root(fun, guess, jac=True, method=scipy_method, **kwargs)
+        
+        if not self._scipy_root_res.success:
+            logger.info(f"Scipy root failed: {self._scipy_root_res.message}")
+            return None
+       
         return np.copy(self._scipy_root_res.x)
     
     def _scipy_1d_symmetry(self, guess, **kwargs):
@@ -505,6 +511,11 @@ class FixedPoint(BaseSolver):
             return zdiff
 
         self._scipy_root_res = root_scalar(fun, x0=guess[0], method=scipy_method, bracket=bracket, **kwargs)
+        
+        if not self._scipy_root_res.success:
+            logger.info(f"Scipy root failed: {self._scipy_root_res.message}")
+            return None
+        
         return np.array([self._scipy_root_res.root, 0])
 
     def _scipy_1d_2d(self, guess, **kwargs):
@@ -554,6 +565,10 @@ class FixedPoint(BaseSolver):
             return self._map.f(self.t/2, x) - self._map.f(-self.t/2, x)
         
         self._scipy_root_res = root(fun_2d, guess2d)
+        
+        if not self._scipy_root_res.success:
+            logger.info(f"Scipy root failed: {self._scipy_root_res.message}")
+            return None
 
         return np.copy(self._scipy_root_res.x)
 
@@ -595,7 +610,7 @@ class FixedPoint(BaseSolver):
 
             # Newton's step
             step = np.linalg.solve(dW - np.eye(self._map.dimension), -1 * delta_x)
-            rhotheta_new = self._map.check_domain(rhotheta + step)
+            rhotheta_new = self._map.into_domain(rhotheta + step)
 
             # Update the variables
             logger.info(f"Newton {i} - step: {step}")
@@ -631,6 +646,9 @@ class FixedPoint(BaseSolver):
 
         def fun(x):
             logger.info(f"Newton - xx : {x}")
+            if not self._map.in_domain(x):
+                logger.info(f"Newton - out of domain")
+                return None
             x_winding = self._map.winding(self.t, x, xaxis)
             logger.info(f"Newton - x_winding : {x_winding}")
 
@@ -644,6 +662,10 @@ class FixedPoint(BaseSolver):
             return delta_x
         
         self._scipy_root_res = root(fun, guess, method=scipy_method, **kwargs)
+        
+        if not self._scipy_root_res.success:
+            logger.info(f"Scipy root failed: {self._scipy_root_res.message}")
+            return None
 
         return np.copy(self._scipy_root_res.x)
 
@@ -677,6 +699,10 @@ class FixedPoint(BaseSolver):
             return delta_x
         
         self._scipy_root_res = root(fun, guess, method=scipy_method, **kwargs)
+        
+        if not self._scipy_root_res.success:
+            logger.info(f"Scipy root failed: {self._scipy_root_res.message}")
+            return None
 
         return np.copy(np.array([self._scipy_root_res.x[0], 0.]))
 
