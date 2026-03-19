@@ -164,7 +164,7 @@ class FixedPoint(BaseSolver):
                 break
             elif i < nrestart:
                 logger.info(f"Search {i+1} starting from a random initial guesss.")
-                guess = self.random_initial_guess(guess0)
+                guess = self.random_initial_guess(prev_guess=guess0)
 
         # now we go and get all the fixed points by iterating the map
         if x_fp is not None:
@@ -258,7 +258,7 @@ class FixedPoint(BaseSolver):
                 break
             elif i < nrestart:
                 logger.info(f"Search {i+1} starting from a random initial guesss.")
-                guess = self.random_initial_guess(guess0)
+                guess = self.random_initial_guess(prev_guess=guess0)
 
         # now we go and get all the fixed points by iterating the map
         if x_fp is not None:
@@ -276,25 +276,26 @@ class FixedPoint(BaseSolver):
 
     ## Utils methods
 
-    def random_initial_guess(self, mu=None, sigma=None):
+    def random_initial_guess(self, prev_guess=None, max_step=0.5):
         """
-        Returns a random initial point in the domain of the map using a Gaussian distribution,
-        clipped to lie within the domain bounds.
+        Returns a random initial point uniformly sampled from the domain of the map.
+
+        If prev_guess is provided and the map is a CylindricalBfieldSection,
+        the sampling region is restricted to prev_guess ± max_step (intersected with the domain).
 
         Args:
-            mu (float): the mean of the Gaussian distribution
-            sigma (np.array): the covariance matrix of the Gaussian distribution
+            prev_guess (np.array): the previous guess to sample around
+            max_step (float): the maximum step size from prev_guess in each dimension
         """
         domain = self._map.domain
+        lows = np.array([low for (low, high) in domain])
+        highs = np.array([high for (low, high) in domain])
 
-        if mu is None:
-            mu = np.array([(low + high) / 2 for (low, high) in domain])
-        if sigma is None:
-            sigma = np.eye(self._map.dimension)
+        if prev_guess is not None and isinstance(self._map, maps.CylindricalBfieldSection):
+            lows = np.maximum(lows, prev_guess - max_step)
+            highs = np.minimum(highs, prev_guess + max_step)
 
-        point = np.random.multivariate_normal(mu, sigma)
-
-        return self._map.into_domain(point)
+        return np.random.uniform(lows, highs)
 
     def record_data(self, x_fp):
         """
