@@ -647,7 +647,7 @@ class FixedPoint(BaseSolver):
         def fun(x):
             logger.info(f"Newton - xx : {x}")
             if not self._map.in_domain(x):
-                logger.info(f"Newton {i} - out of domain")
+                logger.info(f"Newton - out of domain")
                 return None
             x_winding = self._map.winding(self.t, x, xaxis)
             logger.info(f"Newton - x_winding : {x_winding}")
