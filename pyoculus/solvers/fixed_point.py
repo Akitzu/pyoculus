@@ -278,27 +278,23 @@ class FixedPoint(BaseSolver):
 
     def random_initial_guess(self, mu=None, sigma=None):
         """
-        Returns a random initial point in the domain of the map using a Gaussian distribution.
+        Returns a random initial point in the domain of the map using a Gaussian distribution,
+        clipped to lie within the domain bounds.
 
         Args:
             mu (float): the mean of the Gaussian distribution
             sigma (np.array): the covariance matrix of the Gaussian distribution
         """
         domain = self._map.domain
-        domain = [
-            (
-                low if low != -np.inf else -np.finfo(np.float64).max,
-                high if high != np.inf else np.finfo(np.float64).max,
-            )
-            for (low, high) in domain
-        ]
 
         if mu is None:
             mu = np.array([(low + high) / 2 for (low, high) in domain])
         if sigma is None:
             sigma = np.eye(self._map.dimension)
 
-        return np.random.multivariate_normal(mu, sigma)
+        point = np.random.multivariate_normal(mu, sigma)
+
+        return self._map.into_domain(point)
 
     def record_data(self, x_fp):
         """
@@ -415,7 +411,7 @@ class FixedPoint(BaseSolver):
             # Newton's step
             delta_x = x_evolved - x
             step = np.linalg.solve(df - np.eye(self._map.dimension), -1 * delta_x)
-            x_new = self._map.check_domain(x + step)
+            x_new = self._map.into_domain(x + step)
 
             # Update the variables
             logger.info(f"Newton {i} - step : {x_new-x}")
@@ -440,12 +436,16 @@ class FixedPoint(BaseSolver):
         scipy_method = kwargs.pop("scipy_method", "hybr")
 
         def fun(x):
+            x = self._map.into_domain(x) # map back to domain
             logger.info(f"Newton - xx : {x}")
             diff = self._map.f(self.t/2, x) - self._map.f(-self.t/2, x)
             logger.info(f"Newton - diff : {diff}")
             return diff
         
         self._scipy_root_res = root(fun, guess, method=scipy_method, **kwargs)
+        if not self._scipy_root_res.success:
+            logger.info(f"Scipy root failed: {self._scipy_root_res.message}")
+            return None
 
         return np.copy(self._scipy_root_res.x)
     
@@ -466,6 +466,11 @@ class FixedPoint(BaseSolver):
             return forwardf - backwardf, (forwardjac - backwardjac)
 
         self._scipy_root_res = root(fun, guess, jac=True, method=scipy_method, **kwargs)
+        
+        if not self._scipy_root_res.success:
+            logger.info(f"Scipy root failed: {self._scipy_root_res.message}")
+            return None
+       
         return np.copy(self._scipy_root_res.x)
     
     def _scipy_1d_symmetry(self, guess, **kwargs):
@@ -505,6 +510,11 @@ class FixedPoint(BaseSolver):
             return zdiff
 
         self._scipy_root_res = root_scalar(fun, x0=guess[0], method=scipy_method, bracket=bracket, **kwargs)
+        
+        if not self._scipy_root_res.success:
+            logger.info(f"Scipy root failed: {self._scipy_root_res.message}")
+            return None
+        
         return np.array([self._scipy_root_res.root, 0])
 
     def _scipy_1d_2d(self, guess, **kwargs):
@@ -554,6 +564,10 @@ class FixedPoint(BaseSolver):
             return self._map.f(self.t/2, x) - self._map.f(-self.t/2, x)
         
         self._scipy_root_res = root(fun_2d, guess2d)
+        
+        if not self._scipy_root_res.success:
+            logger.info(f"Scipy root failed: {self._scipy_root_res.message}")
+            return None
 
         return np.copy(self._scipy_root_res.x)
 
@@ -595,7 +609,7 @@ class FixedPoint(BaseSolver):
 
             # Newton's step
             step = np.linalg.solve(dW - np.eye(self._map.dimension), -1 * delta_x)
-            rhotheta_new = self._map.check_domain(rhotheta + step)
+            rhotheta_new = self._map.into_domain(rhotheta + step)
 
             # Update the variables
             logger.info(f"Newton {i} - step: {step}")
@@ -631,6 +645,9 @@ class FixedPoint(BaseSolver):
 
         def fun(x):
             logger.info(f"Newton - xx : {x}")
+            if not self._map.in_domain(x):
+                logger.info(f"Newton {i} - out of domain")
+                return None
             x_winding = self._map.winding(self.t, x, xaxis)
             logger.info(f"Newton - x_winding : {x_winding}")
 
@@ -644,6 +661,10 @@ class FixedPoint(BaseSolver):
             return delta_x
         
         self._scipy_root_res = root(fun, guess, method=scipy_method, **kwargs)
+        
+        if not self._scipy_root_res.success:
+            logger.info(f"Scipy root failed: {self._scipy_root_res.message}")
+            return None
 
         return np.copy(self._scipy_root_res.x)
 
@@ -677,6 +698,10 @@ class FixedPoint(BaseSolver):
             return delta_x
         
         self._scipy_root_res = root(fun, guess, method=scipy_method, **kwargs)
+        
+        if not self._scipy_root_res.success:
+            logger.info(f"Scipy root failed: {self._scipy_root_res.message}")
+            return None
 
         return np.copy(np.array([self._scipy_root_res.x[0], 0.]))
 

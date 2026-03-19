@@ -36,7 +36,7 @@ class ToroidalBfieldSection(IntegratedMap):
             self._integrator.set_rhs(self._ode_rhs)
 
         y_new = self._integrate(t, y0)
-        return self.check_domain(y_new)
+        return self.into_domain(y_new)
 
     def df(self, t, y0):
         ic = np.array([*y0, 1.0, 0.0, 0.0, 1.0])

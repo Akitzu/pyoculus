@@ -113,21 +113,22 @@ class BaseMap(ABC):
     
     # Domain related methods
 
-    def check_domain(self, x):
-        """
-        
-
-        """
-
+    def into_domain(self, x):
+        """Maps the point x into the domain of the map."""
+        x = np.asarray(x, dtype=float)
+        if x.shape != (self.dimension,):
+            raise ValueError(f"Input must be a {self.dimension}-dimensional vector.")
         for i, (low, high) in enumerate(self.domain):
             if self.periodicity[i] == 1:
-                x[i] = low + x[i] % (high - low)
+                x[i] = low + (x[i] - low) % (high - low)
+            else:
+                x[i] = np.clip(x[i], low, high)
         return x
 
+    
     def in_domain(self, x):
         """
-        
-
+        Checks if the point x is within the domain of the map.
         """
         for i, (low, high) in enumerate(self.domain):
             if not low <= x[i] <= high and self.periodicity[i] == 0:
