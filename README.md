@@ -4,15 +4,21 @@
 
 The eye into chaos: a comprehensive diagnostic package for non-integrable, toroidal magnetic fields (and more general 1 1/2-D or 2D Hamiltonian system), analytic and more general maps that rely on integration. Started as a python version of the original package [Oculus](https://github.com/SRHudson/Oculus/). Oculus is the Latin word for *eye*.
 
-> [!NOTE]
-> This is a fork from [zhisong/pyoculus](https://github.com/zhisong/pyoculus) that includes capability to plot homo/heteroclinic tangles, and calculate turnstile area (a measure for chaotic transport). It is still a work in progress but is rapidly improving. And includes a re-factoring/improvement of some of the core logic.
+> **Note: pyoculus 1.0.0 is a major rewrite with breaking API changes.**
+> If your code targets the previous `Problem`/`Solver` API, pin to the last 0.3
+> release:
+> ```
+> pip install pyoculus==0.3.3
+> ```
+> See the [CHANGELOG](CHANGELOG.md) for migration details.
+
 
 ## Package Installation
 
 This fork of pyoculus is not uploaded to pypi, we recommend to install it directly from the git
 
 ```bash
-git clone https://github.com/Akitzu/pyoculus.git
+git clone https://github.com/pyoculus/pyoculus.git
 cd pyoculus
 python -m pip install .
 ```
@@ -20,7 +26,7 @@ python -m pip install .
 or for a specific user
 
 ```bash
-git clone https://github.com/Akitzu/pyoculus.git
+git clone https://github.com/pyoculus/pyoculus.git
 cd pyoculus
 python -m pip install --user pyoculus
 ```
@@ -52,11 +58,11 @@ With your favorite `map` in hand, you can analyze it with any of the `solvers`.
 
 There are also a few solvers that act on fields, such as `qfm` which finds quadratic flux minimizing surfaces in fields specified by toroidal coordinates using spectral methods.
 
-## Difference with zhisong/pyoculus
+## migrating from 0.3.x 
 
-In the upstream branch, the `Problem` is created directly from a `Field`, and the integrator was specific to it. This meant that integrator parameters needed to be passed to every solver separately, and could lead to mismatches in solutions.
+In older versions, the `Problem` is was directly and the integrator was specific to it. This meant that integrator parameters needed to be passed to every solver separately, and could lead to mismatches in solutions.
 
-To adapt existing routines to the new `pyoculus` workflow, create a `Map` from your field, and pass the integration parameters (possibly in the `iparams` dictionary) as keyword arguments to its initialization.
+To adapt existing routines to the new `pyoculus` workflow, create a `Map` from your field, and pass the integration parameters (possibly in the `iparams` dictionary) as keyword arguments to its initialization. The Map will always use the same integration parameters and encapsulates the mapping from a Poincare section to itself. 
 
 ## Documentation
 
