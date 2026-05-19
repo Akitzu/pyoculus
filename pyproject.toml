@@ -10,7 +10,7 @@ build-backend = "mesonpy"
 
 [project]
 name="pyoculus"
-version='0.3.2'
+version='0.3.3'
 description="A Python version of Oculus - The eye into the chaos: a comprehensive magnetic field diagnostic package for non-integrable, toroidal magnetic fields"
 readme = "README.md"
 classifiers=[
